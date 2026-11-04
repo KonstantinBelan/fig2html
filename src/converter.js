@@ -889,14 +889,80 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 } else if (alignSelf === 'center') {
                     textNode.stackChildAlignSelf = 'CENTER';
                 }
-                if (marginOffsets.top) textNode.stackChildMarginTop = marginOffsets.top;
-                if (marginOffsets.right) textNode.stackChildMarginRight = marginOffsets.right;
-                if (marginOffsets.bottom) textNode.stackChildMarginBottom = marginOffsets.bottom;
-                if (marginOffsets.left) textNode.stackChildMarginLeft = marginOffsets.left;
+            }
+
+            const hasMargins = (marginOffsets.top > 0 || marginOffsets.right > 0 || marginOffsets.bottom > 0 || marginOffsets.left > 0);
+            if (hasMargins && parentContext && parentContext.isFlex && !isAbsolute) {
+                const wrapperGuid = currentGuid;
+                const innerTextGuid = guidGen.next();
+
+                textNode.guid = innerTextGuid;
+                textNode.parentIndex = { guid: wrapperGuid, position: '!' };
+                textNode.transform = {
+                    m00: 1, m01: 0, m02: marginOffsets.left || 0,
+                    m10: 0, m11: 1, m12: marginOffsets.top || 0
+                };
+                textNode.stackChildAlignSelf = 'STRETCH';
+                textNode.textAutoResize = 'HEIGHT';
+
+                const isCol = parentContext.isColumn;
+                const shouldStretch = alignSelf === 'stretch' || (isCol && isParagraph && !inFlexRow);
+                const wrapperW = (isCol || shouldStretch)
+                    ? (parentContext.width || textGeom.width)
+                    : (textGeom.width + marginOffsets.left + marginOffsets.right);
+                const wrapperH = textGeom.height + marginOffsets.top + marginOffsets.bottom;
+
+                const wrapperName = (element.className && typeof element.className === 'string')
+                    ? element.className.trim()
+                    : (element.id || 'TextWrapper');
+
+                const wrapperFrame = {
+                    guid: wrapperGuid,
+                    phase: 'CREATED',
+                    parentIndex: { guid: parentGuid, position: orderPosition },
+                    type: 'FRAME',
+                    name: wrapperName,
+                    visible: isVisible,
+                    opacity: opacity,
+                    size: { x: wrapperW, y: wrapperH },
+                    transform: { m00: 1, m01: 0, m02: x, m10: 0, m11: 1, m12: y },
+                    strokeWeight: 0,
+                    strokeAlign: 'INSIDE',
+                    fillPaints: [],
+                    strokePaints: [],
+                    effects: [],
+                    stackMode: 'VERTICAL',
+                    stackLayoutVersion: 4,
+                    stackPrimarySizing: 'RESIZE_TO_FIT',
+                    stackCounterSizing: (isCol || shouldStretch) ? 'FIXED' : 'RESIZE_TO_FIT',
+                    stackPrimaryAlignItems: 'MIN',
+                    stackCounterAlignItems: 'MIN',
+                    stackChildAlignSelf: shouldStretch ? 'STRETCH' : (alignSelf === 'center' ? 'CENTER' : 'MIN')
+                };
+
+                if (marginOffsets.top > 0) wrapperFrame.stackVerticalPadding = marginOffsets.top;
+                if (marginOffsets.bottom > 0) wrapperFrame.stackPaddingBottom = marginOffsets.bottom;
+                if (marginOffsets.left > 0) wrapperFrame.stackHorizontalPadding = marginOffsets.left;
+                if (marginOffsets.right > 0) wrapperFrame.stackPaddingRight = marginOffsets.right;
+
+                nodeChanges.push(wrapperFrame);
+                nodeChanges.push(textNode);
+                stats.frames++;
+
+                return {
+                    node: wrapperFrame,
+                    width: wrapperW,
+                    height: wrapperH,
+                    isAbsolute: false,
+                    marginTop: 0,
+                    marginBottom: 0,
+                    marginLeft: 0,
+                    marginRight: 0
+                };
             }
 
             nodeChanges.push(textNode);
-            return { node: textNode, width: textGeom.width, height: textGeom.height, isAbsolute, marginTop: marginOffsets.top, marginBottom: marginOffsets.bottom, marginLeft: marginOffsets.left, marginRight: marginOffsets.right };
+            return { node: textNode, width: textGeom.width, height: textGeom.height, isAbsolute, marginTop: 0, marginBottom: 0, marginLeft: 0, marginRight: 0 };
         }
 
         // -------------------------------------------------------------
@@ -979,7 +1045,6 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 cornerRadius: borderRadius || 6,
                 stackMode: 'HORIZONTAL',
                 stackLayoutVersion: 4,
-                stackPadding: 10,
                 stackHorizontalPadding: 14,
                 stackVerticalPadding: 10,
                 stackPrimaryAlignItems: 'MIN',
@@ -1151,24 +1216,20 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         if (frameType === 'FRAME') {
             if (tagName === 'body') {
                 frameNode.stackMode = 'VERTICAL';
-                frameNode.stackSpacing = gap || 0;
-                frameNode.stackPadding = paddingTop;
-                frameNode.stackHorizontalPadding = paddingLeft;
-                frameNode.stackVerticalPadding = paddingTop;
-                frameNode.stackPaddingRight = paddingRight;
-                frameNode.stackPaddingBottom = paddingBottom;
-                frameNode.stackPrimaryAlignItems = 'MIN';
-                frameNode.stackCounterAlignItems = 'MIN';
+                if (gap > 0) frameNode.stackSpacing = gap;
+                if (paddingLeft > 0) frameNode.stackHorizontalPadding = paddingLeft;
+                if (paddingRight > 0) frameNode.stackPaddingRight = paddingRight;
+                if (paddingTop > 0) frameNode.stackVerticalPadding = paddingTop;
+                if (paddingBottom > 0) frameNode.stackPaddingBottom = paddingBottom;
                 frameNode.stackPrimarySizing = 'RESIZE_TO_FIT';
                 frameNode.stackCounterSizing = 'FIXED';
             } else if (isFlex || isGrid) {
                 frameNode.stackMode = isColumn ? 'VERTICAL' : 'HORIZONTAL';
-                frameNode.stackSpacing = gap;
-                frameNode.stackPadding = paddingTop;
-                frameNode.stackHorizontalPadding = paddingLeft;
-                frameNode.stackVerticalPadding = paddingTop;
-                frameNode.stackPaddingRight = paddingRight;
-                frameNode.stackPaddingBottom = paddingBottom;
+                if (gap > 0) frameNode.stackSpacing = gap;
+                if (paddingLeft > 0) frameNode.stackHorizontalPadding = paddingLeft;
+                if (paddingRight > 0) frameNode.stackPaddingRight = paddingRight;
+                if (paddingTop > 0) frameNode.stackVerticalPadding = paddingTop;
+                if (paddingBottom > 0) frameNode.stackPaddingBottom = paddingBottom;
 
                 const flexWrap = getProp('flex-wrap', 'flexWrap');
                 if (flexWrap === 'wrap' || (isGrid && gridCols && (gridCols.includes('repeat') || gridCols.split(/\s+/).length > 1))) {
@@ -1181,14 +1242,14 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 const isPlaceCenter = placeItems && placeItems.includes('center');
 
                 const jc = getProp('justify-content', 'justifyContent');
-                frameNode.stackPrimaryAlignItems = (jc === 'center' || isPlaceCenter) ? 'CENTER' :
-                    (jc === 'flex-end' || jc === 'end') ? 'MAX' :
-                        (jc === 'space-between' || jc === 'space-around' || jc === 'space-evenly') ? 'SPACE_BETWEEN' : 'MIN';
+                if (jc === 'center' || isPlaceCenter) frameNode.stackPrimaryAlignItems = 'CENTER';
+                else if (jc === 'flex-end' || jc === 'end') frameNode.stackPrimaryAlignItems = 'MAX';
+                else if (jc === 'space-between' || jc === 'space-around' || jc === 'space-evenly') frameNode.stackPrimaryAlignItems = 'SPACE_BETWEEN';
 
                 const ai = getProp('align-items', 'alignItems');
-                frameNode.stackCounterAlignItems = (ai === 'center' || isPlaceCenter) ? 'CENTER' :
-                    (ai === 'flex-end' || ai === 'end') ? 'MAX' :
-                        ai === 'baseline' ? 'BASELINE' : 'MIN';
+                if (ai === 'center' || isPlaceCenter) frameNode.stackCounterAlignItems = 'CENTER';
+                else if (ai === 'flex-end' || ai === 'end') frameNode.stackCounterAlignItems = 'MAX';
+                else if (ai === 'baseline') frameNode.stackCounterAlignItems = 'BASELINE';
 
                 const isInline = display === 'inline-flex' || display === 'inline-block' || display === 'inline';
                 const isContentWidth = rawWidthStr === 'max-content' || rawWidthStr === 'min-content' || rawWidthStr === 'fit-content';
@@ -1208,13 +1269,10 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 // In HTML, block elements stack their children VERTICALLY
                 frameNode.stackMode = 'VERTICAL';
                 frameNode.stackSpacing = 2; // small default spacing between block items
-                frameNode.stackPadding = paddingTop;
-                frameNode.stackHorizontalPadding = paddingLeft;
-                frameNode.stackVerticalPadding = paddingTop;
-                frameNode.stackPaddingRight = paddingRight;
-                frameNode.stackPaddingBottom = paddingBottom;
-                frameNode.stackPrimaryAlignItems = 'MIN';
-                frameNode.stackCounterAlignItems = 'MIN';
+                if (paddingLeft > 0) frameNode.stackHorizontalPadding = paddingLeft;
+                if (paddingRight > 0) frameNode.stackPaddingRight = paddingRight;
+                if (paddingTop > 0) frameNode.stackVerticalPadding = paddingTop;
+                if (paddingBottom > 0) frameNode.stackPaddingBottom = paddingBottom;
 
                 frameNode.stackPrimarySizing = hasExplicitHeight ? 'FIXED' : 'RESIZE_TO_FIT';
                 frameNode.stackCounterSizing = (hasExplicitWidth || isWidthPercent || (parentContext && parentContext.isColumn)) ? 'FIXED' : 'RESIZE_TO_FIT';
@@ -1370,24 +1428,137 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const flowChildren = childResults.filter(c => !c.isAbsolute);
         if (flowChildren.length > 0) {
             if (frameNode.stackMode === 'HORIZONTAL') {
+                const totalGap = (gap || 0) * Math.max(0, flowChildren.length - 1);
+                const childrenWidthSum = flowChildren.reduce((sum, c) => sum + (c.width || 0) + (c.marginLeft || 0) + (c.marginRight || 0), 0);
+                const contentW = paddingLeft + paddingRight + childrenWidthSum + totalGap;
                 const maxChildH = Math.max(0, ...flowChildren.map(c => (c.height || 0) + (c.marginTop || 0) + (c.marginBottom || 0)));
-                if (!hasExplicitHeight && tagName !== 'body') {
-                    const contentH = paddingTop + paddingBottom + maxChildH;
-                    frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
+                const contentH = paddingTop + paddingBottom + maxChildH;
+
+                if (frameNode.stackPrimarySizing === 'RESIZE_TO_FIT' && tagName !== 'body') {
+                    frameNode.size.x = contentW;
                 }
-                // Update stretched children's size.y to match row height
+                if (((!hasExplicitHeight && !isHeightPercent) || frameNode.stackCounterSizing === 'RESIZE_TO_FIT') && tagName !== 'body') {
+                    frameNode.size.y = Math.max(contentH, frameNode.size.y || 10);
+                }
+
+                // Pre-compute child X coordinates along row
+                const availW = frameNode.size.x - paddingLeft - paddingRight;
+                if (frameNode.stackPrimaryAlignItems === 'SPACE_BETWEEN' && flowChildren.length > 1) {
+                    const remaining = availW - childrenWidthSum;
+                    const spacing = Math.max(0, remaining / (flowChildren.length - 1));
+                    let curX = paddingLeft;
+                    for (const c of flowChildren) {
+                        curX += (c.marginLeft || 0);
+                        if (c.node && c.node.transform) c.node.transform.m02 = Math.round(curX * 10) / 10;
+                        curX += (c.width || 0) + (c.marginRight || 0) + spacing;
+                    }
+                } else if (frameNode.stackPrimaryAlignItems === 'MAX') {
+                    let curX = frameNode.size.x - paddingRight - (childrenWidthSum + totalGap);
+                    for (const c of flowChildren) {
+                        curX += (c.marginLeft || 0);
+                        if (c.node && c.node.transform) c.node.transform.m02 = Math.round(curX * 10) / 10;
+                        curX += (c.width || 0) + (c.marginRight || 0) + (gap || 0);
+                    }
+                } else if (frameNode.stackPrimaryAlignItems === 'CENTER') {
+                    let curX = paddingLeft + (availW - (childrenWidthSum + totalGap)) / 2;
+                    for (const c of flowChildren) {
+                        curX += (c.marginLeft || 0);
+                        if (c.node && c.node.transform) c.node.transform.m02 = Math.round(curX * 10) / 10;
+                        curX += (c.width || 0) + (c.marginRight || 0) + (gap || 0);
+                    }
+                } else {
+                    let curX = paddingLeft;
+                    for (const c of flowChildren) {
+                        curX += (c.marginLeft || 0);
+                        if (c.node && c.node.transform) c.node.transform.m02 = Math.round(curX * 10) / 10;
+                        curX += (c.width || 0) + (c.marginRight || 0) + (gap || 0);
+                    }
+                }
+
+                // Pre-compute child Y coordinates and cross-axis stretch
                 const isStretchRow = currentContext.alignItems === 'stretch';
                 for (const c of flowChildren) {
-                    if (c.node && (c.node.stackChildAlignSelf === 'STRETCH' || isStretchRow)) {
-                        c.node.size.y = maxChildH;
-                        c.height = maxChildH;
+                    if (c.node && c.node.transform) {
+                        if (c.node.stackChildAlignSelf === 'STRETCH' || isStretchRow) {
+                            c.node.transform.m12 = paddingTop;
+                            c.node.size.y = maxChildH;
+                            c.height = maxChildH;
+                        } else if (frameNode.stackCounterAlignItems === 'CENTER' || c.node.stackChildAlignSelf === 'CENTER') {
+                            const childY = paddingTop + (frameNode.size.y - paddingTop - paddingBottom - (c.height || 0)) / 2;
+                            c.node.transform.m12 = Math.round(childY * 10) / 10;
+                        } else if (frameNode.stackCounterAlignItems === 'MAX' || c.node.stackChildAlignSelf === 'MAX') {
+                            const childY = frameNode.size.y - paddingBottom - (c.height || 0);
+                            c.node.transform.m12 = Math.round(childY * 10) / 10;
+                        } else {
+                            c.node.transform.m12 = paddingTop + (c.marginTop || 0);
+                        }
                     }
                 }
             } else if (frameNode.stackMode === 'VERTICAL') {
-                const totalChildH = flowChildren.reduce((acc, c) => acc + (c.height || 0) + (c.marginTop || 0) + (c.marginBottom || 0), 0) + (gap * Math.max(0, flowChildren.length - 1));
-                if ((!hasExplicitHeight && !isHeightPercent) || tagName === 'body') {
-                    const contentH = paddingTop + paddingBottom + totalChildH;
-                    frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
+                const totalGap = (gap || 0) * Math.max(0, flowChildren.length - 1);
+                const childrenHeightSum = flowChildren.reduce((sum, c) => sum + (c.height || 0) + (c.marginTop || 0) + (c.marginBottom || 0), 0);
+                const contentH = paddingTop + paddingBottom + childrenHeightSum + totalGap;
+                const maxChildW = Math.max(0, ...flowChildren.map(c => (c.width || 0) + (c.marginLeft || 0) + (c.marginRight || 0)));
+                const contentW = paddingLeft + paddingRight + maxChildW;
+
+                if ((!hasExplicitHeight && !isHeightPercent) || tagName === 'body' || frameNode.stackPrimarySizing === 'RESIZE_TO_FIT') {
+                    frameNode.size.y = Math.max(contentH, frameNode.size.y || 10);
+                }
+                if (frameNode.stackCounterSizing === 'RESIZE_TO_FIT' && tagName !== 'body') {
+                    frameNode.size.x = contentW;
+                }
+
+                // Pre-compute child Y coordinates along column
+                const availH = frameNode.size.y - paddingTop - paddingBottom;
+                if (frameNode.stackPrimaryAlignItems === 'SPACE_BETWEEN' && flowChildren.length > 1) {
+                    const remaining = availH - childrenHeightSum;
+                    const spacing = Math.max(0, remaining / (flowChildren.length - 1));
+                    let curY = paddingTop;
+                    for (const c of flowChildren) {
+                        curY += (c.marginTop || 0);
+                        if (c.node && c.node.transform) c.node.transform.m12 = Math.round(curY * 10) / 10;
+                        curY += (c.height || 0) + (c.marginBottom || 0) + spacing;
+                    }
+                } else if (frameNode.stackPrimaryAlignItems === 'MAX') {
+                    let curY = frameNode.size.y - paddingBottom - (childrenHeightSum + totalGap);
+                    for (const c of flowChildren) {
+                        curY += (c.marginTop || 0);
+                        if (c.node && c.node.transform) c.node.transform.m12 = Math.round(curY * 10) / 10;
+                        curY += (c.height || 0) + (c.marginBottom || 0) + (gap || 0);
+                    }
+                } else if (frameNode.stackPrimaryAlignItems === 'CENTER') {
+                    let curY = paddingTop + (availH - (childrenHeightSum + totalGap)) / 2;
+                    for (const c of flowChildren) {
+                        curY += (c.marginTop || 0);
+                        if (c.node && c.node.transform) c.node.transform.m12 = Math.round(curY * 10) / 10;
+                        curY += (c.height || 0) + (c.marginBottom || 0) + (gap || 0);
+                    }
+                } else {
+                    let curY = paddingTop;
+                    for (const c of flowChildren) {
+                        curY += (c.marginTop || 0);
+                        if (c.node && c.node.transform) c.node.transform.m12 = Math.round(curY * 10) / 10;
+                        curY += (c.height || 0) + (c.marginBottom || 0) + (gap || 0);
+                    }
+                }
+
+                // Pre-compute child X coordinates and cross-axis stretch
+                for (const c of flowChildren) {
+                    if (c.node && c.node.transform) {
+                        if (c.node.stackChildAlignSelf === 'STRETCH') {
+                            c.node.transform.m02 = paddingLeft;
+                            c.node.size.x = Math.max(10, frameNode.size.x - paddingLeft - paddingRight);
+                            c.width = c.node.size.x;
+                        } else if (frameNode.stackCounterAlignItems === 'CENTER' || c.node.stackChildAlignSelf === 'CENTER') {
+                            const childX = paddingLeft + (frameNode.size.x - paddingLeft - paddingRight - (c.width || 0)) / 2;
+                            c.node.transform.m02 = Math.round(childX * 10) / 10;
+                        } else if (frameNode.stackCounterAlignItems === 'MAX' || c.node.stackChildAlignSelf === 'MAX') {
+                            const childX = frameNode.size.x - paddingRight - (c.width || 0);
+                            c.node.transform.m02 = Math.round(childX * 10) / 10;
+                        } else {
+                            c.node.transform.m02 = paddingLeft + (c.marginLeft || 0);
+                        }
+                    }
                 }
             }
         }
