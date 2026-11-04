@@ -798,6 +798,17 @@ async function runAllTests() {
         assert(zastryavshieMatch[1].includes('white-space: nowrap'), 'truncated text should have white-space: nowrap');
         assert(zastryavshieMatch[1].includes('overflow: hidden'), 'truncated text should have overflow: hidden');
 
+        // 11. Check Avatar preserves both fixed width and height
+        const avatar2Match = cssContent.match(/\.avatar-2\s*\{([^}]+)\}/);
+        assert(avatar2Match, 'should have .avatar-2 rule');
+        assert(avatar2Match[1].includes('width: 32px'), 'Avatar 2 should have fixed width 32px');
+        assert(avatar2Match[1].includes('height: 32px'), 'Avatar 2 should have fixed height 32px');
+
+        // 12. Check cleanup of redundant properties (no flex-basis: 0, no min-height: 0, concise flex: 1)
+        assert(!cssContent.includes('flex-basis: 0'), 'CSS should not include redundant flex-basis: 0');
+        assert(!cssContent.includes('min-height: 0'), 'CSS should not include redundant min-height: 0');
+        assert(cssContent.includes('flex: 1'), 'CSS should use concise flex: 1');
+
         // Clean up
         fs.rmSync(outDir, { recursive: true, force: true });
     });

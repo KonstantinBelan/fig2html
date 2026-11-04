@@ -469,12 +469,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         // Flow child in Auto Layout
         const isGrow = node.stackChildPrimaryGrow === 1.0 || node.layoutGrow === 1.0 || node.layoutGrow === 1;
         if (isGrow) {
-            styles['flex-grow'] = '1';
-            styles['flex-basis'] = '0';
-            if (parentNode.stackMode === 'VERTICAL') {
-                styles['min-height'] = '0';
-            } else {
-                styles['min-width'] = '0';
+            styles['flex'] = '1';
+            // In flexbox, text truncation with ellipsis requires min-width: 0 to allow shrinking below content
+            if (styles['text-overflow'] === 'ellipsis' || styles['overflow'] === 'hidden') {
+                if (parentNode.stackMode === 'HORIZONTAL') {
+                    styles['min-width'] = '0';
+                }
             }
         }
 
@@ -511,7 +511,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         if (nodeIsAutoLayout) {
             const isHorizontal = node.stackMode === 'HORIZONTAL';
             const primaryIsFixed = node.stackPrimarySizing === 'FIXED';
-            const counterIsFixed = node.stackCounterSizing === 'FIXED';
+            const counterIsHug = node.stackCounterSizing === 'RESIZE_TO_FIT' || node.stackCounterSizing === 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE';
+            const counterIsFixed = !counterIsHug;
 
             nodeHorizontalSizing = isHorizontal ? (primaryIsFixed ? 'FIXED' : 'RESIZE_TO_FIT') : (counterIsFixed ? 'FIXED' : 'RESIZE_TO_FIT');
             nodeVerticalSizing = isHorizontal ? (counterIsFixed ? 'FIXED' : 'RESIZE_TO_FIT') : (primaryIsFixed ? 'FIXED' : 'RESIZE_TO_FIT');
@@ -541,7 +542,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         // Primary & counter axis sizing
         if (isRow) {
             // Primary axis: Width
-            if (!styles['flex-grow'] && styles['align-self'] !== 'stretch') {
+            if (!styles['flex'] && !styles['flex-grow'] && styles['align-self'] !== 'stretch') {
                 if (isFixedX && node.size?.x) {
                     styles['width'] = `${Math.round(node.size.x)}px`;
                     styles['flex-shrink'] = '0';
@@ -555,7 +556,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             }
         } else {
             // Primary axis: Height
-            if (!styles['flex-grow'] && styles['align-self'] !== 'stretch') {
+            if (!styles['flex'] && !styles['flex-grow'] && styles['align-self'] !== 'stretch') {
                 if (isFixedY && node.size?.y) {
                     styles['height'] = `${Math.round(node.size.y)}px`;
                     styles['flex-shrink'] = '0';
@@ -589,8 +590,6 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     } else if (lowerName.startsWith('btn') || lowerName === 'button') {
         if (!styles['border']) styles['border'] = 'none';
         styles['cursor'] = 'pointer';
-    } else if (node.type === 'TEXT') {
-        if (!styles['margin']) styles['margin'] = '0';
     }
 
     return styles;
