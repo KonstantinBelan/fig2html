@@ -2,7 +2,7 @@
 const { JSDOM } = require('jsdom');
 const { GuidGenerator, FractionalIndexer } = require('./utils/guid');
 const { parseColor, clamp01 } = require('./parsers/color');
-const { parseGradient } = require('./parsers/gradient');
+const { parseGradient, splitTopLevelCommas } = require('./parsers/gradient');
 const { parseAllEffects } = require('./parsers/effects');
 const {
     parseFontStyle,
@@ -149,6 +149,63 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         allowRemote: options.allowRemoteImages !== false
     });
 
+    // 1. Collect all CSS custom properties (--var) across stylesheets
+    const rootVars = {};
+    const ruleVars = [];
+
+    for (const styleEl of doc.querySelectorAll('style')) {
+        const css = styleEl.textContent;
+        const ruleRegex = /([^{]+)\{([^}]+)\}/g;
+        let match;
+        while ((match = ruleRegex.exec(css)) !== null) {
+            const selector = match[1].trim();
+            const body = match[2];
+            const varRegex = /(--[a-zA-Z0-9-_]+)\s*:\s*([^;]+);/g;
+            let vMatch;
+            const vars = {};
+            let hasVars = false;
+            while ((vMatch = varRegex.exec(body)) !== null) {
+                vars[vMatch[1].trim()] = vMatch[2].trim();
+                hasVars = true;
+            }
+            if (hasVars) {
+                if (selector === ':root' || selector === 'html' || selector === '*') {
+                    Object.assign(rootVars, vars);
+                } else {
+                    ruleVars.push({ selector, vars });
+                }
+            }
+        }
+    }
+
+    function resolveVar(str, element) {
+        if (!str || typeof str !== 'string' || !str.includes('var(')) return str;
+        let resolved = str;
+        let iterations = 0;
+        while (resolved.includes('var(') && iterations < 5) {
+            iterations++;
+            resolved = resolved.replace(/var\(\s*(--[a-zA-Z0-9-_]+)(?:\s*,\s*([^)]+))?\s*\)/g, (m, varName, fallback) => {
+                let curr = element;
+                while (curr && curr.matches) {
+                    for (let i = ruleVars.length - 1; i >= 0; i--) {
+                        const r = ruleVars[i];
+                        try {
+                            if (curr.matches(r.selector) && r.vars[varName] !== undefined) {
+                                return r.vars[varName];
+                            }
+                        } catch (_) {}
+                    }
+                    curr = curr.parentElement;
+                }
+                if (rootVars[varName] !== undefined) {
+                    return rootVars[varName];
+                }
+                return fallback ? fallback.trim() : m;
+            });
+        }
+        return resolved;
+    }
+
     const nodeChanges = [];
     const stats = {
         totalNodes: 0,
@@ -168,7 +225,15 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const inline = element.style;
         const computed = win.getComputedStyle(element);
 
-        const getProp = (p, c) => inline[c] || inline.getPropertyValue(p) || computed[c] || computed.getPropertyValue(p);
+        const getProp = (...props) => {
+            for (const p of props) {
+                const raw = inline[p] || inline.getPropertyValue(p) || computed[p] || computed.getPropertyValue(p);
+                if (raw !== undefined && raw !== null && raw !== '') {
+                    return resolveVar(raw, element);
+                }
+            }
+            return '';
+        };
 
         // Visibility check
         const display = getProp('display', 'display');
@@ -191,7 +256,22 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             ? (BLEND_MODE_MAP[mixBlend.toLowerCase()] || undefined)
             : undefined;
 
-        // Check CSS dimensions (handling percentages correctly)
+        // Position: check for absolute / fixed positioning
+        const position = getProp('position', 'position');
+        const isAbsolute = position === 'absolute' || position === 'fixed';
+        const topStr = getProp('top', 'top');
+        const leftStr = getProp('left', 'left');
+        const rightStr = getProp('right', 'right');
+        const bottomStr = getProp('bottom', 'bottom');
+        const insetStr = getProp('inset', 'inset');
+
+        // Containing block dimensions for absolute elements vs flow elements
+        const containerW = parentContext ? (parentContext.containerWidth || parentContext.width) : 1440;
+        const containerH = parentContext ? (parentContext.containerHeight || parentContext.height) : 900;
+        const flowW = parentContext ? parentContext.width : 1440;
+        const flowH = parentContext ? parentContext.height : 900;
+
+        // Check CSS dimensions (handling percentages and inset: 0 correctly)
         const rawWidthStr = getProp('width', 'width');
         const rawHeightStr = getProp('height', 'height');
 
@@ -201,7 +281,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             if (rawWidthStr.endsWith('%')) {
                 isWidthPercent = true;
                 const pct = (parseFloat(rawWidthStr) || 100) / 100;
-                width = Math.round((parentContext ? parentContext.width : 1000) * pct);
+                width = Math.round((isAbsolute ? containerW : flowW) * pct);
             } else if (rawWidthStr !== 'auto') {
                 width = parseFloat(rawWidthStr) || 0;
             }
@@ -211,10 +291,13 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             if (attrW.endsWith('%')) {
                 isWidthPercent = true;
                 const pct = (parseFloat(attrW) || 100) / 100;
-                width = Math.round((parentContext ? parentContext.width : 1000) * pct);
+                width = Math.round((isAbsolute ? containerW : flowW) * pct);
             } else {
                 width = parseFloat(attrW) || 0;
             }
+        }
+        if ((!width || width === 0) && (insetStr === '0' || insetStr === '0px' || (topStr === '0' && leftStr === '0' && rightStr === '0')) && isAbsolute) {
+            width = containerW;
         }
 
         let height = 0;
@@ -223,7 +306,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             if (rawHeightStr.endsWith('%')) {
                 isHeightPercent = true;
                 const pct = (parseFloat(rawHeightStr) || 100) / 100;
-                height = Math.round((parentContext ? parentContext.height : 500) * pct);
+                height = Math.round((isAbsolute ? containerH : flowH) * pct);
             } else if (rawHeightStr !== 'auto') {
                 height = parseFloat(rawHeightStr) || 0;
             }
@@ -233,20 +316,47 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             if (attrH.endsWith('%')) {
                 isHeightPercent = true;
                 const pct = (parseFloat(attrH) || 100) / 100;
-                height = Math.round((parentContext ? parentContext.height : 500) * pct);
+                height = Math.round((isAbsolute ? containerH : flowH) * pct);
             } else {
                 height = parseFloat(attrH) || 0;
             }
+        }
+        if ((!height || height === 0) && (insetStr === '0' || insetStr === '0px' || (topStr === '0' && bottomStr === '0')) && isAbsolute) {
+            height = containerH;
         }
 
         const hasExplicitWidth = width > 0 && !isWidthPercent;
         const hasExplicitHeight = height > 0 && !isHeightPercent;
 
-        let x = parseFloat(getProp('left', 'left')) || 0;
-        let y = parseFloat(getProp('top', 'top')) || 0;
+        let posX = 0;
+        let posY = 0;
+        if (isAbsolute) {
+            if (leftStr && leftStr !== 'auto') {
+                posX = parseFloat(leftStr) || 0;
+            } else if (rightStr && rightStr !== 'auto' && parentContext) {
+                const rVal = parseFloat(rightStr) || 0;
+                posX = Math.max(0, containerW - rVal - (width || 0));
+            }
+
+            if (topStr && topStr !== 'auto') {
+                posY = parseFloat(topStr) || 0;
+            } else if (bottomStr && bottomStr !== 'auto' && parentContext) {
+                const bVal = parseFloat(bottomStr) || 0;
+                posY = Math.max(0, containerH - bVal - (height || 0));
+            }
+        }
+
+        let x = posX || parseFloat(getProp('left', 'left')) || 0;
+        let y = posY || parseFloat(getProp('top', 'top')) || 0;
 
         const flexGrow = parseFloat(getProp('flex-grow', 'flexGrow')) || 0;
         const alignSelf = getProp('align-self', 'alignSelf');
+
+        // Margin check for centering (margin: auto or margin: 0 auto)
+        const marginStr = getProp('margin', 'margin');
+        const mlStr = getProp('margin-left', 'marginLeft');
+        const mrStr = getProp('margin-right', 'marginRight');
+        const isMarginAuto = marginStr.includes('auto') || (mlStr === 'auto' && mrStr === 'auto');
 
         // Inherited styles
         const inheritedStyles = {
@@ -269,41 +379,54 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
         }
 
-        // Fills: solid colors, gradients, background-images
+        // Fills: solid colors, gradients, background-images (supporting multiple comma-separated backgrounds)
         const fills = [];
         const bgImage = getProp('background-image', 'backgroundImage');
         const bgVal = getProp('background', 'background');
         const bgColor = getProp('background-color', 'backgroundColor');
 
-        // Gradients
-        if (bgImage && bgImage.includes('gradient')) {
-            const gradPaint = parseGradient(bgImage);
-            if (gradPaint) fills.push(gradPaint);
-        } else if (bgVal && bgVal.includes('gradient')) {
-            const gradPaint = parseGradient(bgVal);
-            if (gradPaint) fills.push(gradPaint);
-        }
-
-        // Background Image URL
-        const bgUrlMatch = (bgImage || bgVal || '').match(/url\(["']?(.*?)["']?\)/);
-        if (bgUrlMatch) {
-            const imgRes = await imageRegistry.resolveImage(bgUrlMatch[1], 'bg-image');
-            if (imgRes) {
-                fills.push(imageRegistry.createImagePaint(imgRes, 'FILL'));
-                stats.images++;
+        const bgCandidates = [bgImage, bgVal].filter(Boolean);
+        for (const candidate of bgCandidates) {
+            const parts = splitTopLevelCommas(candidate);
+            for (const part of parts) {
+                if (part.includes('gradient')) {
+                    const gradPaint = parseGradient(part);
+                    if (gradPaint) fills.push(gradPaint);
+                } else if (part.includes('url(')) {
+                    const urlMatch = part.match(/url\(["']?(.*?)["']?\)/);
+                    if (urlMatch) {
+                        const imgRes = await imageRegistry.resolveImage(urlMatch[1], 'bg-image');
+                        if (imgRes) {
+                            fills.push(imageRegistry.createImagePaint(imgRes, 'FILL'));
+                            stats.images++;
+                        }
+                    }
+                } else {
+                    const col = parseColor(part);
+                    if (col && col.a > 0 && !fills.some(f => f.type === 'SOLID')) {
+                        fills.push({
+                            type: 'SOLID',
+                            color: col,
+                            opacity: col.a,
+                            visible: true,
+                            blendMode: 'NORMAL'
+                        });
+                    }
+                }
             }
         }
 
-        // Background Color
-        const parsedBgColor = parseColor(bgColor);
-        if (parsedBgColor && parsedBgColor.a > 0) {
-            fills.push({
-                type: 'SOLID',
-                color: parsedBgColor,
-                opacity: parsedBgColor.a,
-                visible: true,
-                blendMode: 'NORMAL'
-            });
+        if (bgColor) {
+            const parsedBgColor = parseColor(bgColor);
+            if (parsedBgColor && parsedBgColor.a > 0 && !fills.some(f => f.type === 'SOLID')) {
+                fills.push({
+                    type: 'SOLID',
+                    color: parsedBgColor,
+                    opacity: parsedBgColor.a,
+                    visible: true,
+                    blendMode: 'NORMAL'
+                });
+            }
         }
 
         // Border & Strokes
@@ -356,11 +479,11 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             const objectFit = getProp('object-fit', 'objectFit') || 'cover';
             const scaleMode = objectFit === 'contain' ? 'FIT' : objectFit === 'fill' ? 'STRETCH' : 'FILL';
 
-            const targetW = width || (parentContext ? parentContext.width : 280);
+            const targetW = width || (isAbsolute ? containerW : (parentContext ? parentContext.width : 280));
             const resolved = await imageRegistry.resolveImage(src, alt, targetW);
 
-            const imgWidth = width || (parentContext ? parentContext.width : (resolved?.width || 280));
-            const imgHeight = height || resolved?.height || 140;
+            const imgWidth = width || (isAbsolute ? containerW : (parentContext ? parentContext.width : (resolved?.width || 280)));
+            const imgHeight = height || resolved?.height || (isAbsolute ? containerH : 140);
 
             const imgFills = resolved ? [imageRegistry.createImagePaint(resolved, scaleMode)] : [];
             stats.images++;
@@ -393,7 +516,10 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 imgNode.rectangleCornerRadiiIndependent = true;
             }
 
-            if (parentContext && parentContext.isFlex) {
+            if (isAbsolute) {
+                imgNode.stackPositioning = 'ABSOLUTE';
+                imgNode.transform = { m00: 1, m01: 0, m02: posX, m10: 0, m11: 1, m12: posY };
+            } else if (parentContext && parentContext.isFlex) {
                 if (flexGrow > 0) imgNode.stackChildPrimaryGrow = 1.0;
                 if (alignSelf === 'stretch' || (parentContext.isColumn && (!hasExplicitWidth || isWidthPercent))) {
                     imgNode.stackChildAlignSelf = 'STRETCH';
@@ -403,7 +529,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
 
             nodeChanges.push(imgNode);
-            return { node: imgNode, width: imgWidth, height: imgHeight };
+            return { node: imgNode, width: imgWidth, height: imgHeight, isAbsolute };
         }
 
         // -------------------------------------------------------------
@@ -417,7 +543,8 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             const svgWidth = width || dims.width;
             const svgHeight = height || dims.height;
 
-            const svgXml = serializeSvgElement(element);
+            const iconColor = getProp('color', 'color') || inheritedStyles.color || '#000000';
+            const svgXml = serializeSvgElement(element, iconColor, svgWidth, svgHeight);
             const pngBuffer = renderSvgToPng(svgXml, svgWidth);
             const resolved = imageRegistry.registerBuffer(pngBuffer || Buffer.from(svgXml, 'utf8'), element.id || 'svg-icon', svgWidth);
 
@@ -439,14 +566,17 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 cornerRadius: borderRadius
             };
 
-            if (parentContext && parentContext.isFlex) {
+            if (isAbsolute) {
+                svgNode.stackPositioning = 'ABSOLUTE';
+                svgNode.transform = { m00: 1, m01: 0, m02: posX, m10: 0, m11: 1, m12: posY };
+            } else if (parentContext && parentContext.isFlex) {
                 if (flexGrow > 0) svgNode.stackChildPrimaryGrow = 1.0;
                 if (alignSelf === 'stretch') svgNode.stackChildAlignSelf = 'STRETCH';
                 else if (alignSelf === 'center') svgNode.stackChildAlignSelf = 'CENTER';
             }
 
             nodeChanges.push(svgNode);
-            return { node: svgNode, width: svgWidth, height: svgHeight };
+            return { node: svgNode, width: svgWidth, height: svgHeight, isAbsolute };
         }
 
         // -------------------------------------------------------------
@@ -485,7 +615,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             };
 
             nodeChanges.push(hrNode);
-            return { node: hrNode, width: hrWidth, height: hrThickness };
+            return { node: hrNode, width: hrWidth, height: hrThickness, isAbsolute };
         }
 
         // -------------------------------------------------------------
@@ -594,7 +724,10 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 }
             };
 
-            if (parentContext && parentContext.isFlex) {
+            if (isAbsolute) {
+                textNode.stackPositioning = 'ABSOLUTE';
+                textNode.transform = { m00: 1, m01: 0, m02: posX, m10: 0, m11: 1, m12: posY };
+            } else if (parentContext && parentContext.isFlex) {
                 if (flexGrow > 0) textNode.stackChildPrimaryGrow = 1.0;
                 if (alignSelf === 'stretch' || (parentContext.isColumn && isParagraph)) {
                     textNode.stackChildAlignSelf = 'STRETCH';
@@ -604,7 +737,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
 
             nodeChanges.push(textNode);
-            return { node: textNode, width: textGeom.width, height: textGeom.height };
+            return { node: textNode, width: textGeom.width, height: textGeom.height, isAbsolute };
         }
 
         // -------------------------------------------------------------
@@ -638,7 +771,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     cornerRadius: 4
                 };
                 nodeChanges.push(cbNode);
-                return { node: cbNode, width: 18, height: 18 };
+                return { node: cbNode, width: 18, height: 18, isAbsolute };
             }
 
             if (inputType === 'radio') {
@@ -660,7 +793,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     strokeWeight: 1.5
                 };
                 nodeChanges.push(radioNode);
-                return { node: radioNode, width: 18, height: 18 };
+                return { node: radioNode, width: 18, height: 18, isAbsolute };
             }
 
             // Text input container
@@ -694,6 +827,11 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 stackPrimarySizing: 'FIXED',
                 stackCounterSizing: 'FIXED'
             };
+
+            if (isAbsolute) {
+                inputFrame.stackPositioning = 'ABSOLUTE';
+                inputFrame.transform = { m00: 1, m01: 0, m02: posX, m10: 0, m11: 1, m12: posY };
+            }
 
             nodeChanges.push(inputFrame);
 
@@ -738,7 +876,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 };
                 nodeChanges.push(placeholderNode);
             }
-            return { node: inputFrame, width: inputW, height: inputH };
+            return { node: inputFrame, width: inputW, height: inputH, isAbsolute };
         }
 
         // -------------------------------------------------------------
@@ -756,8 +894,10 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
         // Determine frame width
         let frameWidth = width;
-        if (!frameWidth || frameWidth === 0) {
-            if (parentContext && parentContext.isColumn && alignSelf !== 'center' && alignSelf !== 'flex-start') {
+        if (tagName === 'body') {
+            frameWidth = width || 1440;
+        } else if (!frameWidth || frameWidth === 0) {
+            if (parentContext && parentContext.isColumn && alignSelf !== 'center' && alignSelf !== 'flex-start' && !isMarginAuto) {
                 // In a column parent, block children expand to parent's width by default
                 frameWidth = parentContext.width;
             } else if (parentContext && parentContext.isFlex && !parentContext.isColumn && flexGrow > 0) {
@@ -780,6 +920,11 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
         const frameType = (isCircle && element.children.length === 0) ? 'ELLIPSE' : 'FRAME';
 
+        let frameName = element.id || (element.className && typeof element.className === 'string' ? element.className.trim() : '') || tagName;
+        if (tagName === 'body') {
+            frameName = (doc.title && doc.title.trim()) || 'Page';
+        }
+
         stats.frames++;
         stats.totalNodes++;
 
@@ -788,7 +933,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             phase: 'CREATED',
             parentIndex: { guid: parentGuid, position: orderPosition },
             type: frameType,
-            name: element.id || element.className || tagName,
+            name: frameName,
             visible: isVisible,
             opacity: opacity,
             blendMode: blendMode,
@@ -802,6 +947,11 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             cornerRadius: borderRadius,
             clipsContent: getProp('overflow', 'overflow') === 'hidden' || getProp('overflow', 'overflow') === 'clip'
         };
+
+        if (isAbsolute) {
+            frameNode.stackPositioning = 'ABSOLUTE';
+            frameNode.transform = { m00: 1, m01: 0, m02: posX, m10: 0, m11: 1, m12: posY };
+        }
 
         // Independent corner radii
         if (hasIndependentCorners) {
@@ -823,7 +973,19 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
         // Auto Layout configuration
         if (frameType === 'FRAME') {
-            if (isFlex) {
+            if (tagName === 'body') {
+                frameNode.stackMode = 'VERTICAL';
+                frameNode.stackSpacing = gap || 0;
+                frameNode.stackPadding = paddingTop;
+                frameNode.stackHorizontalPadding = paddingLeft;
+                frameNode.stackVerticalPadding = paddingTop;
+                frameNode.stackPaddingRight = paddingRight;
+                frameNode.stackPaddingBottom = paddingBottom;
+                frameNode.stackPrimaryAlignItems = 'MIN';
+                frameNode.stackCounterAlignItems = 'MIN';
+                frameNode.stackPrimarySizing = 'RESIZE_TO_FIT';
+                frameNode.stackCounterSizing = 'FIXED';
+            } else if (isFlex) {
                 frameNode.stackMode = isColumn ? 'VERTICAL' : 'HORIZONTAL';
                 frameNode.stackSpacing = gap;
                 frameNode.stackPadding = paddingTop;
@@ -880,8 +1042,10 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         }
 
         // Child sizing inside parent flex/block container
-        if (parentContext && parentContext.isFlex) {
-            if (parentContext.isColumn) {
+        if (!isAbsolute && parentContext && parentContext.isFlex) {
+            if (isMarginAuto && parentContext.isColumn) {
+                frameNode.stackChildAlignSelf = 'CENTER';
+            } else if (parentContext.isColumn) {
                 // In column container, cross-axis is WIDTH
                 const shouldStretchW = alignSelf === 'stretch' || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start');
                 if (shouldStretchW) {
@@ -943,10 +1107,14 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         // Recurse into children
         const innerContentWidth = Math.max(10, frameWidth - paddingLeft - paddingRight);
         const currentContext = {
-            isFlex: isFlex || element.children.length > 0,
+            isFlex: isFlex || element.children.length > 0 || tagName === 'body',
             isColumn,
+            containerWidth: frameWidth,
+            containerHeight: frameHeight,
             width: innerContentWidth,
             height: frameHeight - paddingTop - paddingBottom,
+            paddingLeft,
+            paddingTop,
             gap,
             alignItems: getProp('align-items', 'alignItems') || 'stretch',
             inherited: inheritedStyles
@@ -961,39 +1129,38 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             childIndex++;
         }
 
-        if (childResults.length > 0) {
+        const flowChildren = childResults.filter(c => !c.isAbsolute);
+        if (flowChildren.length > 0) {
             if (frameNode.stackMode === 'HORIZONTAL') {
-                const maxChildH = Math.max(0, ...childResults.map(c => c.height || 0));
-                if (!hasExplicitHeight) {
+                const maxChildH = Math.max(0, ...flowChildren.map(c => c.height || 0));
+                if (!hasExplicitHeight && tagName !== 'body') {
                     const contentH = paddingTop + paddingBottom + maxChildH;
                     frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
                 }
                 // Update stretched children's size.y to match row height
                 const isStretchRow = currentContext.alignItems === 'stretch';
-                for (const c of childResults) {
+                for (const c of flowChildren) {
                     if (c.node && (c.node.stackChildAlignSelf === 'STRETCH' || isStretchRow)) {
                         c.node.size.y = maxChildH;
                         c.height = maxChildH;
                     }
                 }
             } else if (frameNode.stackMode === 'VERTICAL') {
-                const totalChildH = childResults.reduce((acc, c) => acc + (c.height || 0), 0) + (gap * Math.max(0, childResults.length - 1));
-                if (!hasExplicitHeight) {
+                const totalChildH = flowChildren.reduce((acc, c) => acc + (c.height || 0), 0) + (gap * Math.max(0, flowChildren.length - 1));
+                if (!hasExplicitHeight || tagName === 'body') {
                     const contentH = paddingTop + paddingBottom + totalChildH;
                     frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
                 }
             }
         }
 
-        return { node: frameNode, width: frameNode.size.x, height: frameNode.size.y };
+        return { node: frameNode, width: frameNode.size.x, height: frameNode.size.y, isAbsolute };
     }
 
-    // Process top-level body elements
-    let rootIndex = 0;
-    for (const rootEl of doc.body.children) {
-        const rootPos = FractionalIndexer.getPosition(rootIndex);
-        await processElement(rootEl, parentCanvasGuid, rootPos, null);
-        rootIndex++;
+    // Process root body element
+    if (doc.body) {
+        const rootPos = FractionalIndexer.getPosition(0);
+        await processElement(doc.body, parentCanvasGuid, rootPos, null);
     }
 
     return {

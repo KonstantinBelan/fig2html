@@ -294,6 +294,52 @@ async function runAllTests() {
         fs.unlinkSync(outPath);
     });
 
+    await itAsync('generates valid hard.fig from test/hard.html (Instagram deck)', async () => {
+        const outPath = 'test/hard_test.fig';
+        const res = await generateFigFile({
+            htmlPath: 'test/hard.html',
+            outputPath: outPath
+        });
+        assert(fs.existsSync(outPath));
+
+        // Verify with official Figma decoder
+        const zip = new AdmZip(outPath);
+        const canvasBytes = zip.getEntry('canvas.fig').getData();
+        const tree = decodeFigKiwiCanvas(canvasBytes);
+        assert(tree.nodeChanges.length >= 100);
+
+        // Verify root page artboard
+        const root = tree.nodeChanges.find(n => n.name.includes('Слайды') || n.name === 'Page');
+        assert(root, 'should have root page frame');
+        assert.strictEqual(root.size.x, 1440, 'root frame width should be 1440px');
+        assert(root.fillPaints && root.fillPaints.length > 0, 'root frame should have body background fill');
+
+        // Verify .deck frame
+        const deck = tree.nodeChanges.find(n => n.name === 'deck' && n.type === 'FRAME');
+        assert(deck, 'should have deck frame');
+        assert.strictEqual(deck.size.x, 1080, 'deck width should be 1080px');
+        assert.strictEqual(deck.stackChildAlignSelf, 'CENTER', 'deck should be centered');
+
+        // Verify slides
+        const slides = tree.nodeChanges.filter(n => /(?:^|\s)slide(?:\s|$)/.test(n.name) && n.type === 'FRAME');
+        assert.strictEqual(slides.length, 6, 'should have 6 slides');
+        for (const slide of slides) {
+            assert.strictEqual(slide.size.x, 1080, 'slide width should be 1080px');
+            assert.strictEqual(slide.size.y, 1350, 'slide height should be 1350px');
+        }
+
+        // Verify absolute positioning of backgrounds and scrims
+        const absNodes = tree.nodeChanges.filter(n => n.stackPositioning === 'ABSOLUTE');
+        assert(absNodes.length >= 8, 'should have absolute positioned photo backgrounds and scrims');
+        for (const a of absNodes) {
+            assert.strictEqual(a.size.x, 1080, 'absolute child width should match slide width');
+            assert.strictEqual(a.size.y, 1350, 'absolute child height should match slide height');
+        }
+
+        // Clean up
+        fs.unlinkSync(outPath);
+    });
+
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);
     if (passedTests === totalTests) {
         console.log('\x1b[32m\x1b[1mAll tests passed successfully! 🚀\x1b[0m\n');

@@ -3,9 +3,9 @@ const { Resvg } = require('@resvg/resvg-js');
 
 /**
  * Serializes an SVG DOM element into a valid, standalone SVG string,
- * inlining any <use href="#symbolId"> references.
+ * inlining any <use href="#symbolId"> references and resolving currentColor.
  */
-function serializeSvgElement(svgElement) {
+function serializeSvgElement(svgElement, colorString = '', targetWidth = 24, targetHeight = 24) {
     const clone = svgElement.cloneNode(true);
     const uses = clone.querySelectorAll('use');
     for (const use of uses) {
@@ -24,11 +24,19 @@ function serializeSvgElement(svgElement) {
         }
     }
 
+    if (!clone.getAttribute('viewBox') && !clone.getAttribute('width')) {
+        clone.setAttribute('viewBox', `0 0 ${targetWidth} ${targetHeight}`);
+    }
+
     let xml = clone.outerHTML;
 
     // Ensure xmlns is present
     if (!xml.includes('xmlns=')) {
         xml = xml.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    }
+
+    if (colorString) {
+        xml = xml.replace(/currentColor/gi, colorString);
     }
 
     return xml;

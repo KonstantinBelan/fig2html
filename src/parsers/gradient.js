@@ -162,8 +162,8 @@ function parseGradient(cssGradient) {
     if (!cssGradient) return null;
     const clean = cssGradient.trim();
 
-    // 1. linear-gradient(...)
-    const linearMatch = clean.match(/^linear-gradient\((.*)\)$/is);
+    // 1. linear-gradient(...) and repeating-linear-gradient(...)
+    const linearMatch = clean.match(/^(?:repeating-)?linear-gradient\((.*)\)$/is);
     if (linearMatch) {
         const parts = splitTopLevelCommas(linearMatch[1]);
         if (parts.length === 0) return null;
@@ -191,8 +191,8 @@ function parseGradient(cssGradient) {
         };
     }
 
-    // 2. radial-gradient(...)
-    const radialMatch = clean.match(/^radial-gradient\((.*)\)$/is);
+    // 2. radial-gradient(...) and repeating-radial-gradient(...)
+    const radialMatch = clean.match(/^(?:repeating-)?radial-gradient\((.*)\)$/is);
     if (radialMatch) {
         const parts = splitTopLevelCommas(radialMatch[1]);
         if (parts.length === 0) return null;
