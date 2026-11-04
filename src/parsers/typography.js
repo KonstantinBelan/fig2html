@@ -147,6 +147,28 @@ function parseTextTransform(ttValue) {
 function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, isParagraph = false) {
     const charWidth = fontSize * 0.58;
     const lineHeight = Math.round(fontSize * 1.35);
+    const rawLines = String(text || '').split('\n');
+
+    if (rawLines.length > 1) {
+        let totalLines = 0;
+        let maxLineWidth = 0;
+        for (const line of rawLines) {
+            const lineLen = line.length;
+            const singleW = Math.ceil(lineLen * charWidth);
+            if (singleW > maxLineWidth) maxLineWidth = singleW;
+            if (isParagraph && explicitWidth > 100 && singleW > explicitWidth) {
+                const charsPerLine = Math.max(1, Math.floor(explicitWidth / charWidth));
+                totalLines += Math.max(1, Math.ceil(lineLen / charsPerLine));
+            } else {
+                totalLines += 1;
+            }
+        }
+        return {
+            width: explicitWidth > 0 ? explicitWidth : Math.max(10, maxLineWidth),
+            height: totalLines * lineHeight,
+            autoResize: explicitWidth > 0 ? 'HEIGHT' : 'WIDTH_AND_HEIGHT'
+        };
+    }
 
     if (isParagraph && explicitWidth > 100) {
         const charsPerLine = Math.max(1, Math.floor(explicitWidth / charWidth));

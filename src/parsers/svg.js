@@ -57,8 +57,33 @@ function getSvgDimensions(svgElement, win) {
     const computed = win.getComputedStyle(svgElement);
     const viewBox = svgElement.getAttribute('viewBox');
 
-    let width = parseFloat(computed.width) || parseFloat(attrWidth);
-    let height = parseFloat(computed.height) || parseFloat(attrHeight);
+    // Resolve font size for 'em' unit dimensions (e.g. width: 1em; height: 1em)
+    let parentFontSize = 16;
+    let cur = svgElement;
+    while (cur) {
+        const cs = win.getComputedStyle(cur);
+        const fs = cs.fontSize || cs.getPropertyValue('font-size');
+        if (fs && parseFloat(fs)) {
+            parentFontSize = parseFloat(fs);
+            break;
+        }
+        cur = cur.parentElement;
+    }
+
+    const parseDimension = (valStr, attrVal) => {
+        if (valStr && typeof valStr === 'string' && valStr.trim().endsWith('em')) {
+            const em = parseFloat(valStr) || 1;
+            return em * parentFontSize;
+        }
+        if (attrVal && typeof attrVal === 'string' && attrVal.trim().endsWith('em')) {
+            const em = parseFloat(attrVal) || 1;
+            return em * parentFontSize;
+        }
+        return parseFloat(valStr) || parseFloat(attrVal) || 0;
+    };
+
+    let width = parseDimension(computed.width, attrWidth);
+    let height = parseDimension(computed.height, attrHeight);
 
     // If using a symbol, check symbol viewBox
     let symbolViewBox = null;
@@ -73,14 +98,14 @@ function getSvgDimensions(svgElement, win) {
 
     const effectiveVb = viewBox || symbolViewBox;
 
-    if ((!width || isNaN(width) || width === 0) && effectiveVb) {
+    if ((!width || isNaN(width) || width <= 1) && effectiveVb) {
         const parts = effectiveVb.trim().split(/[\s,]+/).map(parseFloat);
         if (parts.length >= 4 && parts[2] > 0) {
             width = parts[2];
         }
     }
 
-    if ((!height || isNaN(height) || height === 0) && effectiveVb) {
+    if ((!height || isNaN(height) || height <= 1) && effectiveVb) {
         const parts = effectiveVb.trim().split(/[\s,]+/).map(parseFloat);
         if (parts.length >= 4 && parts[3] > 0) {
             height = parts[3];

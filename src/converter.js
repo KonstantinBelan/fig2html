@@ -38,14 +38,96 @@ const BLEND_MODE_MAP = {
  * Checks if an element is a pure inline text container with mixed inline child nodes
  */
 function isRichTextContainer(element) {
-    if (element.children.length === 0) return false;
-    const inlineTags = ['b', 'strong', 'i', 'em', 'u', 's', 'del', 'span', 'a', 'small', 'mark', 'code'];
+    if (!element || !element.children || element.children.length === 0) return false;
+    const text = element.textContent.trim();
+    if (!text) return false;
+
+    const inlineTags = ['b', 'strong', 'i', 'em', 'u', 's', 'del', 'span', 'a', 'small', 'mark', 'code', 'br', 'sub', 'sup'];
     for (const child of element.children) {
-        if (!inlineTags.includes(child.tagName.toLowerCase())) {
+        const tag = child.tagName.toLowerCase();
+        if (!inlineTags.includes(tag)) {
+            return false;
+        }
+        if (child.children.length > 0) {
+            for (const grandChild of child.children) {
+                if (!inlineTags.includes(grandChild.tagName.toLowerCase())) {
+                    return false;
+                }
+            }
+        }
+        // Exclude shape elements (e.g. class="dot", class="avatar", or empty span shapes)
+        if (child.classList && (
+            child.classList.contains('dot') ||
+            child.classList.contains('avatar') ||
+            child.classList.contains('swatch-color') ||
+            child.classList.contains('color-swatch') ||
+            child.classList.contains('icon')
+        )) {
+            return false;
+        }
+        if (tag === 'span' && child.textContent.trim().length === 0) {
             return false;
         }
     }
     return true;
+}
+
+/**
+ * Parses CSS box shorthands (padding, margin) with 1, 2, 3, or 4 tokens into 4 offsets
+ */
+function parseBoxOffsets(shorthand, top, right, bottom, left) {
+    let t = 0, r = 0, b = 0, l = 0;
+    if (shorthand && shorthand !== '0' && shorthand !== 'none') {
+        const parts = shorthand.trim().split(/\s+/).map(p => parseFloat(p) || 0);
+        if (parts.length === 1) {
+            t = r = b = l = parts[0];
+        } else if (parts.length === 2) {
+            t = b = parts[0];
+            r = l = parts[1];
+        } else if (parts.length === 3) {
+            t = parts[0];
+            r = l = parts[1];
+            b = parts[2];
+        } else if (parts.length >= 4) {
+            t = parts[0];
+            r = parts[1];
+            b = parts[2];
+            l = parts[3];
+        }
+    }
+    if (top !== undefined && top !== null && top !== '') t = parseFloat(top) || 0;
+    if (right !== undefined && right !== null && right !== '') r = parseFloat(right) || 0;
+    if (bottom !== undefined && bottom !== null && bottom !== '') b = parseFloat(bottom) || 0;
+    if (left !== undefined && left !== null && left !== '') l = parseFloat(left) || 0;
+    return { top: t, right: r, bottom: b, left: l };
+}
+
+/**
+ * Parses CSS border shorthand (e.g. "1px solid var(--border)") into width, style, and color
+ */
+function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
+    let width = parseFloat(widthStr) || 0;
+    let style = styleStr || '';
+    let color = colorStr || '';
+
+    if (borderStr && borderStr !== 'none') {
+        const parts = borderStr.trim();
+        const wMatch = parts.match(/([0-9.]+)(?:px|rem|em)?/);
+        if (!width && wMatch) {
+            width = parseFloat(wMatch[1]) || 0;
+        }
+        const sMatch = parts.match(/\b(solid|dashed|dotted|double|groove|ridge|inset|outset|none)\b/i);
+        if (!style && sMatch) {
+            style = sMatch[1].toLowerCase();
+        }
+        if (!color) {
+            let rem = parts;
+            if (wMatch) rem = rem.replace(wMatch[0], '');
+            if (sMatch) rem = rem.replace(new RegExp('\\b' + sMatch[1] + '\\b', 'i'), '');
+            color = rem.trim();
+        }
+    }
+    return { width, style: style || 'none', color };
 }
 
 /**
@@ -60,13 +142,27 @@ function extractRichText(element, win, defaultStyles) {
 
     function traverse(node, currentStyle) {
         if (node.nodeType === 3) { // TEXT_NODE
-            const text = node.textContent;
+            let text = node.textContent.replace(/[\r\n\t]+/g, ' ').replace(/ +/g, ' ');
+            if (fullText.length === 0 || fullText.endsWith('\n')) {
+                text = text.replace(/^ +/, '');
+            }
             if (!text) return;
             for (let i = 0; i < text.length; i++) {
                 fullText += text[i];
                 charStyles.push(currentStyle.styleId || 0);
             }
         } else if (node.nodeType === 1) { // ELEMENT_NODE
+            const tag = node.tagName.toLowerCase();
+            if (tag === 'br') {
+                while (fullText.endsWith(' ') || fullText.endsWith('\t')) {
+                    fullText = fullText.slice(0, -1);
+                    charStyles.pop();
+                }
+                fullText += '\n';
+                charStyles.push(currentStyle.styleId || 0);
+                return;
+            }
+
             const computed = win.getComputedStyle(node);
             const inline = node.style;
             const getProp = (p, c) => inline[c] || inline.getPropertyValue(p) || computed[c] || computed.getPropertyValue(p);
@@ -129,8 +225,13 @@ function extractRichText(element, win, defaultStyles) {
         traverse(child, { styleId: 0 });
     }
 
+    while (fullText.endsWith(' ') || fullText.endsWith('\t')) {
+        fullText = fullText.slice(0, -1);
+        charStyles.pop();
+    }
+
     return {
-        characters: fullText.trim(),
+        characters: fullText,
         characterStyleIDs: charStyles,
         styleOverrideTable: styleOverrideTable
     };
@@ -326,7 +427,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         }
 
         const hasExplicitWidth = width > 0 && !isWidthPercent;
-        const hasExplicitHeight = height > 0 && !isHeightPercent;
+        const hasExplicitHeight = height > 0;
 
         let posX = 0;
         let posY = 0;
@@ -349,7 +450,11 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         let x = posX || parseFloat(getProp('left', 'left')) || 0;
         let y = posY || parseFloat(getProp('top', 'top')) || 0;
 
-        const flexGrow = parseFloat(getProp('flex-grow', 'flexGrow')) || 0;
+        const rawFlex = getProp('flex', 'flex');
+        let flexGrow = parseFloat(getProp('flex-grow', 'flexGrow')) || 0;
+        if (!flexGrow && rawFlex) {
+            flexGrow = parseFloat(rawFlex) || 0;
+        }
         const alignSelf = getProp('align-self', 'alignSelf');
 
         // Margin check for centering (margin: auto or margin: 0 auto)
@@ -429,14 +534,18 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
         }
 
-        // Border & Strokes
+        // Border & Strokes (supporting CSS border shorthand and individual border properties)
         const strokePaints = [];
-        const borderWidth = parseFloat(getProp('border-width', 'borderWidth')) || 0;
-        const borderStyle = getProp('border-style', 'borderStyle');
-        const borderColor = getProp('border-color', 'borderColor');
-        const parsedBorderColor = parseColor(borderColor);
+        const mainBorder = parseBorderProperty(
+            getProp('border', 'border'),
+            getProp('border-width', 'borderWidth'),
+            getProp('border-style', 'borderStyle'),
+            getProp('border-color', 'borderColor')
+        );
+        const borderWidth = mainBorder.width;
+        const parsedBorderColor = parseColor(mainBorder.color);
 
-        if (borderWidth > 0 && borderStyle !== 'none' && parsedBorderColor && parsedBorderColor.a > 0) {
+        if (borderWidth > 0 && mainBorder.style !== 'none' && parsedBorderColor && parsedBorderColor.a > 0) {
             strokePaints.push({
                 type: 'SOLID',
                 color: parsedBorderColor,
@@ -447,13 +556,31 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         }
 
         // Individual borders
-        const borderTopW = parseFloat(getProp('border-top-width', 'borderTopWidth')) || borderWidth;
-        const borderBottomW = parseFloat(getProp('border-bottom-width', 'borderBottomWidth')) || borderWidth;
-        const borderLeftW = parseFloat(getProp('border-left-width', 'borderLeftWidth')) || borderWidth;
-        const borderRightW = parseFloat(getProp('border-right-width', 'borderRightWidth')) || borderWidth;
+        const topB = parseBorderProperty(getProp('border-top', 'borderTop'), getProp('border-top-width', 'borderTopWidth'), getProp('border-top-style', 'borderTopStyle'), getProp('border-top-color', 'borderTopColor'));
+        const bottomB = parseBorderProperty(getProp('border-bottom', 'borderBottom'), getProp('border-bottom-width', 'borderBottomWidth'), getProp('border-bottom-style', 'borderBottomStyle'), getProp('border-bottom-color', 'borderBottomColor'));
+        const leftB = parseBorderProperty(getProp('border-left', 'borderLeft'), getProp('border-left-width', 'borderLeftWidth'), getProp('border-left-style', 'borderLeftStyle'), getProp('border-left-color', 'borderLeftColor'));
+        const rightB = parseBorderProperty(getProp('border-right', 'borderRight'), getProp('border-right-width', 'borderRightWidth'), getProp('border-right-style', 'borderRightStyle'), getProp('border-right-color', 'borderRightColor'));
+
+        const borderTopW = topB.width || borderWidth;
+        const borderBottomW = bottomB.width || borderWidth;
+        const borderLeftW = leftB.width || borderWidth;
+        const borderRightW = rightB.width || borderWidth;
 
         const hasIndependentBorders =
             borderTopW !== borderBottomW || borderLeftW !== borderRightW || borderTopW !== borderLeftW;
+
+        if (strokePaints.length === 0 && (borderTopW > 0 || borderBottomW > 0 || borderLeftW > 0 || borderRightW > 0)) {
+            const sideColor = parseColor(topB.color || bottomB.color || leftB.color || rightB.color || mainBorder.color);
+            if (sideColor && sideColor.a > 0) {
+                strokePaints.push({
+                    type: 'SOLID',
+                    color: sideColor,
+                    opacity: sideColor.a,
+                    visible: true,
+                    blendMode: 'NORMAL'
+                });
+            }
+        }
 
         // Border Radius
         const borderRadius = parseFloat(getProp('border-radius', 'borderRadius')) || 0;
@@ -540,8 +667,8 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             if (dims.isSpriteDef || (dims.width === 0 && dims.height === 0)) {
                 return null;
             }
-            const svgWidth = width || dims.width;
-            const svgHeight = height || dims.height;
+            const svgWidth = dims.width;
+            const svgHeight = dims.height;
 
             const iconColor = getProp('color', 'color') || inheritedStyles.color || '#000000';
             const svgXml = serializeSvgElement(element, iconColor, svgWidth, svgHeight);
@@ -625,8 +752,9 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const hasNoChildren = element.children.length === 0;
         const textContent = element.textContent.trim();
         const hasRichChildren = isRichTextContainer(element);
+        const isChildlessTextDiv = (tagName === 'div' && hasNoChildren && textContent.length > 0 && fills.length === 0 && borderWidth === 0);
 
-        if ((isTextTag && hasNoChildren && textContent.length > 0) || (hasRichChildren && !fills.length && borderWidth === 0)) {
+        if ((isTextTag && hasNoChildren && textContent.length > 0) || (hasRichChildren && !fills.length && borderWidth === 0) || isChildlessTextDiv) {
             const textColor = parseColor(inheritedStyles.color) || { r: 0.1, g: 0.1, b: 0.1, a: 1.0 };
             const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles.fontSize;
 
@@ -667,14 +795,16 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             // Paragraph / block text wrapping
             const isParagraph = tagName === 'p' || tagName === 'blockquote';
             const maxWidthProp = parseFloat(getProp('max-width', 'maxWidth'));
+            const inFlexRow = parentContext && parentContext.isFlex && !parentContext.isColumn;
 
-            let targetWidth = width > 0 ? width : (parentContext ? parentContext.width : 0);
+            let targetWidth = width > 0 ? width : (inFlexRow ? 0 : (parentContext ? parentContext.width : 0));
             if (maxWidthProp && !isNaN(maxWidthProp) && maxWidthProp > 0) {
-                targetWidth = Math.min(targetWidth, maxWidthProp);
+                targetWidth = targetWidth > 0 ? Math.min(targetWidth, maxWidthProp) : maxWidthProp;
             }
 
             const charWidth = fontSize * 0.58;
-            const isMultiLine = isParagraph || (targetWidth > 0 && (displayCharacters.length * charWidth) > targetWidth);
+            const hasNewlines = displayCharacters.includes('\n');
+            const isMultiLine = isParagraph || hasNewlines || (targetWidth > 0 && (displayCharacters.length * charWidth) > targetWidth);
 
             const textGeom = estimateTextDimensions(
                 displayCharacters,
@@ -729,7 +859,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 textNode.transform = { m00: 1, m01: 0, m02: posX, m10: 0, m11: 1, m12: posY };
             } else if (parentContext && parentContext.isFlex) {
                 if (flexGrow > 0) textNode.stackChildPrimaryGrow = 1.0;
-                if (alignSelf === 'stretch' || (parentContext.isColumn && isParagraph)) {
+                if (alignSelf === 'stretch' || (parentContext.isColumn && isParagraph && !inFlexRow)) {
                     textNode.stackChildAlignSelf = 'STRETCH';
                 } else if (alignSelf === 'center') {
                     textNode.stackChildAlignSelf = 'CENTER';
@@ -883,13 +1013,24 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         // 6. GENERAL CONTAINER (FRAME / Auto Layout / Circle)
         // -------------------------------------------------------------
         const isFlex = display === 'flex' || display === 'inline-flex';
+        const isGrid = display === 'grid' || display === 'inline-grid';
         const flexDirection = getProp('flex-direction', 'flexDirection');
-        const isColumn = isFlex ? (flexDirection === 'column' || flexDirection === 'column-reverse') : true;
+        const gridCols = getProp('grid-template-columns', 'gridTemplateColumns');
+        const isColumn = isFlex
+            ? (flexDirection === 'column' || flexDirection === 'column-reverse')
+            : (isGrid ? (!gridCols || gridCols === '1fr' || gridCols === 'none') : true);
 
-        const paddingTop = parseFloat(getProp('padding-top', 'paddingTop')) || 0;
-        const paddingRight = parseFloat(getProp('padding-right', 'paddingRight')) || 0;
-        const paddingBottom = parseFloat(getProp('padding-bottom', 'paddingBottom')) || 0;
-        const paddingLeft = parseFloat(getProp('padding-left', 'paddingLeft')) || 0;
+        const padOffsets = parseBoxOffsets(
+            getProp('padding', 'padding'),
+            getProp('padding-top', 'paddingTop'),
+            getProp('padding-right', 'paddingRight'),
+            getProp('padding-bottom', 'paddingBottom'),
+            getProp('padding-left', 'paddingLeft')
+        );
+        const paddingTop = padOffsets.top;
+        const paddingRight = padOffsets.right;
+        const paddingBottom = padOffsets.bottom;
+        const paddingLeft = padOffsets.left;
         const gap = parseFloat(getProp('gap', 'gap')) || parseFloat(getProp('row-gap', 'rowGap')) || 0;
 
         // Determine frame width
@@ -985,7 +1126,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 frameNode.stackCounterAlignItems = 'MIN';
                 frameNode.stackPrimarySizing = 'RESIZE_TO_FIT';
                 frameNode.stackCounterSizing = 'FIXED';
-            } else if (isFlex) {
+            } else if (isFlex || isGrid) {
                 frameNode.stackMode = isColumn ? 'VERTICAL' : 'HORIZONTAL';
                 frameNode.stackSpacing = gap;
                 frameNode.stackPadding = paddingTop;
@@ -995,19 +1136,22 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 frameNode.stackPaddingBottom = paddingBottom;
 
                 const flexWrap = getProp('flex-wrap', 'flexWrap');
-                if (flexWrap === 'wrap') {
+                if (flexWrap === 'wrap' || (isGrid && gridCols && (gridCols.includes('repeat') || gridCols.split(/\s+/).length > 1))) {
                     frameNode.stackWrap = 'WRAP';
                     const colGap = parseFloat(getProp('column-gap', 'columnGap'));
                     if (colGap) frameNode.stackCounterSpacing = colGap;
                 }
 
+                const placeItems = getProp('place-items', 'placeItems') || getProp('place-content', 'placeContent');
+                const isPlaceCenter = placeItems && placeItems.includes('center');
+
                 const jc = getProp('justify-content', 'justifyContent');
-                frameNode.stackPrimaryAlignItems = jc === 'center' ? 'CENTER' :
+                frameNode.stackPrimaryAlignItems = (jc === 'center' || isPlaceCenter) ? 'CENTER' :
                     (jc === 'flex-end' || jc === 'end') ? 'MAX' :
                         (jc === 'space-between' || jc === 'space-around' || jc === 'space-evenly') ? 'SPACE_BETWEEN' : 'MIN';
 
                 const ai = getProp('align-items', 'alignItems');
-                frameNode.stackCounterAlignItems = ai === 'center' ? 'CENTER' :
+                frameNode.stackCounterAlignItems = (ai === 'center' || isPlaceCenter) ? 'CENTER' :
                     (ai === 'flex-end' || ai === 'end') ? 'MAX' :
                         ai === 'baseline' ? 'BASELINE' : 'MIN';
 
@@ -1015,11 +1159,11 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 // HORIZONTAL stack: primary = WIDTH, counter = HEIGHT
                 // VERTICAL stack: primary = HEIGHT, counter = WIDTH
                 if (isColumn) {
-                    frameNode.stackPrimarySizing = hasExplicitHeight ? 'FIXED' : 'RESIZE_TO_FIT';
+                    frameNode.stackPrimarySizing = (hasExplicitHeight || isHeightPercent) ? 'FIXED' : 'RESIZE_TO_FIT';
                     frameNode.stackCounterSizing = (hasExplicitWidth || isWidthPercent || (parentContext && parentContext.isColumn)) ? 'FIXED' : 'RESIZE_TO_FIT';
                 } else {
                     frameNode.stackPrimarySizing = (hasExplicitWidth || isWidthPercent || (jc === 'space-between' && frameWidth > 200)) ? 'FIXED' : 'RESIZE_TO_FIT';
-                    frameNode.stackCounterSizing = hasExplicitHeight ? 'FIXED' : 'RESIZE_TO_FIT';
+                    frameNode.stackCounterSizing = (hasExplicitHeight || isHeightPercent) ? 'FIXED' : 'RESIZE_TO_FIT';
                 }
             } else if (element.children.length > 0) {
                 // Block container flow (e.g. <div>, <form>, <section> without display: flex)
@@ -1107,7 +1251,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         // Recurse into children
         const innerContentWidth = Math.max(10, frameWidth - paddingLeft - paddingRight);
         const currentContext = {
-            isFlex: isFlex || element.children.length > 0 || tagName === 'body',
+            isFlex: isFlex || isGrid || element.children.length > 0 || tagName === 'body',
             isColumn,
             containerWidth: frameWidth,
             containerHeight: frameHeight,
@@ -1121,12 +1265,56 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         };
 
         const childResults = [];
-        let childIndex = 0;
-        for (const child of element.children) {
-            const childPos = FractionalIndexer.getPosition(childIndex);
-            const res = await processElement(child, currentGuid, childPos, currentContext);
-            if (res) childResults.push(res);
-            childIndex++;
+        let childOrderIdx = 0;
+
+        for (const childNode of element.childNodes) {
+            if (childNode.nodeType === 1) { // Element
+                const childPos = FractionalIndexer.getPosition(childOrderIdx++);
+                const res = await processElement(childNode, currentGuid, childPos, currentContext);
+                if (res) childResults.push(res);
+            } else if (childNode.nodeType === 3) { // Direct text child node
+                const rawText = childNode.textContent.replace(/[\r\n\t]+/g, ' ').replace(/ +/g, ' ').trim();
+                if (rawText.length > 0 && frameType === 'FRAME') {
+                    const childPos = FractionalIndexer.getPosition(childOrderIdx++);
+                    const textGuid = guidGen.next();
+                    const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles.fontSize;
+                    const { styleName, postscript, cleanFamily } = parseFontStyle(
+                        inheritedStyles.fontWeight,
+                        inheritedStyles.fontStyle,
+                        inheritedStyles.fontFamily
+                    );
+                    const textColor = parseColor(inheritedStyles.color) || { r: 1, g: 1, b: 1, a: 1 };
+                    const textGeom = estimateTextDimensions(rawText, fontSize, 0, false);
+                    const childTextNode = {
+                        guid: textGuid,
+                        phase: 'CREATED',
+                        parentIndex: { guid: currentGuid, position: childPos },
+                        type: 'TEXT',
+                        name: rawText.slice(0, 32),
+                        visible: true,
+                        opacity: 1.0,
+                        blendMode: blendMode,
+                        transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 },
+                        size: { x: textGeom.width, y: textGeom.height },
+                        fillPaints: [{ type: 'SOLID', color: textColor, opacity: textColor.a, visible: true, blendMode: 'NORMAL' }],
+                        fontSize: fontSize,
+                        fontName: { family: cleanFamily, style: styleName, postscript: postscript },
+                        textAlignHorizontal: 'LEFT',
+                        textAlignVertical: 'CENTER',
+                        textAutoResize: 'WIDTH_AND_HEIGHT',
+                        lineHeight: parseLineHeight(inheritedStyles.lineHeight, fontSize),
+                        letterSpacing: parseLetterSpacing(inheritedStyles.letterSpacing, fontSize).struct,
+                        textData: {
+                            characters: rawText,
+                            layoutSize: { x: textGeom.width, y: textGeom.height }
+                        }
+                    };
+                    nodeChanges.push(childTextNode);
+                    stats.textNodes++;
+                    stats.totalNodes++;
+                    childResults.push({ node: childTextNode, width: textGeom.width, height: textGeom.height, isAbsolute: false });
+                }
+            }
         }
 
         const flowChildren = childResults.filter(c => !c.isAbsolute);
@@ -1147,7 +1335,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 }
             } else if (frameNode.stackMode === 'VERTICAL') {
                 const totalChildH = flowChildren.reduce((acc, c) => acc + (c.height || 0), 0) + (gap * Math.max(0, flowChildren.length - 1));
-                if (!hasExplicitHeight || tagName === 'body') {
+                if ((!hasExplicitHeight && !isHeightPercent) || tagName === 'body') {
                     const contentH = paddingTop + paddingBottom + totalChildH;
                     frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
                 }
