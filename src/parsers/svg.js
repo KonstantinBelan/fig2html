@@ -2,10 +2,29 @@
 const { Resvg } = require('@resvg/resvg-js');
 
 /**
- * Serializes an SVG DOM element into a valid, standalone SVG string
+ * Serializes an SVG DOM element into a valid, standalone SVG string,
+ * inlining any <use href="#symbolId"> references.
  */
 function serializeSvgElement(svgElement) {
-    let xml = svgElement.outerHTML;
+    const clone = svgElement.cloneNode(true);
+    const uses = clone.querySelectorAll('use');
+    for (const use of uses) {
+        const href = use.getAttribute('href') || use.getAttribute('xlink:href');
+        if (href && href.startsWith('#') && svgElement.ownerDocument) {
+            const symId = href.slice(1);
+            const symbol = svgElement.ownerDocument.getElementById(symId);
+            if (symbol) {
+                if (!clone.getAttribute('viewBox') && symbol.getAttribute('viewBox')) {
+                    clone.setAttribute('viewBox', symbol.getAttribute('viewBox'));
+                }
+                const g = svgElement.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'g');
+                g.innerHTML = symbol.innerHTML;
+                use.replaceWith(g);
+            }
+        }
+    }
+
+    let xml = clone.outerHTML;
 
     // Ensure xmlns is present
     if (!xml.includes('xmlns=')) {
@@ -19,31 +38,51 @@ function serializeSvgElement(svgElement) {
  * Extracts width and height from SVG element
  */
 function getSvgDimensions(svgElement, win) {
-    const computed = win.getComputedStyle(svgElement);
     const attrWidth = svgElement.getAttribute('width');
     const attrHeight = svgElement.getAttribute('height');
+
+    // If explicitly width="0" and height="0", it is an invisible symbol sprite def
+    if (attrWidth === '0' && attrHeight === '0') {
+        return { width: 0, height: 0, isSpriteDef: true };
+    }
+
+    const computed = win.getComputedStyle(svgElement);
     const viewBox = svgElement.getAttribute('viewBox');
 
     let width = parseFloat(computed.width) || parseFloat(attrWidth);
     let height = parseFloat(computed.height) || parseFloat(attrHeight);
 
-    if ((!width || isNaN(width) || width === 0) && viewBox) {
-        const parts = viewBox.trim().split(/[\s,]+/).map(parseFloat);
+    // If using a symbol, check symbol viewBox
+    let symbolViewBox = null;
+    const use = svgElement.querySelector('use');
+    if (use && svgElement.ownerDocument) {
+        const href = use.getAttribute('href') || use.getAttribute('xlink:href');
+        if (href && href.startsWith('#')) {
+            const sym = svgElement.ownerDocument.getElementById(href.slice(1));
+            if (sym) symbolViewBox = sym.getAttribute('viewBox');
+        }
+    }
+
+    const effectiveVb = viewBox || symbolViewBox;
+
+    if ((!width || isNaN(width) || width === 0) && effectiveVb) {
+        const parts = effectiveVb.trim().split(/[\s,]+/).map(parseFloat);
         if (parts.length >= 4 && parts[2] > 0) {
             width = parts[2];
         }
     }
 
-    if ((!height || isNaN(height) || height === 0) && viewBox) {
-        const parts = viewBox.trim().split(/[\s,]+/).map(parseFloat);
+    if ((!height || isNaN(height) || height === 0) && effectiveVb) {
+        const parts = effectiveVb.trim().split(/[\s,]+/).map(parseFloat);
         if (parts.length >= 4 && parts[3] > 0) {
             height = parts[3];
         }
     }
 
     return {
-        width: width && !isNaN(width) ? width : 24,
-        height: height && !isNaN(height) ? height : 24
+        width: width && !isNaN(width) && width > 0 ? width : 24,
+        height: height && !isNaN(height) && height > 0 ? height : 24,
+        isSpriteDef: false
     };
 }
 

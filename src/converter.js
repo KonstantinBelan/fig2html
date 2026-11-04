@@ -186,8 +186,10 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             ? clamp01(parseFloat(rawOpacity))
             : 1.0;
 
-        const mixBlend = getProp('mix-blend-mode', 'mixBlendMode') || 'normal';
-        const blendMode = BLEND_MODE_MAP[mixBlend.toLowerCase()] || 'NORMAL';
+        const mixBlend = getProp('mix-blend-mode', 'mixBlendMode');
+        const blendMode = (mixBlend && mixBlend.toLowerCase() !== 'normal')
+            ? (BLEND_MODE_MAP[mixBlend.toLowerCase()] || undefined)
+            : undefined;
 
         // Check CSS dimensions (handling percentages correctly)
         const rawWidthStr = getProp('width', 'width');
@@ -401,7 +403,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
 
             nodeChanges.push(imgNode);
-            return;
+            return { node: imgNode, width: imgWidth, height: imgHeight };
         }
 
         // -------------------------------------------------------------
@@ -409,6 +411,9 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         // -------------------------------------------------------------
         if (tagName === 'svg') {
             const dims = getSvgDimensions(element, win);
+            if (dims.isSpriteDef || (dims.width === 0 && dims.height === 0)) {
+                return null;
+            }
             const svgWidth = width || dims.width;
             const svgHeight = height || dims.height;
 
@@ -441,7 +446,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
 
             nodeChanges.push(svgNode);
-            return;
+            return { node: svgNode, width: svgWidth, height: svgHeight };
         }
 
         // -------------------------------------------------------------
@@ -466,6 +471,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 name: 'Divider',
                 visible: isVisible,
                 opacity: opacity,
+                blendMode: blendMode,
                 transform: { m00: 1, m01: 0, m02: x, m10: 0, m11: 1, m12: y },
                 size: { x: hrWidth, y: hrThickness },
                 fillPaints: [{
@@ -479,7 +485,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             };
 
             nodeChanges.push(hrNode);
-            return;
+            return { node: hrNode, width: hrWidth, height: hrThickness };
         }
 
         // -------------------------------------------------------------
@@ -598,7 +604,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
 
             nodeChanges.push(textNode);
-            return;
+            return { node: textNode, width: textGeom.width, height: textGeom.height };
         }
 
         // -------------------------------------------------------------
@@ -623,6 +629,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     name: 'Checkbox',
                     visible: isVisible,
                     opacity: opacity,
+                    blendMode: blendMode,
                     transform: { m00: 1, m01: 0, m02: x, m10: 0, m11: 1, m12: y },
                     size: { x: 18, y: 18 },
                     fillPaints: [{ type: 'SOLID', color: checkColor, opacity: 1, visible: true, blendMode: 'NORMAL' }],
@@ -631,7 +638,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     cornerRadius: 4
                 };
                 nodeChanges.push(cbNode);
-                return;
+                return { node: cbNode, width: 18, height: 18 };
             }
 
             if (inputType === 'radio') {
@@ -645,6 +652,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     name: 'Radio',
                     visible: isVisible,
                     opacity: opacity,
+                    blendMode: blendMode,
                     transform: { m00: 1, m01: 0, m02: x, m10: 0, m11: 1, m12: y },
                     size: { x: 18, y: 18 },
                     fillPaints: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true, blendMode: 'NORMAL' }],
@@ -652,7 +660,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     strokeWeight: 1.5
                 };
                 nodeChanges.push(radioNode);
-                return;
+                return { node: radioNode, width: 18, height: 18 };
             }
 
             // Text input container
@@ -669,6 +677,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 name: `Input[${inputType}]`,
                 visible: isVisible,
                 opacity: opacity,
+                blendMode: blendMode,
                 transform: { m00: 1, m01: 0, m02: x, m10: 0, m11: 1, m12: y },
                 size: { x: inputW, y: inputH },
                 fillPaints: fills.length ? fills : [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1, visible: true, blendMode: 'NORMAL' }],
@@ -692,6 +701,16 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 stats.textNodes++;
                 stats.totalNodes++;
                 const textGuid = guidGen.next();
+
+                const inputFontSize = parseFloat(getProp('font-size', 'fontSize')) || 14;
+                const inputLh = parseLineHeight(getProp('line-height', 'lineHeight') || (parentContext ? parentContext.inherited.lineHeight : null), inputFontSize);
+                const inputLs = parseLetterSpacing(getProp('letter-spacing', 'letterSpacing') || (parentContext ? parentContext.inherited.letterSpacing : null), inputFontSize);
+                const { styleName: inStyle, postscript: inPs, cleanFamily: inFam } = parseFontStyle(
+                    getProp('font-weight', 'fontWeight') || (parentContext ? parentContext.inherited.fontWeight : 'normal'),
+                    getProp('font-style', 'fontStyle') || (parentContext ? parentContext.inherited.fontStyle : 'normal'),
+                    getProp('font-family', 'fontFamily') || (parentContext ? parentContext.inherited.fontFamily : 'Inter')
+                );
+
                 const placeholderNode = {
                     guid: textGuid,
                     phase: 'CREATED',
@@ -700,11 +719,15 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     name: 'Placeholder',
                     visible: true,
                     opacity: 1.0,
+                    blendMode: blendMode,
                     size: { x: inputW - 28, y: 18 },
                     transform: { m00: 1, m01: 0, m02: 14, m10: 0, m11: 1, m12: 12 },
                     fillPaints: [{ type: 'SOLID', color: { r: 0.6, g: 0.64, b: 0.68, a: 1 }, opacity: 1, visible: true, blendMode: 'NORMAL' }],
-                    fontSize: 14,
-                    fontName: { family: 'Inter', style: 'Regular', postscript: 'Inter-Regular' },
+                    fontSize: inputFontSize,
+                    fontName: { family: inFam, style: inStyle, postscript: inPs },
+                    lineHeight: inputLh,
+                    letterSpacing: inputLs.struct,
+                    textTracking: inputLs.tracking,
                     textAlignHorizontal: 'LEFT',
                     textAlignVertical: 'CENTER',
                     textAutoResize: 'WIDTH_AND_HEIGHT',
@@ -715,7 +738,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 };
                 nodeChanges.push(placeholderNode);
             }
-            return;
+            return { node: inputFrame, width: inputW, height: inputH };
         }
 
         // -------------------------------------------------------------
@@ -858,14 +881,16 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
         // Child sizing inside parent flex/block container
         if (parentContext && parentContext.isFlex) {
-            if (flexGrow > 0) {
-                frameNode.stackChildPrimaryGrow = 1.0;
-            }
-
             if (parentContext.isColumn) {
                 // In column container, cross-axis is WIDTH
-                if (alignSelf === 'stretch' || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start')) {
+                const shouldStretchW = alignSelf === 'stretch' || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start');
+                if (shouldStretchW) {
                     frameNode.stackChildAlignSelf = 'STRETCH';
+                    if (!isColumn) {
+                        frameNode.stackPrimarySizing = 'FIXED';
+                    } else {
+                        frameNode.stackCounterSizing = 'FIXED';
+                    }
                 } else if (alignSelf === 'center') {
                     frameNode.stackChildAlignSelf = 'CENTER';
                 } else if (alignSelf === 'flex-end' || alignSelf === 'end') {
@@ -873,16 +898,42 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 } else if (alignSelf === 'flex-start' || alignSelf === 'start') {
                     frameNode.stackChildAlignSelf = 'MIN';
                 }
+
+                if (flexGrow > 0) {
+                    frameNode.stackChildPrimaryGrow = 1.0;
+                    if (isColumn) {
+                        frameNode.stackPrimarySizing = 'FIXED';
+                    } else {
+                        frameNode.stackCounterSizing = 'FIXED';
+                    }
+                }
             } else {
                 // In row container, cross-axis is HEIGHT
-                if (alignSelf === 'stretch' || (!hasExplicitHeight && parentContext.alignItems === 'stretch')) {
+                const shouldStretchH = alignSelf === 'stretch' || (!hasExplicitHeight && (!alignSelf || alignSelf === 'auto') && parentContext.alignItems === 'stretch');
+                if (shouldStretchH) {
                     frameNode.stackChildAlignSelf = 'STRETCH';
+                    // If child is a vertical frame, its primary axis is height!
+                    // Setting stackPrimarySizing = 'FIXED' prevents it from hugging and makes it Fill Container!
+                    if (isColumn) {
+                        frameNode.stackPrimarySizing = 'FIXED';
+                    } else {
+                        frameNode.stackCounterSizing = 'FIXED';
+                    }
                 } else if (alignSelf === 'center' || parentContext.alignItems === 'center') {
                     frameNode.stackChildAlignSelf = 'CENTER';
                 } else if (alignSelf === 'flex-end' || parentContext.alignItems === 'flex-end') {
                     frameNode.stackChildAlignSelf = 'MAX';
                 } else if (alignSelf === 'flex-start' || parentContext.alignItems === 'flex-start') {
                     frameNode.stackChildAlignSelf = 'MIN';
+                }
+
+                if (flexGrow > 0) {
+                    frameNode.stackChildPrimaryGrow = 1.0;
+                    if (!isColumn) {
+                        frameNode.stackPrimarySizing = 'FIXED';
+                    } else {
+                        frameNode.stackCounterSizing = 'FIXED';
+                    }
                 }
             }
         }
@@ -901,12 +952,40 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             inherited: inheritedStyles
         };
 
+        const childResults = [];
         let childIndex = 0;
         for (const child of element.children) {
             const childPos = FractionalIndexer.getPosition(childIndex);
-            await processElement(child, currentGuid, childPos, currentContext);
+            const res = await processElement(child, currentGuid, childPos, currentContext);
+            if (res) childResults.push(res);
             childIndex++;
         }
+
+        if (childResults.length > 0) {
+            if (frameNode.stackMode === 'HORIZONTAL') {
+                const maxChildH = Math.max(0, ...childResults.map(c => c.height || 0));
+                if (!hasExplicitHeight) {
+                    const contentH = paddingTop + paddingBottom + maxChildH;
+                    frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
+                }
+                // Update stretched children's size.y to match row height
+                const isStretchRow = currentContext.alignItems === 'stretch';
+                for (const c of childResults) {
+                    if (c.node && (c.node.stackChildAlignSelf === 'STRETCH' || isStretchRow)) {
+                        c.node.size.y = maxChildH;
+                        c.height = maxChildH;
+                    }
+                }
+            } else if (frameNode.stackMode === 'VERTICAL') {
+                const totalChildH = childResults.reduce((acc, c) => acc + (c.height || 0), 0) + (gap * Math.max(0, childResults.length - 1));
+                if (!hasExplicitHeight) {
+                    const contentH = paddingTop + paddingBottom + totalChildH;
+                    frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
+                }
+            }
+        }
+
+        return { node: frameNode, width: frameNode.size.x, height: frameNode.size.y };
     }
 
     // Process top-level body elements

@@ -19,14 +19,42 @@ function parseSingleBoxShadow(shadowStr) {
 
     // Color can be at the beginning (e.g. rgba(0,0,0,0.1) 0 4px) or at the end
     let color = null;
-    let colorMatch = str.match(/(rgba?\([^)]+\)|hsla?\([^)]+\)|#[0-9a-fA-F]+|[a-zA-Z]+)/);
-    if (colorMatch) {
-        const potentialColor = colorMatch[0];
-        const parsed = parseColor(potentialColor);
+
+    // 1. Functional colors: rgba(...), rgb(...), hsla(...), hsl(...)
+    const funcMatch = str.match(/(?:rgba?|hsla?)\([^)]+\)/i);
+    if (funcMatch) {
+        const parsed = parseColor(funcMatch[0]);
         if (parsed) {
             color = parsed;
-            // Remove color from the string to easily extract lengths
-            str = str.replace(potentialColor, '').trim();
+            str = str.replace(funcMatch[0], ' ').trim();
+        }
+    }
+
+    // 2. Hex colors: #fff, #ffffff, #ffffff80
+    if (!color) {
+        const hexMatch = str.match(/#[0-9a-fA-F]{3,8}\b/);
+        if (hexMatch) {
+            const parsed = parseColor(hexMatch[0]);
+            if (parsed) {
+                color = parsed;
+                str = str.replace(hexMatch[0], ' ').trim();
+            }
+        }
+    }
+
+    // 3. Named color words (e.g. blue, black, transparent), skipping units (px, em, rem)
+    if (!color) {
+        const words = str.match(/\b[a-zA-Z]+\b/g);
+        if (words) {
+            for (const word of words) {
+                if (['px', 'em', 'rem', 'vh', 'vw', 'pt', 'inset'].includes(word.toLowerCase())) continue;
+                const parsed = parseColor(word);
+                if (parsed) {
+                    color = parsed;
+                    str = str.replace(new RegExp(`\\b${word}\\b`), ' ').trim();
+                    break;
+                }
+            }
         }
     }
 

@@ -139,6 +139,19 @@ async function runAllTests() {
         const effects = parseBoxShadows('0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06)');
         assert.strictEqual(effects.length, 2);
     });
+    it('parses complex rgba box-shadow with zero spread', () => {
+        const effects = parseBoxShadows('0 4px 12px rgba(37, 99, 235, 0.3)');
+        assert.strictEqual(effects.length, 1);
+        assert.strictEqual(effects[0].type, 'DROP_SHADOW');
+        assert.strictEqual(effects[0].offset.x, 0);
+        assert.strictEqual(effects[0].offset.y, 4);
+        assert.strictEqual(effects[0].radius, 12);
+        assert.strictEqual(effects[0].spread, 0);
+        assert(Math.abs(effects[0].color.r - (37 / 255)) < 0.01);
+        assert(Math.abs(effects[0].color.g - (99 / 255)) < 0.01);
+        assert(Math.abs(effects[0].color.b - (235 / 255)) < 0.01);
+        assert(Math.abs(effects[0].color.a - 0.3) < 0.01);
+    });
     it('parses blur and backdrop blur filters', () => {
         const all = parseAllEffects(null, 'blur(8px)', 'blur(12px)');
         assert.strictEqual(all.length, 2);
@@ -249,6 +262,29 @@ async function runAllTests() {
         const canvasBytes = zip.getEntry('canvas.fig').getData();
         const tree = decodeFigKiwiCanvas(canvasBytes);
         assert(tree.nodeChanges.length >= 45);
+
+        // Verify .grid calculated height and stretched cards
+        const grid = tree.nodeChanges.find(n => n.name === 'grid');
+        assert(grid && grid.size.y > 300, 'grid height should be > 300px');
+        const cards = tree.nodeChanges.filter(n => n.name === 'card');
+        assert(cards.length === 3, 'should have 3 cards');
+        for (const card of cards) {
+            assert.strictEqual(card.stackChildAlignSelf, 'STRETCH');
+            assert.strictEqual(card.stackPrimarySizing, 'FIXED');
+            assert(card.size.y > 300, 'card should stretch to fill grid height');
+        }
+
+        // Verify input typography
+        const placeholders = tree.nodeChanges.filter(n => n.name === 'Placeholder');
+        assert(placeholders.length >= 2, 'should have input placeholders');
+        for (const p of placeholders) {
+            assert(p.lineHeight && p.lineHeight.value !== undefined, 'placeholder should have lineHeight');
+            assert(p.letterSpacing && p.letterSpacing.value !== undefined, 'placeholder should have letterSpacing');
+        }
+
+        // Verify no unwanted blendMode: NORMAL on nodes
+        const explicitBlendModes = tree.nodeChanges.filter(n => n.blendMode !== undefined);
+        assert.strictEqual(explicitBlendModes.length, 0, 'no nodes should have blendMode explicitly set without mix-blend-mode');
 
         // Verify image entries in zip
         const entries = zip.getEntries().map(e => e.entryName);

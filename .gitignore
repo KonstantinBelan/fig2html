@@ -11,9 +11,10 @@ ehthumbs.db
 Thumbs.db
 
 # Generated build and test artifacts
-output.fig
-test/*_out.fig
-test/*_test.fig
+*.fig
+test/*.fig
+!template.fig
+!test/showcase.fig
 
 # Logs
 logs/
