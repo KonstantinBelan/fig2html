@@ -1,5 +1,5 @@
 // src/decompiler/html.js
-const { computeNodeStyles, toStyleString, formatColor, parseFontWeightAndStyle } = require('./css');
+const { computeNodeStyles, toStyleString, formatColor, parseFontWeightAndStyle, getExtensionForMime } = require('./css');
 const { StylesheetManager } = require('./stylesheet');
 
 /**
@@ -248,9 +248,11 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
         const imgObj = hashHex ? imageRegistry.get(hashHex) : null;
 
         if (imgObj) {
+            const ext = getExtensionForMime(imgObj.mime);
+            const prefix = options.assetUrlPrefix || 'img/';
             const imgSrc = options.inlineImages !== false
                 ? imgObj.base64
-                : `${options.assetUrlPrefix || 'images/'}${hashHex}.${imgObj.mime === 'image/jpeg' ? 'jpg' : 'png'}`;
+                : `${prefix}${hashHex}.${ext}`;
 
             return `${indent}<img src="${imgSrc}" alt="${escapeHtml(nodeName)}"${classAttr}${styleAttr}>\n`;
         }
@@ -388,20 +390,32 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
         bodyContent += renderNodeToHtml(root, null, imageRegistry, stylesheetManager, options, 2);
     }
 
-    return `<!DOCTYPE html>
+    const cssHref = options.cssHref || options.cssFile || 'css/style.css';
+    const styleTagOrLink = options.extractCss
+        ? `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`
+        : `  <style>\n${cssContent}\n  </style>\n`;
+
+    const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
-${googleFontsUrl ? `  <link rel="preconnect" href="https://fonts.googleapis.com">\n  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n  <link href="${googleFontsUrl}" rel="stylesheet">\n` : ''}  <style>
-${cssContent}
-  </style>
-</head>
+${googleFontsUrl ? `  <link rel="preconnect" href="https://fonts.googleapis.com">\n  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n  <link href="${googleFontsUrl}" rel="stylesheet">\n` : ''}${styleTagOrLink}</head>
 <body>
 ${bodyContent}</body>
 </html>
 `;
+
+    if (options.extractCss || options.returnCss) {
+        return {
+            html,
+            css: cssContent,
+            toString() { return this.html; }
+        };
+    }
+
+    return html;
 }
 
 module.exports = {

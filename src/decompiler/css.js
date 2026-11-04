@@ -1,6 +1,19 @@
 // src/decompiler/css.js
 
 /**
+ * Maps an image MIME type to its standard file extension
+ * @param {string} mime
+ * @returns {string} File extension ('jpg', 'png', 'svg', 'webp', 'gif')
+ */
+function getExtensionForMime(mime) {
+    if (mime === 'image/jpeg') return 'jpg';
+    if (mime === 'image/svg+xml') return 'svg';
+    if (mime === 'image/webp') return 'webp';
+    if (mime === 'image/gif') return 'gif';
+    return 'png';
+}
+
+/**
  * Converts a Figma normalized RGBA color object to a CSS color string
  * @param {{ r: number, g: number, b: number, a?: number }} color
  * @param {number} [opacityMultiplier=1]
@@ -170,9 +183,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                         const hashHex = Buffer.from(fill.image.hash).toString('hex').toLowerCase();
                         const imgObj = imageRegistry.get(hashHex);
                         if (imgObj) {
+                            const ext = getExtensionForMime(imgObj.mime);
+                            const prefix = options.cssAssetUrlPrefix || options.assetUrlPrefix || (options.extractCss ? '../img/' : 'img/');
                             const imgUrl = options.inlineImages !== false
                                 ? imgObj.base64
-                                : `${options.assetUrlPrefix || 'images/'}${hashHex}.${imgObj.mime === 'image/jpeg' ? 'jpg' : 'png'}`;
+                                : `${prefix}${hashHex}.${ext}`;
                             bgImages.push(`url('${imgUrl}')`);
 
                             if (fill.imageScaleMode === 'FIT') {
@@ -493,6 +508,7 @@ function toStyleString(styleObj) {
 }
 
 module.exports = {
+    getExtensionForMime,
     formatColor,
     getLinearGradientAngle,
     formatGradient,

@@ -28,7 +28,8 @@ const {
     getLinearGradientAngle,
     formatGradient,
     formatEffects,
-    parseFontWeightAndStyle
+    parseFontWeightAndStyle,
+    getExtensionForMime
 } = require('../src/decompiler/css');
 const {
     StylesheetManager,
@@ -492,13 +493,32 @@ async function runAllTests() {
         assert(css.includes('var(--font-display)'));
     });
 
-    it('parses reverse CLI arguments', () => {
-        const opts = parseReverseArgs(['input.fig', 'output.html', '--page', 'Page 1', '--inline-styles', '--verbose']);
-        assert.strictEqual(opts.input, 'input.fig');
-        assert.strictEqual(opts.output, 'output.html');
-        assert.strictEqual(opts.page, 'Page 1');
-        assert.strictEqual(opts.inlineStyles, true);
-        assert.strictEqual(opts.verbose, true);
+    it('maps MIME types to standard file extensions', () => {
+        assert.strictEqual(getExtensionForMime('image/jpeg'), 'jpg');
+        assert.strictEqual(getExtensionForMime('image/png'), 'png');
+        assert.strictEqual(getExtensionForMime('image/svg+xml'), 'svg');
+        assert.strictEqual(getExtensionForMime('image/webp'), 'webp');
+        assert.strictEqual(getExtensionForMime('image/gif'), 'gif');
+    });
+
+    it('parses reverse CLI arguments including -s and --separate-files', () => {
+        const opts1 = parseReverseArgs(['input.fig', 'output.html', '--page', 'Page 1', '--inline-styles', '--verbose']);
+        assert.strictEqual(opts1.input, 'input.fig');
+        assert.strictEqual(opts1.output, 'output.html');
+        assert.strictEqual(opts1.page, 'Page 1');
+        assert.strictEqual(opts1.inlineStyles, true);
+        assert.strictEqual(opts1.verbose, true);
+
+        const opts2 = parseReverseArgs(['input.fig', '-s']);
+        assert.strictEqual(opts2.separateFiles, true);
+        assert.strictEqual(opts2.extractCss, true);
+        assert.strictEqual(opts2.inlineImages, false);
+        assert.strictEqual(opts2.assetsDir, 'img');
+
+        const opts3 = parseReverseArgs(['input.fig', '--extract-css', '--css-file', 'styles/main.css', '--assets-dir', 'assets']);
+        assert.strictEqual(opts3.extractCss, true);
+        assert.strictEqual(opts3.cssFile, 'styles/main.css');
+        assert.strictEqual(opts3.assetsDir, 'assets');
     });
 
     await itAsync('decompiles test/showcase.fig into valid standalone HTML', async () => {
@@ -553,6 +573,44 @@ async function runAllTests() {
 
         // Clean up
         fs.unlinkSync(outHtml);
+    });
+
+    await itAsync('decompiles test/hard.fig with separate files (-s: css/style.css and img/*)', async () => {
+        const outDir = path.resolve('test/separate-test');
+        const outHtml = path.resolve(outDir, 'index.html');
+        const expectedCss = path.resolve(outDir, 'css/style.css');
+        const expectedImgDir = path.resolve(outDir, 'img');
+
+        const res = await convertFigToHtml('test/hard.fig', {
+            outputHtmlPath: outHtml,
+            separateFiles: true
+        });
+
+        assert(fs.existsSync(outHtml), 'HTML file should exist');
+        assert(fs.existsSync(expectedCss), 'CSS file should exist at css/style.css');
+        assert(fs.existsSync(expectedImgDir), 'Image directory should exist at img/');
+
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+        const cssContent = fs.readFileSync(expectedCss, 'utf8');
+        const imageFiles = fs.readdirSync(expectedImgDir);
+
+        // Verify HTML links to external CSS and images
+        assert(htmlContent.includes('<link rel="stylesheet" href="css/style.css">'));
+        assert(htmlContent.includes('src="img/'));
+        assert(!htmlContent.includes('data:image/jpeg;base64,'));
+
+        // Verify CSS contains variables and styles
+        assert(cssContent.includes(':root {'));
+        assert(cssContent.includes('--font-display'));
+        assert(cssContent.includes('.foto-kak-vtoroy-dizayner'));
+
+        // Verify images were extracted with appropriate extensions
+        assert(imageFiles.length > 5);
+        assert(imageFiles.some(f => f.endsWith('.jpg')));
+        assert(imageFiles.some(f => f.endsWith('.png')));
+
+        // Clean up
+        fs.rmSync(outDir, { recursive: true, force: true });
     });
 
     await itAsync('performs full round-trip HTML -> .fig -> HTML and verifies content', async () => {

@@ -42,22 +42,26 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}-o, --output <file>${colors.reset}        Path to output .html file
   ${colors.cyan}-p, --page <name>${colors.reset}          Target Figma page name (default: "Page 1")
   ${colors.cyan}-w, --watch${colors.reset}                Watch input file and rebuild automatically on change
+  ${colors.cyan}-s, --separate-files${colors.reset}      Extract external CSS (css/style.css) and images (img/)
+  ${colors.cyan}--extract-css${colors.reset}              Extract stylesheet to a separate CSS file instead of <style>
+  ${colors.cyan}--css-file <path>${colors.reset}          Path for external CSS file (default: "css/style.css")
   ${colors.cyan}--no-inline-images${colors.reset}       Extract images to separate files instead of Base64
-  ${colors.cyan}--assets-dir <dir>${colors.reset}        Directory for extracted images (default: "images")
+  ${colors.cyan}--assets-dir <dir>${colors.reset}        Directory for extracted images (default: "img")
   ${colors.cyan}--inline-styles${colors.reset}          Generate inline style attributes instead of <style> classes
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
   ${colors.cyan}-h, --help${colors.reset}                 Display this help message
   ${colors.cyan}-V, --version${colors.reset}              Display version number
 
 ${colors.bold}EXAMPLES:${colors.reset}
-  ${colors.gray}# Simple reverse conversion:${colors.reset}
+  ${colors.gray}# Simple reverse conversion (single self-contained HTML):${colors.reset}
   $ fig-to-html design.fig
 
-  ${colors.gray}# Specify custom output name and page:${colors.reset}
-  $ fig-to-html showcase.fig index.html --page "Page 1"
+  ${colors.gray}# Extract separate CSS (css/style.css) and images (img/*):${colors.reset}
+  $ fig-to-html design.fig -s
+  $ fig-to-html design.fig index.html --separate-files
 
-  ${colors.gray}# Live reload / watch mode:${colors.reset}
-  $ fig-to-html test/hard.fig -w
+  ${colors.gray}# Custom CSS file and assets directory:${colors.reset}
+  $ fig-to-html test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir img
 `);
 }
 
@@ -69,7 +73,10 @@ function parseArgs(args) {
         watch: false,
         inlineImages: true,
         inlineStyles: false,
-        assetsDir: 'images',
+        separateFiles: false,
+        extractCss: false,
+        cssFile: 'css/style.css',
+        assetsDir: 'img',
         verbose: false
     };
 
@@ -92,11 +99,20 @@ function parseArgs(args) {
             options.page = args[++i];
         } else if (arg === '-w' || arg === '--watch') {
             options.watch = true;
+        } else if (arg === '-s' || arg === '--separate-files' || arg === '--split') {
+            options.separateFiles = true;
+            options.extractCss = true;
+            options.inlineImages = false;
+        } else if (arg === '--extract-css' || arg === '--external-css') {
+            options.extractCss = true;
+        } else if (arg === '--css-file' || arg === '--css') {
+            options.extractCss = true;
+            options.cssFile = args[++i];
         } else if (arg === '--no-inline-images') {
             options.inlineImages = false;
         } else if (arg === '--inline-styles') {
             options.inlineStyles = true;
-        } else if (arg === '--assets-dir') {
+        } else if (arg === '--assets-dir' || arg === '--img-dir') {
             options.assetsDir = args[++i];
         } else if (arg === '-v' || arg === '--verbose') {
             options.verbose = true;
@@ -138,7 +154,10 @@ async function runConversion(options) {
         pageName: options.page,
         inlineImages: options.inlineImages,
         inlineStyles: options.inlineStyles,
-        assetsDir: path.resolve(path.dirname(outputPath), options.assetsDir),
+        separateFiles: options.separateFiles,
+        extractCss: options.extractCss,
+        cssFile: options.cssFile,
+        assetsDir: options.assetsDir,
         verbose: options.verbose
     });
 
@@ -146,14 +165,23 @@ async function runConversion(options) {
 
     console.log(`\n${colors.green}${colors.bold}✔ Decompilation complete in ${result.durationMs}ms!${colors.reset}`);
     console.log(`${colors.bold}┌─────────────────────────────────────────┐${colors.reset}`);
-    console.log(`│ ${colors.bold}File:${colors.reset}       ${path.basename(outputPath).padEnd(27)} │`);
-    console.log(`│ ${colors.bold}Size:${colors.reset}       ${formatBytes(outStat.size).padEnd(27)} │`);
+    console.log(`│ ${colors.bold}HTML:${colors.reset}       ${path.basename(outputPath).padEnd(27)} │`);
+    console.log(`│ ${colors.bold}HTML Size:${colors.reset}  ${formatBytes(outStat.size).padEnd(27)} │`);
+    if (result.cssPath && fs.existsSync(result.cssPath)) {
+        const cssStat = fs.statSync(result.cssPath);
+        const relCss = path.relative(path.dirname(outputPath), result.cssPath);
+        console.log(`│ ${colors.bold}CSS:${colors.reset}        ${(relCss + ' (' + formatBytes(cssStat.size) + ')').padEnd(27)} │`);
+    }
+    if (result.assetsDir && fs.existsSync(result.assetsDir)) {
+        const relAssets = path.relative(path.dirname(outputPath), result.assetsDir);
+        const filesCount = fs.readdirSync(result.assetsDir).length;
+        console.log(`│ ${colors.bold}Assets:${colors.reset}     ${(relAssets + '/ (' + filesCount + ' files)').padEnd(27)} │`);
+    }
     console.log(`│ ${colors.bold}Nodes:${colors.reset}      ${String(result.totalNodes + ' total in fig').padEnd(27)} │`);
     console.log(`│   ${colors.dim}Frames:${colors.reset}   ${String(result.stats.frames).padEnd(27)} │`);
     console.log(`│   ${colors.dim}Text:${colors.reset}     ${String(result.stats.textNodes).padEnd(27)} │`);
     console.log(`│   ${colors.dim}Images:${colors.reset}   ${String(result.stats.images).padEnd(27)} │`);
     console.log(`│   ${colors.dim}Shapes:${colors.reset}   ${String(result.stats.shapes).padEnd(27)} │`);
-    console.log(`│ ${colors.bold}Images:${colors.reset}     ${String(result.imagesCount + ' extracted').padEnd(27)} │`);
     console.log(`${colors.bold}└─────────────────────────────────────────┘${colors.reset}`);
     console.log(`\n${colors.gray}Open ${colors.bold}${outputPath}${colors.reset}${colors.gray} in any browser.${colors.reset}\n`);
 

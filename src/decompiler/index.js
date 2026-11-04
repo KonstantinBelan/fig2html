@@ -4,6 +4,7 @@ const path = require('path');
 const { readFigFile } = require('./reader');
 const { buildSceneTree } = require('./tree');
 const { generateFullHtmlDocument } = require('./html');
+const { getExtensionForMime } = require('./css');
 
 /**
  * Converts a Figma .fig binary file into a clean, standalone HTML/CSS document
@@ -12,17 +13,30 @@ const { generateFullHtmlDocument } = require('./html');
  * @param {string} [options.outputHtmlPath] Optional output path to save the generated HTML
  * @param {string} [options.pageName='Page 1'] Name of the Figma page (CANVAS) to convert
  * @param {boolean} [options.inlineImages=true] Whether to inline images as base64 data URIs
- * @param {string} [options.assetsDir] Directory to write extracted image files (if inlineImages=false)
- * @param {string} [options.assetUrlPrefix='images/'] URL prefix for image sources
+ * @param {boolean} [options.separateFiles=false] Whether to extract CSS to css/style.css and images to img/
+ * @param {boolean} [options.extractCss=false] Extract stylesheet into a separate .css file
+ * @param {string} [options.cssFile='css/style.css'] Relative or absolute path for external CSS file
+ * @param {string} [options.assetsDir='img'] Directory to write extracted image files (if inlineImages=false)
+ * @param {string} [options.assetUrlPrefix] URL prefix for image sources in HTML
+ * @param {string} [options.cssAssetUrlPrefix] URL prefix for image sources in CSS
  * @param {string} [options.title] Custom HTML document title
  * @param {boolean} [options.verbose=false] Print progress logs
- * @returns {Promise<{ html: string, outputPath: string|null, totalNodes: number, imagesCount: number, durationMs: number, stats: object }>}
+ * @returns {Promise<{ html: string, css: string|null, outputPath: string|null, cssPath: string|null, assetsDir: string|null, totalNodes: number, imagesCount: number, durationMs: number, stats: object }>}
  */
 async function convertFigToHtml(figInput, options = {}) {
     const startTime = Date.now();
     const log = (msg) => {
         if (options.verbose) console.log(`[DECOMPILE] ${msg}`);
     };
+
+    const isSeparateFiles = Boolean(options.separateFiles);
+    const isExtractCss = isSeparateFiles || Boolean(options.extractCss);
+    const isInlineImages = isSeparateFiles ? false : (options.inlineImages !== false);
+    const assetsRelDir = options.assetsDir || 'img';
+    const cssRelPath = options.cssFile || 'css/style.css';
+
+    const outputPath = options.outputHtmlPath ? path.resolve(options.outputHtmlPath) : null;
+    const baseDir = outputPath ? path.dirname(outputPath) : process.cwd();
 
     // 1. Read .fig file and extract Kiwi AST and images
     log('Reading .fig archive and decoding Kiwi stream...');
@@ -37,16 +51,18 @@ async function convertFigToHtml(figInput, options = {}) {
     log(`Target canvas "${canvas.name}" with ${rootNodes.length} top-level nodes.`);
 
     // 3. Handle images export if inlineImages is false
-    if (options.inlineImages === false && options.assetsDir) {
-        const outDir = path.resolve(options.assetsDir);
-        if (!fs.existsSync(outDir)) {
-            fs.mkdirSync(outDir, { recursive: true });
+    let outAssetsDir = null;
+    if (isInlineImages === false) {
+        outAssetsDir = path.resolve(baseDir, assetsRelDir);
+        if (!fs.existsSync(outAssetsDir)) {
+            fs.mkdirSync(outAssetsDir, { recursive: true });
         }
         for (const [hashHex, imgObj] of images.entries()) {
-            const ext = imgObj.mime === 'image/jpeg' ? 'jpg' : (imgObj.mime === 'image/svg+xml' ? 'svg' : 'png');
-            const filePath = path.join(outDir, `${hashHex}.${ext}`);
+            const ext = getExtensionForMime(imgObj.mime);
+            const filePath = path.join(outAssetsDir, `${hashHex}.${ext}`);
             fs.writeFileSync(filePath, imgObj.buffer);
         }
+        log(`Extracted ${images.size} image files to ${outAssetsDir}`);
     }
 
     // 4. Calculate node statistics
@@ -73,19 +89,38 @@ async function convertFigToHtml(figInput, options = {}) {
         collectStats(r);
     }
 
-    // 5. Generate full HTML document
+    // 5. Generate semantic HTML and CSS styles
     log('Generating semantic HTML5 and CSS styles...');
-    const html = generateFullHtmlDocument(rootNodes, images, {
-        inlineImages: options.inlineImages !== false,
+    const assetsPrefix = options.assetUrlPrefix || (assetsRelDir ? `${assetsRelDir.replace(/\/+$/, '')}/` : 'img/');
+    const cssPrefix = options.cssAssetUrlPrefix || (isExtractCss ? `../${assetsPrefix}` : assetsPrefix);
+
+    const docResult = generateFullHtmlDocument(rootNodes, images, {
+        inlineImages: isInlineImages,
         inlineStyles: options.inlineStyles === true,
-        assetUrlPrefix: options.assetUrlPrefix || 'images/',
+        extractCss: isExtractCss,
+        cssHref: cssRelPath,
+        assetUrlPrefix: assetsPrefix,
+        cssAssetUrlPrefix: cssPrefix,
         title: options.title || canvas.name || 'Exported Figma Design'
     });
 
-    // 6. Write output file if requested
-    let outputPath = null;
-    if (options.outputHtmlPath) {
-        outputPath = path.resolve(options.outputHtmlPath);
+    const html = typeof docResult === 'string' ? docResult : docResult.html;
+    const css = typeof docResult === 'string' ? null : (docResult.css || null);
+
+    // 6. Write external CSS file if requested
+    let extractedCssPath = null;
+    if (isExtractCss && css) {
+        extractedCssPath = path.resolve(baseDir, cssRelPath);
+        const cssDir = path.dirname(extractedCssPath);
+        if (!fs.existsSync(cssDir)) {
+            fs.mkdirSync(cssDir, { recursive: true });
+        }
+        fs.writeFileSync(extractedCssPath, css, 'utf8');
+        log(`Saved external stylesheet to ${extractedCssPath} (${Buffer.byteLength(css, 'utf8')} bytes)`);
+    }
+
+    // 7. Write output HTML file if requested
+    if (outputPath) {
         const outDir = path.dirname(outputPath);
         if (!fs.existsSync(outDir)) {
             fs.mkdirSync(outDir, { recursive: true });
@@ -98,7 +133,10 @@ async function convertFigToHtml(figInput, options = {}) {
 
     return {
         html,
+        css: isExtractCss ? css : null,
         outputPath,
+        cssPath: extractedCssPath,
+        assetsDir: isInlineImages === false ? outAssetsDir : null,
         totalNodes: nodeChanges.length,
         imagesCount: images.size,
         durationMs,
