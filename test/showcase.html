@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>HTML to Figma Showcase</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            padding: 40px;
+            background-color: #0f172a;
+            font-family: 'Inter', -apple-system, sans-serif;
+            color: #f8fafc;
+        }
+
+        .dashboard {
+            display: flex;
+            flex-direction: column;
+            gap: 32px;
+            width: 1040px;
+            margin: 0 auto;
+        }
+
+        /* Hero Header with Linear Gradient & Box Shadow */
+        .hero {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 40px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            border: 1px solid #334155;
+            border-radius: 20px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        }
+
+        .hero-top {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .badge-pill {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background-color: rgba(56, 189, 248, 0.15);
+            border: 1px solid #38bdf8;
+            border-radius: 9999px;
+            color: #38bdf8;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .title {
+            font-size: 32px;
+            font-weight: 800;
+            color: #ffffff;
+            margin: 0;
+            letter-spacing: -0.02em;
+        }
+
+        .subtitle {
+            font-size: 16px;
+            color: #94a3b8;
+            line-height: 1.5;
+            margin: 0;
+            max-width: 800px;
+        }
+
+        /* 3-Column Card Grid */
+        .grid {
+            display: flex;
+            flex-direction: row;
+            gap: 24px;
+            width: 100%;
+        }
+
+        .card {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 24px;
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 14px;
+            flex-grow: 1;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-header {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .avatar {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%);
+            border: 2px solid #60a5fa;
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #f1f5f9;
+            margin: 0;
+        }
+
+        .card-text {
+            font-size: 14px;
+            color: #cbd5e1;
+            line-height: 1.4;
+            margin: 0;
+        }
+
+        /* Embedded Image Card */
+        .image-preview {
+            width: 100%;
+            height: 140px;
+            border-radius: 8px;
+            background-color: #0f172a;
+            border: 1px solid #334155;
+        }
+
+        /* Form Controls Section */
+        .form-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            padding: 28px;
+            background-color: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 16px;
+        }
+
+        .form-row {
+            display: flex;
+            flex-direction: row;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .input-text {
+            width: 320px;
+            height: 42px;
+            padding: 0 14px;
+            background-color: #0f172a;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            color: #f8fafc;
+            font-size: 14px;
+        }
+
+        .btn-primary {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 24px;
+            background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+            border: 1px solid #60a5fa;
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-secondary {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            padding: 10px 20px;
+            background-color: #334155;
+            border: 1px solid #475569;
+            border-radius: 8px;
+            color: #e2e8f0;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        hr {
+            border: none;
+            border-top: 1px solid #334155;
+            margin: 8px 0;
+            width: 100%;
+        }
+
+        .code-box {
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            background-color: #0b1120;
+            border: 1px solid #1e293b;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #38bdf8;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard">
+
+        <!-- 1. Hero Block -->
+        <div class="hero">
+            <div class="hero-top">
+                <div class="badge-pill">
+                    <span>⚡ HTML to Figma Engine 2.0</span>
+                </div>
+                <span style="font-size: 14px; color: #94a3b8;">Production Ready</span>
+            </div>
+
+            <h1 class="title">Идеальная конвертация HTML & CSS в нативный .fig</h1>
+
+            <p class="subtitle">
+                Поддержка Auto Layout, flexbox, <b>жирного шрифта</b>, <i>курсива</i>, линейных и радиальных градиентов,
+                теней drop-shadow, встроенных SVG векторных иконок, изображений, рамок и скруглений.
+            </p>
+        </div>
+
+        <!-- 2. Grid with 3 Cards -->
+        <div class="grid">
+            <!-- Card 1: Vector Shapes & Circles -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="avatar"></div>
+                    <div>
+                        <h3 class="card-title">Векторы и Фигуры</h3>
+                        <span style="font-size: 12px; color: #64748b;">Эллипсы и скругления</span>
+                    </div>
+                </div>
+                <p class="card-text">
+                    Поддержка идеальных кругов через border-radius: 50%, пилюль 9999px и независимых радиусов для каждого угла.
+                </p>
+            </div>
+
+            <!-- Card 2: Inline SVG Icons -->
+            <div class="card">
+                <div class="card-header">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                    </svg>
+                    <div>
+                        <h3 class="card-title">SVG Векторы</h3>
+                        <span style="font-size: 12px; color: #64748b;">Четкие иконки</span>
+                    </div>
+                </div>
+                <p class="card-text">
+                    Любые SVG элементы автоматически сериализуются, хешируются через SHA-1 и упаковываются в контейнер.
+                </p>
+            </div>
+
+            <!-- Card 3: Embedded Image -->
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Изображения</h3>
+                </div>
+                <!-- 1x1 transparent PNG data-uri embedded preview -->
+                <img class="image-preview"
+                    src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAKAAAAAoCAYAAABzOq8vAAAAOklEQVR42u3BAQEAAACAkP6v7ggKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD4G40QAAUuKj8UAAAAASUVORK5CYII="
+                    alt="Sample Image" />
+                <p class="card-text">
+                    Изображения сохраняются в images/&lt;sha1&gt; внутри .fig со свойствами object-fit (FIT, FILL, STRETCH).
+                </p>
+            </div>
+        </div>
+
+        <hr />
+
+        <!-- 3. Form Section -->
+        <div class="form-section">
+            <h3 style="margin: 0; font-size: 18px; color: #f1f5f9;">Формы и элементы управления</h3>
+
+            <div class="form-row">
+                <input class="input-text" type="text" placeholder="Введите имя проекта..." />
+                <input class="input-text" type="email" placeholder="design@company.com" />
+                <div class="btn-primary">
+                    <span>Сохранить в Figma</span>
+                </div>
+                <div class="btn-secondary">
+                    <span>Отмена</span>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <input type="checkbox" checked />
+                <span style="font-size: 14px; color: #cbd5e1;">Включить Zstandard компрессию</span>
+
+                <input type="radio" checked style="margin-left: 24px;" />
+                <span style="font-size: 14px; color: #cbd5e1;">Режим Kiwi v101</span>
+            </div>
+        </div>
+
+        <!-- 4. Code Block -->
+        <div class="code-box">
+            <span>$ html-to-fig index.html output.fig --verbose</span>
+            <span style="color: #4ade80;">✔ [SUCCESS] 32 nodes converted in 45ms. Kiwi binary stream valid.</span>
+        </div>
+
+    </div>
+</body>
+
+</html>

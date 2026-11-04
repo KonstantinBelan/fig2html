@@ -1,0 +1,32 @@
+{
+    "name": "html-to-fig",
+    "version": "1.0.0",
+    "description": "HTML to .fig binary generator via Kiwi schema and Figma specifications",
+    "main": "index.js",
+    "bin": {
+        "html-to-fig": "./cli.js"
+    },
+    "scripts": {
+        "start": "node cli.js",
+        "build": "node index.js",
+        "test": "node test/run-tests.js"
+    },
+    "keywords": [
+        "figma",
+        "html-to-fig",
+        "fig",
+        "kiwi",
+        "converter",
+        "auto-layout",
+        "cli"
+    ],
+    "dependencies": {
+        "@open-pencil/kiwi": "^0.16.0",
+        "@resvg/resvg-js": "^2.6.2",
+        "adm-zip": "^0.6.1",
+        "fzstd": "^0.1.1",
+        "jsdom": "^24.0.0",
+        "kiwi-schema": "^0.5.0",
+        "zstd-codec": "^0.1.5"
+    }
+}

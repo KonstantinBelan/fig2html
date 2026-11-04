@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+</head>
+
+<body>
+    <!-- Главный контейнер страницы (Вертикальный Auto Layout) -->
+    <div id="MainContainer"
+        style="display: flex; flex-direction: column; gap: 24px; padding: 32px; background-color: #f3f4f6; width: 680px; height: 420px; left: 100px; top: 100px; border-radius: 16px;">
+
+        <!-- Шапка карточки (Горизонтальный Auto Layout) -->
+        <div id="Header"
+            style="display: flex; flex-direction: row; justify-content: space-between; align-items: center; width: 616px; height: 40px;">
+            <h1 style="font-size: 22px; font-weight: bold; color: #111827; margin: 0;">Сгенерировано из HTML</h1>
+            <span style="font-size: 13px; color: #6b7280;">Auto Layout Active</span>
+        </div>
+
+        <!-- Текстовое описание -->
+        <p style="font-size: 15px; color: #374151; width: 616px; height: 36px; margin: 0;">
+            Этот фрейм собран напрямую в бинарный поток Kiwi со всеми параметрами паддингов и распределения дочерних элементов.
+        </p>
+
+        <!-- Сетка карточек (Горизонтальный ряд с gap) -->
+        <div id="CardsRow" style="display: flex; flex-direction: row; gap: 16px; width: 616px; height: 120px;">
+
+            <div id="Card1"
+                style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background-color: #ffffff; border-radius: 8px; width: 194px; height: 88px; flex-grow: 1;">
+                <h3 style="font-size: 16px; font-weight: bold; color: #1f2937; margin: 0;">Скорость</h3>
+                <p style="font-size: 13px; color: #4b5563; margin: 0;">Меньше 15мс на генерацию</p>
+            </div>
+
+            <div id="Card2"
+                style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background-color: #ffffff; border-radius: 8px; width: 194px; height: 88px; flex-grow: 1;">
+                <h3 style="font-size: 16px; font-weight: bold; color: #1f2937; margin: 0;">Чистый вектор</h3>
+                <p style="font-size: 13px; color: #4b5563; margin: 0;">Редактируемые слои</p>
+            </div>
+
+        </div>
+
+        <!-- Кнопка действия (Горизонтальный фрейм с центрированием) -->
+        <div id="Button"
+            style="display: flex; flex-direction: row; justify-content: center; align-items: center; background-color: #2563eb; border-radius: 8px; width: 160px; height: 44px;">
+            <span style="font-size: 14px; font-weight: bold; color: #ffffff;">Открыть проект</span>
+        </div>
+
+    </div>
+</body>
+
+</html>
