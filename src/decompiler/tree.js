@@ -11,6 +11,115 @@ function guidKey(guid) {
 }
 
 /**
+ * Deep clones a scene node and its children
+ * @param {object} node
+ * @returns {object}
+ */
+function cloneNode(node) {
+    if (!node) return null;
+    const clone = { ...node };
+    if (Array.isArray(clone.children)) {
+        clone.children = clone.children.map(cloneNode);
+    }
+    return clone;
+}
+
+/**
+ * Resolves a component INSTANCE node by cloning master SYMBOL children
+ * and applying overrides and component property assignments.
+ * @param {object} instanceNode
+ * @param {Map<string, object>} allNodesMap
+ * @param {number} [depth=0]
+ */
+function resolveInstanceNode(instanceNode, allNodesMap, depth = 0) {
+    if (depth > 25) return;
+    if (!instanceNode || instanceNode.type !== 'INSTANCE') return;
+    if (!instanceNode.symbolData?.symbolID) return;
+
+    const symKey = guidKey(instanceNode.symbolData.symbolID);
+    const masterSymbol = allNodesMap.get(symKey);
+    if (!masterSymbol) return;
+
+    // Clone master children if instance has no children of its own
+    if (!instanceNode.children || instanceNode.children.length === 0) {
+        instanceNode.children = (masterSymbol.children || []).map(cloneNode);
+    }
+
+    const overrides = instanceNode.symbolData.symbolOverrides || [];
+    const propAssignments = instanceNode.componentPropAssignments || [];
+
+    // Map overrides by target key (either overrideKey or guid)
+    const overrideMap = new Map();
+    for (const ov of overrides) {
+        if (!ov.guidPath?.guids?.length) continue;
+        const lastGuid = ov.guidPath.guids[ov.guidPath.guids.length - 1];
+        overrideMap.set(guidKey(lastGuid), ov);
+    }
+
+    // Map component prop assignments by defID
+    const propMap = new Map();
+    for (const pa of propAssignments) {
+        if (pa.defID) {
+            propMap.set(guidKey(pa.defID), pa);
+        }
+    }
+
+    function applyDescendant(child) {
+        if (!child) return;
+        const childKey = guidKey(child.guid);
+        const overrideKey = guidKey(child.overrideKey);
+
+        const ov = (overrideKey && overrideMap.get(overrideKey)) || (childKey && overrideMap.get(childKey));
+        if (ov) {
+            if (ov.visible !== undefined) child.visible = ov.visible;
+            if (ov.textData) child.textData = ov.textData;
+            if (ov.fillPaints) child.fillPaints = ov.fillPaints;
+            if (ov.strokePaints) child.strokePaints = ov.strokePaints;
+            if (ov.size) child.size = ov.size;
+            if (ov.fontSize) child.fontSize = ov.fontSize;
+            if (ov.opacity !== undefined) child.opacity = ov.opacity;
+            if (ov.fontName) child.fontName = ov.fontName;
+            if (ov.lineHeight) child.lineHeight = ov.lineHeight;
+        }
+
+        // Apply parameterConsumptionMap entries from componentPropAssignments
+        if (child.parameterConsumptionMap?.entries) {
+            for (const entry of child.parameterConsumptionMap.entries) {
+                const defId = entry.variableData?.value?.propRefValue?.defId;
+                if (defId) {
+                    const pa = propMap.get(guidKey(defId));
+                    if (pa) {
+                        if (entry.variableField === 'TEXT_DATA' && pa.varValue?.value?.textDataValue) {
+                            child.textData = pa.varValue.value.textDataValue;
+                        } else if (entry.variableField === 'OVERRIDDEN_SYMBOL_ID') {
+                            const swapGuid = pa.value?.guidValue || pa.varValue?.value?.symbolIdValue?.guid;
+                            if (swapGuid) {
+                                if (!child.symbolData) child.symbolData = {};
+                                child.symbolData.symbolID = swapGuid;
+                                child.children = []; // Reset children to populate from new swapped symbol
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check instance resolution
+        if (child.type === 'INSTANCE') {
+            resolveInstanceNode(child, allNodesMap, depth + 1);
+        } else if (child.children && child.children.length > 0) {
+            for (const c of child.children) {
+                applyDescendant(c);
+            }
+        }
+    }
+
+    for (const child of instanceNode.children) {
+        applyDescendant(child);
+    }
+}
+
+/**
  * Builds a hierarchical tree from a flat list of Figma nodeChanges
  * @param {Array<object>} nodeChanges
  * @param {object} [options={}]
@@ -98,6 +207,19 @@ function buildSceneTree(nodeChanges, options = {}) {
         throw new Error('No valid CANVAS (Page) node found in .fig tree.');
     }
 
+    // 6. Recursively resolve all INSTANCE nodes under target page
+    function walkAndResolve(nodes) {
+        for (const node of nodes) {
+            if (node.type === 'INSTANCE') {
+                resolveInstanceNode(node, allNodesMap);
+            }
+            if (node.children && node.children.length > 0) {
+                walkAndResolve(node.children);
+            }
+        }
+    }
+    walkAndResolve(targetCanvas.children);
+
     return {
         document: documentNode,
         canvas: targetCanvas,
@@ -108,5 +230,7 @@ function buildSceneTree(nodeChanges, options = {}) {
 
 module.exports = {
     guidKey,
+    cloneNode,
+    resolveInstanceNode,
     buildSceneTree
 };

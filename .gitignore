@@ -17,6 +17,8 @@ test/*.fig
 !templates/*.fig
 !test/showcase.fig
 !test/hard.fig
+fleader/
+hard-reverse.html
 
 # Logs
 logs/

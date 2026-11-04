@@ -114,6 +114,7 @@ function parseArgs(args) {
             options.inlineStyles = true;
         } else if (arg === '--assets-dir' || arg === '--img-dir') {
             options.assetsDir = args[++i];
+            options.inlineImages = false;
         } else if (arg === '-v' || arg === '--verbose') {
             options.verbose = true;
         } else if (!arg.startsWith('-')) {

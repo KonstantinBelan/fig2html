@@ -193,7 +193,8 @@ class StylesheetManager {
         // 3. Border Radii (if used >= 2 times)
         for (const [rad, count] of Object.entries(this.radiusCounts)) {
             if (count >= 2) {
-                let varName = rad === '50%' ? '--radius-circle' : rad === '9999px' ? '--radius-pill' : `--radius-${rad}`;
+                const cleanRad = rad.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+                let varName = rad === '50%' ? '--radius-circle' : rad === '9999px' ? '--radius-pill' : `--radius-${cleanRad}`;
                 this.rootVariables.set(rad, varName);
             }
         }
@@ -201,7 +202,8 @@ class StylesheetManager {
         // 4. Slide/Page Dimensions (if used >= 2 times, e.g. 1080px, 1350px)
         for (const [dim, count] of Object.entries(this.dimCounts).sort((a, b) => b[1] - a[1])) {
             if (count >= 2) {
-                let varName = dim === '1080px' ? '--slide-w' : dim === '1350px' ? '--slide-h' : `--dim-${dim}`;
+                const cleanDim = dim.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
+                let varName = dim === '1080px' ? '--slide-w' : dim === '1350px' ? '--slide-h' : `--dim-${cleanDim}`;
                 this.rootVariables.set(dim, varName);
             }
         }

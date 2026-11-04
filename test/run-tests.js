@@ -35,6 +35,11 @@ const {
     StylesheetManager,
     toBaseClassName
 } = require('../src/decompiler/stylesheet');
+const {
+    parseCommandsBlob,
+    parseVectorNetworkBlob,
+    isVectorNode
+} = require('../src/decompiler/vector');
 const { parseArgs: parseReverseArgs } = require('../cli-reverse');
 
 let totalTests = 0;
@@ -647,6 +652,93 @@ async function runAllTests() {
         // Clean up
         fs.unlinkSync(roundFig);
         fs.unlinkSync(roundHtml);
+    });
+
+    it('decodes binary commandsBlob into SVG path stream', () => {
+        // Construct binary buffer: MoveTo (10, 20), LineTo (30, 40), ClosePath
+        const buf = Buffer.alloc(1 + 8 + 1 + 8 + 1);
+        let off = 0;
+        buf.writeUInt8(1, off); off += 1;
+        buf.writeFloatLE(10, off); off += 4;
+        buf.writeFloatLE(20, off); off += 4;
+        buf.writeUInt8(2, off); off += 1;
+        buf.writeFloatLE(30, off); off += 4;
+        buf.writeFloatLE(40, off); off += 4;
+        buf.writeUInt8(0, off); off += 1;
+
+        const pathStr = parseCommandsBlob(buf);
+        assert.strictEqual(pathStr, 'M 10 20 L 30 40 Z');
+    });
+
+    it('decodes binary VectorNetwork into SVG path with curve segments', () => {
+        // 2 vertices (0,0) and (10,10), 1 straight segment
+        const buf = Buffer.alloc(12 + 24 + 28);
+        let off = 0;
+        buf.writeUInt32LE(2, off); off += 4; // numVertices
+        buf.writeUInt32LE(1, off); off += 4; // numSegments
+        buf.writeUInt32LE(0, off); off += 4; // numRegions
+
+        // Vertex 0: (0, 0)
+        buf.writeUInt32LE(0, off); off += 4;
+        buf.writeFloatLE(0, off); off += 4;
+        buf.writeFloatLE(0, off); off += 4;
+
+        // Vertex 1: (10, 10)
+        buf.writeUInt32LE(0, off); off += 4;
+        buf.writeFloatLE(10, off); off += 4;
+        buf.writeFloatLE(10, off); off += 4;
+
+        // Segment 0: start 0, ts(0,0), end 1, te(0,0)
+        buf.writeUInt32LE(0, off); off += 4;
+        buf.writeUInt32LE(0, off); off += 4;
+        buf.writeFloatLE(0, off); off += 4;
+        buf.writeFloatLE(0, off); off += 4;
+        buf.writeUInt32LE(1, off); off += 4;
+        buf.writeFloatLE(0, off); off += 4;
+        buf.writeFloatLE(0, off); off += 4;
+
+        const pathStr = parseVectorNetworkBlob(buf);
+        assert.strictEqual(pathStr, 'M 0 0 L 10 10');
+    });
+
+    await itAsync('decompiles complex fleader.fig with instances, vector icons and external CSS', async () => {
+        if (!fs.existsSync('fleader.fig')) return;
+
+        const outDir = path.resolve('test/fleader-test');
+        const outHtml = path.resolve(outDir, 'index.html');
+        const outCss = path.resolve(outDir, 'styles/main.css');
+
+        const res = await convertFigToHtml('fleader.fig', {
+            outputHtmlPath: outHtml,
+            extractCss: true,
+            cssFile: 'styles/main.css',
+            assetsDir: 'assets'
+        });
+
+        assert(fs.existsSync(outHtml), 'HTML file should exist');
+        assert(fs.existsSync(outCss), 'CSS file should exist');
+
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+        const cssContent = fs.readFileSync(outCss, 'utf8');
+
+        // Check tabs and suggestions
+        assert(htmlContent.includes('Агент'));
+        assert(htmlContent.includes('CRM'));
+        assert(htmlContent.includes('Продажи'));
+        assert(htmlContent.includes('Тренажер'));
+        assert(htmlContent.includes('Проекты в работе'));
+
+        // Check SVG vector icons
+        const svgCount = (htmlContent.match(/<svg/g) || []).length;
+        assert(svgCount >= 20, `Expected at least 20 SVG icons, got ${svgCount}`);
+
+        // Check clean CSS variables without spaces
+        const rootVars = cssContent.match(/--[a-zA-Z0-9_-]+:/g) || [];
+        assert(rootVars.length > 5);
+        assert(!cssContent.includes('--radius-10px 10px'));
+
+        // Clean up
+        fs.rmSync(outDir, { recursive: true, force: true });
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);

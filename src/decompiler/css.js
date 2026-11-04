@@ -154,8 +154,10 @@ function parseFontWeightAndStyle(fontStyleName) {
 function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     const styles = {};
 
+    const isSvgVector = node.type === 'VECTOR' || node.type === 'STAR' || node.type === 'REGULAR_POLYGON' || node.type === 'BOOLEAN_OPERATION' || (node.vectorData && (!node.children || node.children.length === 0));
+
     // 1. Fills & Backgrounds
-    if (Array.isArray(node.fillPaints) && node.fillPaints.length > 0) {
+    if (!isSvgVector && Array.isArray(node.fillPaints) && node.fillPaints.length > 0) {
         const visibleFills = node.fillPaints.filter(f => f.visible !== false);
 
         if (node.type === 'TEXT') {
@@ -176,7 +178,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                     const grad = formatGradient(fill);
                     if (grad) bgImages.push(grad);
                 } else if (fill.type === 'IMAGE' && fill.image?.hash) {
-                    const isNativeImg = node.type === 'RECTANGLE' && (!node.children || node.children.length === 0);
+                    const isNativeImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0);
                     if (isNativeImg) {
                         styles['object-fit'] = fill.imageScaleMode === 'FIT' ? 'contain' : (fill.imageScaleMode === 'STRETCH' ? 'fill' : 'cover');
                     } else {
@@ -215,7 +217,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     }
 
     // 2. Borders & Strokes
-    if (Array.isArray(node.strokePaints) && node.strokePaints.length > 0 && node.strokeWeight > 0) {
+    if (!isSvgVector && Array.isArray(node.strokePaints) && node.strokePaints.length > 0 && node.strokeWeight > 0) {
         const solidStroke = node.strokePaints.find(s => s.visible !== false && s.type === 'SOLID');
         if (solidStroke) {
             const strokeColor = formatColor(solidStroke.color, solidStroke.opacity);
@@ -245,10 +247,18 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         const br = node.rectangleBottomRightCornerRadius || 0;
         const bl = node.rectangleBottomLeftCornerRadius || 0;
         if (tl || tr || br || bl) {
-            styles['border-radius'] = `${tl}px ${tr}px ${br}px ${bl}px`;
+            if (tl === tr && tr === br && br === bl) {
+                styles['border-radius'] = `${tl}px`;
+            } else {
+                styles['border-radius'] = `${tl}px ${tr}px ${br}px ${bl}px`;
+            }
         }
     } else if (node.cornerRadius && node.cornerRadius > 0) {
         styles['border-radius'] = `${node.cornerRadius}px`;
+    }
+
+    if (isSvgVector) {
+        styles['flex-shrink'] = '0';
     }
 
     // 4. Effects (Shadows & Blurs)

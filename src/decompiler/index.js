@@ -31,7 +31,9 @@ async function convertFigToHtml(figInput, options = {}) {
 
     const isSeparateFiles = Boolean(options.separateFiles);
     const isExtractCss = isSeparateFiles || Boolean(options.extractCss);
-    const isInlineImages = isSeparateFiles ? false : (options.inlineImages !== false);
+    const isInlineImages = isSeparateFiles
+        ? false
+        : (options.inlineImages !== undefined ? options.inlineImages : (options.assetsDir ? false : true));
     const assetsRelDir = options.assetsDir || 'img';
     const cssRelPath = options.cssFile || 'css/style.css';
 
@@ -40,7 +42,7 @@ async function convertFigToHtml(figInput, options = {}) {
 
     // 1. Read .fig file and extract Kiwi AST and images
     log('Reading .fig archive and decoding Kiwi stream...');
-    const { nodeChanges, images } = readFigFile(figInput);
+    const { nodeChanges, blobs, images } = readFigFile(figInput);
 
     // 2. Build hierarchical scene tree
     log(`Building scene tree from ${nodeChanges.length} nodes...`);
@@ -101,6 +103,7 @@ async function convertFigToHtml(figInput, options = {}) {
         cssHref: cssRelPath,
         assetUrlPrefix: assetsPrefix,
         cssAssetUrlPrefix: cssPrefix,
+        blobs: blobs,
         title: options.title || canvas.name || 'Exported Figma Design'
     });
 

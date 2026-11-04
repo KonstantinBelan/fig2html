@@ -1,6 +1,7 @@
 // src/decompiler/html.js
 const { computeNodeStyles, toStyleString, formatColor, parseFontWeightAndStyle, getExtensionForMime } = require('./css');
 const { StylesheetManager } = require('./stylesheet');
+const { isVectorNode, extractVectorPath, getVectorStrokeAttributes, getVectorFillAttribute } = require('./vector');
 
 /**
  * Escapes characters for safe HTML attribute and text content rendering
@@ -242,7 +243,7 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
     const hasImageFill = Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false);
     const hasNoChildren = !node.children || node.children.length === 0;
 
-    if (node.type === 'RECTANGLE' && hasImageFill && hasNoChildren) {
+    if ((node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && hasImageFill && hasNoChildren) {
         const imgPaint = node.fillPaints.find(f => f.type === 'IMAGE' && f.visible !== false);
         const hashHex = imgPaint?.image?.hash ? Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase() : null;
         const imgObj = hashHex ? imageRegistry.get(hashHex) : null;
@@ -258,7 +259,33 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
         }
     }
 
-    // 5. TEXT ELEMENT
+    // 5. VECTOR / SVG ELEMENT
+    if (isVectorNode(node)) {
+        const d = extractVectorPath(node, options.blobs);
+        if (d) {
+            const w = Math.round((node.size?.x || 24) * 100) / 100;
+            const h = Math.round((node.size?.y || 24) * 100) / 100;
+            let fill = getVectorFillAttribute(node);
+            const { stroke, strokeWidth, strokeLinecap, strokeLinejoin } = getVectorStrokeAttributes(node);
+
+            if (fill === 'none' && stroke === 'none') {
+                fill = 'currentColor';
+            }
+
+            const fillVal = stylesheetManager ? stylesheetManager.substituteVar(fill) : fill;
+            const strokeVal = stylesheetManager ? stylesheetManager.substituteVar(stroke) : stroke;
+
+            let pathAttrs = `d="${d}" fill="${fillVal}"`;
+            if (strokeVal !== 'none') pathAttrs += ` stroke="${strokeVal}"`;
+            if (strokeWidth) pathAttrs += ` stroke-width="${strokeWidth}"`;
+            if (strokeLinecap) pathAttrs += ` stroke-linecap="${strokeLinecap}"`;
+            if (strokeLinejoin) pathAttrs += ` stroke-linejoin="${strokeLinejoin}"`;
+
+            return `${indent}<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" xmlns="http://www.w3.org/2000/svg"${classAttr}${styleAttr}>\n${indent}  <path ${pathAttrs} />\n${indent}</svg>\n`;
+        }
+    }
+
+    // 6. TEXT ELEMENT
     if (node.type === 'TEXT') {
         const tag = determineTextTag(node);
         const textContent = renderRichText(node.textData || { characters: node.name }, node, stylesheetManager);
