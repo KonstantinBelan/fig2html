@@ -846,7 +846,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 phase: 'CREATED',
                 parentIndex: { guid: parentGuid, position: orderPosition },
                 type: 'TEXT',
-                name: displayCharacters.slice(0, 32) || 'Text',
+                name: (element.className ? element.className.trim() : null) || displayCharacters.slice(0, 32) || 'Text',
                 visible: isVisible,
                 opacity: opacity,
                 blendMode: blendMode,

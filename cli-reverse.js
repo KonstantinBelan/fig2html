@@ -44,6 +44,7 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}-w, --watch${colors.reset}                Watch input file and rebuild automatically on change
   ${colors.cyan}--no-inline-images${colors.reset}       Extract images to separate files instead of Base64
   ${colors.cyan}--assets-dir <dir>${colors.reset}        Directory for extracted images (default: "images")
+  ${colors.cyan}--inline-styles${colors.reset}          Generate inline style attributes instead of <style> classes
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
   ${colors.cyan}-h, --help${colors.reset}                 Display this help message
   ${colors.cyan}-V, --version${colors.reset}              Display version number
@@ -67,6 +68,7 @@ function parseArgs(args) {
         page: 'Page 1',
         watch: false,
         inlineImages: true,
+        inlineStyles: false,
         assetsDir: 'images',
         verbose: false
     };
@@ -92,6 +94,8 @@ function parseArgs(args) {
             options.watch = true;
         } else if (arg === '--no-inline-images') {
             options.inlineImages = false;
+        } else if (arg === '--inline-styles') {
+            options.inlineStyles = true;
         } else if (arg === '--assets-dir') {
             options.assetsDir = args[++i];
         } else if (arg === '-v' || arg === '--verbose') {
@@ -133,6 +137,7 @@ async function runConversion(options) {
         outputHtmlPath: outputPath,
         pageName: options.page,
         inlineImages: options.inlineImages,
+        inlineStyles: options.inlineStyles,
         assetsDir: path.resolve(path.dirname(outputPath), options.assetsDir),
         verbose: options.verbose
     });

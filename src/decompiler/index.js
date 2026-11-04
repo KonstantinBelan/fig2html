@@ -77,6 +77,7 @@ async function convertFigToHtml(figInput, options = {}) {
     log('Generating semantic HTML5 and CSS styles...');
     const html = generateFullHtmlDocument(rootNodes, images, {
         inlineImages: options.inlineImages !== false,
+        inlineStyles: options.inlineStyles === true,
         assetUrlPrefix: options.assetUrlPrefix || 'images/',
         title: options.title || canvas.name || 'Exported Figma Design'
     });

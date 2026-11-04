@@ -1,5 +1,6 @@
 // src/decompiler/html.js
 const { computeNodeStyles, toStyleString, formatColor, parseFontWeightAndStyle } = require('./css');
+const { StylesheetManager } = require('./stylesheet');
 
 /**
  * Escapes characters for safe HTML attribute and text content rendering
@@ -35,9 +36,10 @@ function isValidClassName(name) {
  * Reconstructs Rich Text content from characters, characterStyleIDs and styleOverrideTable
  * @param {object} textData
  * @param {object} defaultNode
+ * @param {StylesheetManager} [stylesheetManager=null]
  * @returns {string} HTML string with styled <span> tags where necessary
  */
-function renderRichText(textData, defaultNode) {
+function renderRichText(textData, defaultNode, stylesheetManager = null) {
     if (!textData || !textData.characters) {
         return '';
     }
@@ -90,7 +92,10 @@ function renderRichText(textData, defaultNode) {
 
             if (override.fillPaints && override.fillPaints.length > 0) {
                 const solid = override.fillPaints.find(f => f.type === 'SOLID');
-                if (solid) spanStyles['color'] = formatColor(solid.color, solid.opacity);
+                if (solid) {
+                    const rawColor = formatColor(solid.color, solid.opacity);
+                    spanStyles['color'] = stylesheetManager ? stylesheetManager.substituteVar(rawColor) : rawColor;
+                }
             }
 
             if (override.fontSize && override.fontSize !== defaultNode.fontSize) {
@@ -174,50 +179,63 @@ function determineContainerTag(node) {
  * @param {object} node
  * @param {object} parentNode
  * @param {Map<string, object>} imageRegistry
- * @param {object} options
- * @param {number} indentLevel
+ * @param {StylesheetManager|object} [stylesheetManagerOrOptions={}]
+ * @param {object|number} [maybeOptions={}]
+ * @param {number} [maybeIndent=2]
  * @returns {string} HTML snippet
  */
-function renderNodeToHtml(node, parentNode, imageRegistry, options = {}, indentLevel = 2) {
+function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOptions = {}, maybeOptions = {}, maybeIndent = 2) {
     if (!node || node.visible === false) return '';
+
+    let stylesheetManager = null;
+    let options = {};
+    let indentLevel = 2;
+
+    if (stylesheetManagerOrOptions && typeof stylesheetManagerOrOptions.getNodeClass === 'function') {
+        stylesheetManager = stylesheetManagerOrOptions;
+        options = maybeOptions || {};
+        if (typeof maybeIndent === 'number') indentLevel = maybeIndent;
+    } else {
+        options = stylesheetManagerOrOptions || {};
+        stylesheetManager = options.stylesheetManager || null;
+        if (typeof maybeOptions === 'number') indentLevel = maybeOptions;
+    }
 
     const indent = '  '.repeat(indentLevel);
     const nodeName = node.name || '';
-    const cleanClassName = isValidClassName(nodeName) ? nodeName : '';
+    const assignedClass = stylesheetManager
+        ? stylesheetManager.getNodeClass(node)
+        : (isValidClassName(nodeName) ? nodeName : '');
+    const classAttr = assignedClass ? ` class="${assignedClass}"` : '';
+
+    const styles = (stylesheetManager && stylesheetManager.getNodeStyles(node))
+        || computeNodeStyles(node, parentNode, imageRegistry, options);
+
+    const isInline = stylesheetManager ? (options.inlineStyles === true) : (options.inlineStyles !== false);
+    const styleStr = toStyleString(styles);
+    const styleAttr = isInline && styleStr ? ` style="${styleStr}"` : '';
 
     // 1. INPUT ELEMENT DETECTION
     if (nodeName.startsWith('Input[') && nodeName.endsWith(']')) {
         const inputType = nodeName.slice('Input['.length, -1).toLowerCase();
         const placeholderNode = (node.children || []).find(c => c.name === 'Placeholder' || c.type === 'TEXT');
         const placeholderText = placeholderNode ? (placeholderNode.textData?.characters || placeholderNode.name || '') : '';
-
-        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-        // Clean default borders on native input if needed
-        styles['outline'] = 'none';
-
-        const styleStr = toStyleString(styles);
-        const classAttr = cleanClassName ? ` class="${cleanClassName}"` : '';
         const phAttr = placeholderText ? ` placeholder="${escapeHtml(placeholderText)}"` : '';
 
-        return `${indent}<input type="${inputType}"${classAttr}${phAttr} style="${styleStr}">\n`;
+        return `${indent}<input type="${inputType}"${classAttr}${phAttr}${styleAttr}>\n`;
     }
 
     // 2. CHECKBOX / RADIO DETECTION
     if (nodeName === 'Checkbox' && node.type === 'RECTANGLE' && node.size?.x <= 24) {
-        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-        styles['cursor'] = 'pointer';
-        return `${indent}<input type="checkbox" style="${toStyleString(styles)}">\n`;
+        return `${indent}<input type="checkbox"${classAttr}${styleAttr}>\n`;
     }
     if (nodeName === 'Radio' && node.type === 'ELLIPSE' && node.size?.x <= 24) {
-        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-        styles['cursor'] = 'pointer';
-        return `${indent}<input type="radio" style="${toStyleString(styles)}">\n`;
+        return `${indent}<input type="radio"${classAttr}${styleAttr}>\n`;
     }
 
     // 3. DIVIDER / HORIZONTAL RULE (<hr>)
     if ((nodeName === 'Divider' || nodeName === 'Line' || nodeName === 'hairline') && node.type === 'RECTANGLE' && (node.size?.y <= 3 || !node.children?.length)) {
-        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-        return `${indent}<div class="${cleanClassName || 'hairline'}" style="${toStyleString(styles)}"></div>\n`;
+        return `${indent}<div${classAttr || ' class="hairline"'}${styleAttr}></div>\n`;
     }
 
     // 4. IMAGE RECTANGLE (<img />)
@@ -234,65 +252,38 @@ function renderNodeToHtml(node, parentNode, imageRegistry, options = {}, indentL
                 ? imgObj.base64
                 : `${options.assetUrlPrefix || 'images/'}${hashHex}.${imgObj.mime === 'image/jpeg' ? 'jpg' : 'png'}`;
 
-            const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-            // Delete background-image since we're using native <img>
-            delete styles['background-image'];
-            styles['object-fit'] = imgPaint.imageScaleMode === 'FIT' ? 'contain' : (imgPaint.imageScaleMode === 'STRETCH' ? 'fill' : 'cover');
-
-            const isDefaultImgName = nodeName === 'Image' || nodeName === 'SVG Icon';
-            const imgClass = (!isDefaultImgName && cleanClassName) ? cleanClassName : '';
-            const classAttr = imgClass ? ` class="${imgClass}"` : '';
-            return `${indent}<img src="${imgSrc}" alt="${escapeHtml(nodeName)}"${classAttr} style="${toStyleString(styles)}">\n`;
+            return `${indent}<img src="${imgSrc}" alt="${escapeHtml(nodeName)}"${classAttr}${styleAttr}>\n`;
         }
     }
 
     // 5. TEXT ELEMENT
     if (node.type === 'TEXT') {
         const tag = determineTextTag(node);
-        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+        const textContent = renderRichText(node.textData || { characters: node.name }, node, stylesheetManager);
 
-        // Normalize default margins on p / h1..h6
-        if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag) && !styles['margin']) {
-            styles['margin'] = '0';
-        }
-
-        const classAttr = cleanClassName ? ` class="${cleanClassName}"` : '';
-        const styleStr = toStyleString(styles);
-        const textContent = renderRichText(node.textData || { characters: node.name }, node);
-
-        return `${indent}<${tag}${classAttr}${styleStr ? ` style="${styleStr}"` : ''}>${textContent}</${tag}>\n`;
+        return `${indent}<${tag}${classAttr}${styleAttr}>${textContent}</${tag}>\n`;
     }
 
     // 6. GENERAL CONTAINER (FRAME / GROUP / COMPONENT / INSTANCE / ELLIPSE)
     const tag = determineContainerTag(node);
-    const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-
-    // If button tag, reset browser button border
-    if (tag === 'button') {
-        if (!styles['border']) styles['border'] = 'none';
-        styles['cursor'] = 'pointer';
-    }
-
-    const classAttr = cleanClassName ? ` class="${cleanClassName}"` : '';
-    const styleStr = toStyleString(styles);
 
     // Self-closing if empty and not a container tag
     if ((!node.children || node.children.length === 0) && tag !== 'div' && tag !== 'button') {
-        return `${indent}<${tag}${classAttr}${styleStr ? ` style="${styleStr}"` : ''}></${tag}>\n`;
+        return `${indent}<${tag}${classAttr}${styleAttr}></${tag}>\n`;
     }
 
     let innerHtml = '';
     if (node.children && node.children.length > 0) {
         for (const child of node.children) {
-            innerHtml += renderNodeToHtml(child, node, imageRegistry, options, indentLevel + 1);
+            innerHtml += renderNodeToHtml(child, node, imageRegistry, stylesheetManager, options, indentLevel + 1);
         }
     }
 
     if (!innerHtml.trim()) {
-        return `${indent}<${tag}${classAttr}${styleStr ? ` style="${styleStr}"` : ''}></${tag}>\n`;
+        return `${indent}<${tag}${classAttr}${styleAttr}></${tag}>\n`;
     }
 
-    return `${indent}<${tag}${classAttr}${styleStr ? ` style="${styleStr}"` : ''}>\n${innerHtml}${indent}</${tag}>\n`;
+    return `${indent}<${tag}${classAttr}${styleAttr}>\n${innerHtml}${indent}</${tag}>\n`;
 }
 
 /**
@@ -367,9 +358,34 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
         }
     }
 
+    const stylesheetManager = new StylesheetManager(options);
+
+    // Pass 1: Walk entire scene tree and register all nodes
+    function registerTree(node, parent) {
+        if (!node || node.visible === false) return;
+        stylesheetManager.registerNode(node, parent, imageRegistry, options);
+        if (node.children) {
+            for (const child of node.children) {
+                registerTree(child, node);
+            }
+        }
+    }
+    for (const root of rootNodes) {
+        registerTree(root, null);
+    }
+
+    // Generate CSS rules (classes + :root) or base resets if inlineStyles is requested
+    let cssContent = '';
+    if (options.inlineStyles) {
+        cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n  }\n  img {\n    max-width: 100%;\n    display: block;\n  }`;
+    } else {
+        cssContent = stylesheetManager.generateFullStylesheet(rootBg);
+    }
+
+    // Pass 2: Render semantic HTML
     let bodyContent = '';
     for (const root of rootNodes) {
-        bodyContent += renderNodeToHtml(root, null, imageRegistry, options, 2);
+        bodyContent += renderNodeToHtml(root, null, imageRegistry, stylesheetManager, options, 2);
     }
 
     return `<!DOCTYPE html>
@@ -379,22 +395,7 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
 ${googleFontsUrl ? `  <link rel="preconnect" href="https://fonts.googleapis.com">\n  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n  <link href="${googleFontsUrl}" rel="stylesheet">\n` : ''}  <style>
-    *, *::before, *::after {
-      box-sizing: border-box;
-    }
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      background-color: ${rootBg};
-      color: #c9d1d9;
-    }
-    img {
-      max-width: 100%;
-      display: block;
-    }
+${cssContent}
   </style>
 </head>
 <body>

@@ -163,23 +163,28 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                     const grad = formatGradient(fill);
                     if (grad) bgImages.push(grad);
                 } else if (fill.type === 'IMAGE' && fill.image?.hash) {
-                    const hashHex = Buffer.from(fill.image.hash).toString('hex').toLowerCase();
-                    const imgObj = imageRegistry.get(hashHex);
-                    if (imgObj) {
-                        const imgUrl = options.inlineImages !== false
-                            ? imgObj.base64
-                            : `${options.assetUrlPrefix || 'images/'}${hashHex}.${imgObj.mime === 'image/jpeg' ? 'jpg' : 'png'}`;
-                        bgImages.push(`url('${imgUrl}')`);
+                    const isNativeImg = node.type === 'RECTANGLE' && (!node.children || node.children.length === 0);
+                    if (isNativeImg) {
+                        styles['object-fit'] = fill.imageScaleMode === 'FIT' ? 'contain' : (fill.imageScaleMode === 'STRETCH' ? 'fill' : 'cover');
+                    } else {
+                        const hashHex = Buffer.from(fill.image.hash).toString('hex').toLowerCase();
+                        const imgObj = imageRegistry.get(hashHex);
+                        if (imgObj) {
+                            const imgUrl = options.inlineImages !== false
+                                ? imgObj.base64
+                                : `${options.assetUrlPrefix || 'images/'}${hashHex}.${imgObj.mime === 'image/jpeg' ? 'jpg' : 'png'}`;
+                            bgImages.push(`url('${imgUrl}')`);
 
-                        if (fill.imageScaleMode === 'FIT') {
-                            styles['background-size'] = 'contain';
-                            styles['background-repeat'] = 'no-repeat';
-                            styles['background-position'] = 'center';
-                        } else if (fill.imageScaleMode === 'STRETCH') {
-                            styles['background-size'] = '100% 100%';
-                        } else {
-                            styles['background-size'] = 'cover';
-                            styles['background-position'] = 'center';
+                            if (fill.imageScaleMode === 'FIT') {
+                                styles['background-size'] = 'contain';
+                                styles['background-repeat'] = 'no-repeat';
+                                styles['background-position'] = 'center';
+                            } else if (fill.imageScaleMode === 'STRETCH') {
+                                styles['background-size'] = '100% 100%';
+                            } else {
+                                styles['background-size'] = 'cover';
+                                styles['background-position'] = 'center';
+                            }
                         }
                     }
                 }
@@ -454,6 +459,21 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         if (node.children && node.children.length > 0) {
             styles['position'] = 'relative';
         }
+    }
+
+    // 9. Element-specific normalizations
+    const nodeName = node.name || '';
+    const lowerName = nodeName.toLowerCase().trim();
+
+    if (nodeName.startsWith('Input[') && nodeName.endsWith(']')) {
+        styles['outline'] = 'none';
+    } else if ((nodeName === 'Checkbox' || nodeName === 'Radio') && node.size?.x <= 24) {
+        styles['cursor'] = 'pointer';
+    } else if (lowerName.startsWith('btn') || lowerName === 'button') {
+        if (!styles['border']) styles['border'] = 'none';
+        styles['cursor'] = 'pointer';
+    } else if (node.type === 'TEXT') {
+        if (!styles['margin']) styles['margin'] = '0';
     }
 
     return styles;

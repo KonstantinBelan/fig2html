@@ -30,6 +30,10 @@ const {
     formatEffects,
     parseFontWeightAndStyle
 } = require('../src/decompiler/css');
+const {
+    StylesheetManager,
+    toBaseClassName
+} = require('../src/decompiler/stylesheet');
 const { parseArgs: parseReverseArgs } = require('../cli-reverse');
 
 let totalTests = 0;
@@ -453,11 +457,47 @@ async function runAllTests() {
         assert(tree.rootNodes[0].children.length > 0);
     });
 
+    it('transliterates Cyrillic layer names and formats CSS class names', () => {
+        assert.strictEqual(toBaseClassName('deck-bar', 'FRAME'), 'deck-bar');
+        assert.strictEqual(toBaseClassName('Фото как второй дизайнер', 'TEXT'), 'foto-kak-vtoroy-dizayner');
+        assert.strictEqual(toBaseClassName('01 / 06', 'TEXT'), 'text-01-06');
+        assert.strictEqual(toBaseClassName('dot is-on', 'ELLIPSE'), 'dot-is-on');
+    });
+
+    it('deduplicates identical styles and creates numbered variant classes', () => {
+        const mgr = new StylesheetManager();
+        const node1 = { name: 'slide-body', type: 'FRAME', size: { x: 100, y: 100 } };
+        const node2 = { name: 'slide-body', type: 'FRAME', size: { x: 100, y: 100 } };
+        const node3 = { name: 'slide-body', type: 'FRAME', size: { x: 200, y: 200 } };
+
+        const c1 = mgr.registerNode(node1, null, new Map());
+        const c2 = mgr.registerNode(node2, null, new Map());
+        const c3 = mgr.registerNode(node3, null, new Map());
+
+        assert.strictEqual(c1, 'slide-body');
+        assert.strictEqual(c2, 'slide-body');
+        assert.strictEqual(c3, 'slide-body-2');
+    });
+
+    it('extracts recurring styles into :root CSS variables', () => {
+        const mgr = new StylesheetManager();
+        const nodeA = { name: 'title', type: 'TEXT', fontSize: 16, fontName: { family: 'Inter', style: 'Regular' }, fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }] };
+        const nodeB = { name: 'title', type: 'TEXT', fontSize: 16, fontName: { family: 'Inter', style: 'Regular' }, fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0 } }] };
+        mgr.registerNode(nodeA, null, new Map());
+        mgr.registerNode(nodeB, null, new Map());
+
+        const css = mgr.generateFullStylesheet('#08090a');
+        assert(css.includes(':root {'));
+        assert(css.includes('--font-display:'));
+        assert(css.includes('var(--font-display)'));
+    });
+
     it('parses reverse CLI arguments', () => {
-        const opts = parseReverseArgs(['input.fig', 'output.html', '--page', 'Page 1', '--verbose']);
+        const opts = parseReverseArgs(['input.fig', 'output.html', '--page', 'Page 1', '--inline-styles', '--verbose']);
         assert.strictEqual(opts.input, 'input.fig');
         assert.strictEqual(opts.output, 'output.html');
         assert.strictEqual(opts.page, 'Page 1');
+        assert.strictEqual(opts.inlineStyles, true);
         assert.strictEqual(opts.verbose, true);
     });
 
@@ -504,6 +544,10 @@ async function runAllTests() {
         assert(htmlContent.includes('Слайды с фотографиями'));
         assert(htmlContent.includes('Фото как'));
         assert(htmlContent.includes('data:image/jpeg;base64,'));
+        assert(htmlContent.includes(':root {'));
+        assert(htmlContent.includes('--font-display'));
+        assert(htmlContent.includes('class="foto-kak-vtoroy-dizayner"'));
+        assert(!htmlContent.includes('segoe="" ui"'));
         assert(res.stats.frames >= 5);
         assert(res.stats.textNodes >= 20);
 
