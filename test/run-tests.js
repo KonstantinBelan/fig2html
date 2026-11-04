@@ -728,14 +728,75 @@ async function runAllTests() {
         assert(htmlContent.includes('Тренажер'));
         assert(htmlContent.includes('Проекты в работе'));
 
+        // 1. Check full CSS reset is generated
+        assert(cssContent.includes('button, input, optgroup, select, textarea'));
+        assert(cssContent.includes('appearance: button'));
+
+        // 2. Check vertical alignment for .b (Avatar letter B)
+        assert(cssContent.includes('.b {'));
+        const bStyleMatch = cssContent.match(/\.b\s*\{([^}]+)\}/);
+        assert(bStyleMatch, 'should have .b style rule');
+        assert(bStyleMatch[1].includes('display: flex') && bStyleMatch[1].includes('align-items: center') && bStyleMatch[1].includes('justify-content: center'));
+
+        // 3 & 6. Check vector container flattening (1b87bb and navigation-dasboard merged into single SVG)
+        assert(htmlContent.includes('class="frame-1b87bb"'));
+        assert(htmlContent.includes('class="navigation-dasboard"'));
+        const frame1bMatch = htmlContent.match(/<svg[^>]*class="frame-1b87bb"[^>]*>([\s\S]*?)<\/svg>/);
+        assert(frame1bMatch, '1b87bb should be a single SVG element');
+        const pathCount1b = (frame1bMatch[1].match(/<path/g) || []).length;
+        assert.strictEqual(pathCount1b, 2, '1b87bb SVG should contain both vector paths flattened together');
+
         // Check SVG vector icons
         const svgCount = (htmlContent.match(/<svg/g) || []).length;
-        assert(svgCount >= 20, `Expected at least 20 SVG icons, got ${svgCount}`);
+        assert(svgCount >= 15, `Expected at least 15 SVG icons, got ${svgCount}`);
+
+        // 4. Check property-aware :root variables (no radius vars on gap, width, or padding)
+        assert(!cssContent.includes('gap: var(--radius-'), 'gap should not use --radius vars');
+        assert(!cssContent.includes('padding: var(--radius-'), 'padding should not use --radius vars');
+        assert(!cssContent.includes('width: var(--radius-'), 'width should not use --radius vars');
+        assert(cssContent.includes('border-radius: var(--radius-'), 'border-radius should use --radius vars');
+
+        // 5. Check image crop mode uses object-fit: cover instead of fill
+        assert(cssContent.includes('object-fit: cover'));
+        assert(!cssContent.includes('object-fit: fill'));
+
+        // 7. Check mask layer is not rendered as separate visible image
+        const group1Match = htmlContent.match(/<div class="group-1">([\s\S]*?)<\/div>/);
+        assert(group1Match, 'group-1 should exist');
+        const group1Imgs = (group1Match[1].match(/<img/g) || []).length;
+        assert.strictEqual(group1Imgs, 1, 'group-1 should contain exactly 1 image (mask layer omitted)');
 
         // Check clean CSS variables without spaces
         const rootVars = cssContent.match(/--[a-zA-Z0-9_-]+:/g) || [];
         assert(rootVars.length > 5);
         assert(!cssContent.includes('--radius-10px 10px'));
+
+        // 8. Check icon vector scaling (normalizedSize scale and non-scaling-stroke)
+        assert(htmlContent.includes('class="navigation-ai"'));
+        const navAiMatch = htmlContent.match(/<svg[^>]*class="navigation-ai"[^>]*>([\s\S]*?)<\/svg>/);
+        assert(navAiMatch, 'navigation-ai should be an SVG');
+        assert(navAiMatch[1].includes('scale(0.6 0.6)'), 'navigation-ai path should be scaled to fit 12x12 inside 16x16');
+        assert(navAiMatch[1].includes('vector-effect="non-scaling-stroke"'), 'navigation-ai should use non-scaling-stroke');
+
+        const iconMatch = htmlContent.match(/<svg[^>]*class="icon"[^>]*>([\s\S]*?)<\/svg>/);
+        assert(iconMatch, 'icon (search) should be an SVG');
+        assert(iconMatch[1].includes('scale(0.667 0.667)'), 'icon path should be scaled proportionally');
+
+        // 9. Check Hug contents (RESIZE_TO_FIT) does not output static height
+        const frame12Match = cssContent.match(/\.frame-12\s*\{([^}]+)\}/);
+        assert(frame12Match, 'should have .frame-12 rule');
+        assert(!frame12Match[1].includes('height:'), 'Frame 12 (hug contents) should not have static height');
+
+        const submenuMatch = cssContent.match(/\.submenu\s*\{([^}]+)\}/);
+        assert(submenuMatch, 'should have .submenu rule');
+        assert(!submenuMatch[1].includes('height:'), 'Submenu (hug contents) should not have static height');
+
+        // 10. Check Figma "Truncate text" parameter (textTruncation: ENDING)
+        const zastryavshieMatch = cssContent.match(/\.zastryavshie-proekty-trebuyushchie\s*\{([^}]+)\}/);
+        assert(zastryavshieMatch, 'should have zastryavshie rule');
+        assert(zastryavshieMatch[1].includes('text-overflow: ellipsis'), 'truncated text should have text-overflow: ellipsis');
+        assert(zastryavshieMatch[1].includes('white-space: nowrap'), 'truncated text should have white-space: nowrap');
+        assert(zastryavshieMatch[1].includes('overflow: hidden'), 'truncated text should have overflow: hidden');
 
         // Clean up
         fs.rmSync(outDir, { recursive: true, force: true });

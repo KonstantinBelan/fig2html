@@ -64,6 +64,12 @@ class StylesheetManager {
         this.uniqueRules = new Map();   // className -> styles
         this.rootVariables = new Map(); // value -> varName
 
+        // Typed variable maps to prevent cross-property pollution
+        this.colorVariables = new Map();  // color -> varName
+        this.fontVariables = new Map();   // font -> varName
+        this.radiusVariables = new Map(); // radius -> varName
+        this.dimVariables = new Map();    // dim -> varName
+
         // Frequencies for :root extraction
         this.colorCounts = {};
         this.fontCounts = {};
@@ -90,6 +96,10 @@ class StylesheetManager {
      * @returns {string} Assigned CSS class name
      */
     registerNode(node, parentNode, imageRegistry, options = {}) {
+        if (!node || node.visible === false || node.mask === true || node.isMask === true) {
+            return '';
+        }
+
         const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
         const baseName = toBaseClassName(node.name, node.type);
         const sig = styleSignature(styles);
@@ -165,15 +175,20 @@ class StylesheetManager {
     }
 
     /**
-     * Identifies recurring values and builds the :root variable dictionary
+     * Identifies recurring values and builds typed :root variable dictionaries
      */
     buildRootVariables() {
         this.rootVariables.clear();
+        this.colorVariables.clear();
+        this.fontVariables.clear();
+        this.radiusVariables.clear();
+        this.dimVariables.clear();
 
         // 1. Fonts (if used >= 2 times)
         for (const [font, count] of Object.entries(this.fontCounts)) {
             if (count >= 2) {
                 const varName = font.includes('Mono') || font.includes('mono') ? '--font-mono' : '--font-display';
+                this.fontVariables.set(font, varName);
                 this.rootVariables.set(font, varName);
             }
         }
@@ -186,6 +201,7 @@ class StylesheetManager {
                 if (col === '#ffffff') varName = '--color-white';
                 else if (col === '#000000') varName = '--color-black';
                 else varName = `--color-${colorIndex++}`;
+                this.colorVariables.set(col, varName);
                 this.rootVariables.set(col, varName);
             }
         }
@@ -195,6 +211,7 @@ class StylesheetManager {
             if (count >= 2) {
                 const cleanRad = rad.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
                 let varName = rad === '50%' ? '--radius-circle' : rad === '9999px' ? '--radius-pill' : `--radius-${cleanRad}`;
+                this.radiusVariables.set(rad, varName);
                 this.rootVariables.set(rad, varName);
             }
         }
@@ -204,25 +221,77 @@ class StylesheetManager {
             if (count >= 2) {
                 const cleanDim = dim.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
                 let varName = dim === '1080px' ? '--slide-w' : dim === '1350px' ? '--slide-h' : `--dim-${cleanDim}`;
+                this.dimVariables.set(dim, varName);
                 this.rootVariables.set(dim, varName);
             }
         }
     }
 
     /**
-     * Replaces a value with its var(--...) counterpart if present in :root
-     * @param {string} value
+     * Context-aware variable substitution: only substitutes variables matching the property type
+     * @param {string} propOrValue CSS property name or raw value
+     * @param {string} [maybeValue] CSS property value if prop is provided
      * @returns {string}
      */
-    substituteVar(value) {
-        if (this.rootVariables.has(value)) {
-            return `var(${this.rootVariables.get(value)})`;
+    substituteVar(propOrValue, maybeValue) {
+        let prop = null;
+        let value = null;
+        if (maybeValue !== undefined) {
+            prop = propOrValue;
+            value = maybeValue;
+        } else {
+            value = propOrValue;
+        }
+
+        if (!value || typeof value !== 'string') return value;
+
+        if (prop) {
+            if (prop === 'font-family') {
+                return this.fontVariables.has(value) ? `var(${this.fontVariables.get(value)})` : value;
+            }
+            if (prop === 'border-radius') {
+                return this.radiusVariables.has(value) ? `var(${this.radiusVariables.get(value)})` : value;
+            }
+            if (prop === 'color' || prop === 'background-color' || prop === 'border-color' || prop === 'fill' || prop === 'stroke') {
+                return this.colorVariables.has(value) ? `var(${this.colorVariables.get(value)})` : value;
+            }
+            if ((prop === 'width' || prop === 'height' || prop === 'min-height') && this.dimVariables.has(value)) {
+                return `var(${this.dimVariables.get(value)})`;
+            }
+            if (prop.startsWith('border')) {
+                let s = value;
+                for (const [col, vName] of this.colorVariables.entries()) {
+                    if (s.includes(col)) {
+                        s = s.replace(col, `var(${vName})`);
+                    }
+                }
+                return s;
+            }
+            if (prop === 'box-shadow') {
+                let s = value;
+                for (const [col, vName] of this.colorVariables.entries()) {
+                    if (s.includes(col)) {
+                        s = s.replace(col, `var(${vName})`);
+                    }
+                }
+                return s;
+            }
+            // All other properties (gap, padding, margin, font-size, width < 500px, etc.): preserve original value
+            return value;
+        }
+
+        // Single argument fallback: only replace if matched in color or font variables
+        if (this.colorVariables.has(value)) {
+            return `var(${this.colorVariables.get(value)})`;
+        }
+        if (this.fontVariables.has(value)) {
+            return `var(${this.fontVariables.get(value)})`;
         }
         return value;
     }
 
     /**
-     * Generates the entire CSS text including :root, base resets, and all class rules
+     * Generates the entire CSS text including :root, complete reset.css, and all class rules
      * @param {string} [rootBgColor='#0d1117']
      * @returns {string}
      */
@@ -240,14 +309,16 @@ class StylesheetManager {
             lines.push('  }\n');
         }
 
-        // 2. Base resets
+        // 2. Comprehensive Modern CSS Resets
+        const primaryFont = Object.keys(this.fontCounts)[0] || "'Inter', sans-serif";
+        const fontVal = this.substituteVar('font-family', primaryFont);
+        const bgVal = this.substituteVar('background-color', rootBgColor);
+
         lines.push('  *, *::before, *::after {');
         lines.push('    box-sizing: border-box;');
+        lines.push('    margin: 0;');
+        lines.push('    padding: 0;');
         lines.push('  }\n');
-
-        const primaryFont = Object.keys(this.fontCounts)[0] || "'Inter', sans-serif";
-        const fontVal = this.substituteVar(primaryFont);
-        const bgVal = this.substituteVar(rootBgColor);
 
         lines.push('  body {');
         lines.push('    margin: 0;');
@@ -257,18 +328,63 @@ class StylesheetManager {
         lines.push('    -moz-osx-font-smoothing: grayscale;');
         lines.push(`    background-color: ${bgVal};`);
         lines.push('    color: #c9d1d9;');
+        lines.push('    line-height: 1.5;');
         lines.push('  }\n');
 
-        lines.push('  img {');
-        lines.push('    max-width: 100%;');
+        lines.push('  button, input, optgroup, select, textarea {');
+        lines.push('    font-family: inherit;');
+        lines.push('    font-size: 100%;');
+        lines.push('    line-height: inherit;');
+        lines.push('    color: inherit;');
+        lines.push('    margin: 0;');
+        lines.push('    padding: 0;');
+        lines.push('    border: 0;');
+        lines.push('    background: transparent;');
+        lines.push('    vertical-align: baseline;');
+        lines.push('  }\n');
+
+        lines.push('  button, [type="button"], [type="reset"], [type="submit"] {');
+        lines.push('    -webkit-appearance: button;');
+        lines.push('    appearance: button;');
+        lines.push('    cursor: pointer;');
+        lines.push('    background: transparent;');
+        lines.push('    border: none;');
+        lines.push('    outline: none;');
+        lines.push('  }\n');
+
+        lines.push('  input, textarea {');
+        lines.push('    outline: none;');
+        lines.push('    background: transparent;');
+        lines.push('    border: none;');
+        lines.push('  }\n');
+
+        lines.push('  h1, h2, h3, h4, h5, h6, p {');
+        lines.push('    margin: 0;');
+        lines.push('    font-size: inherit;');
+        lines.push('    font-weight: inherit;');
+        lines.push('  }\n');
+
+        lines.push('  ul, ol {');
+        lines.push('    list-style: none;');
+        lines.push('    margin: 0;');
+        lines.push('    padding: 0;');
+        lines.push('  }\n');
+
+        lines.push('  img, svg {');
         lines.push('    display: block;');
+        lines.push('    max-width: 100%;');
+        lines.push('  }\n');
+
+        lines.push('  a {');
+        lines.push('    color: inherit;');
+        lines.push('    text-decoration: inherit;');
         lines.push('  }\n');
 
         // 3. Class rules
         for (const [className, styles] of this.uniqueRules.entries()) {
             lines.push(`  .${className} {`);
             for (const [prop, val] of Object.entries(styles)) {
-                const finalVal = this.substituteVar(String(val).replace(/"/g, "'"));
+                const finalVal = this.substituteVar(prop, String(val).replace(/"/g, "'"));
                 lines.push(`    ${prop}: ${finalVal};`);
             }
             lines.push('  }\n');

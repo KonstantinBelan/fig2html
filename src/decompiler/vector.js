@@ -18,6 +18,76 @@ function isVectorNode(node) {
 }
 
 /**
+ * Checks if a node is a container whose visual content consists solely of vector shapes (e.g. an icon frame)
+ * @param {object} node
+ * @returns {boolean}
+ */
+function isVectorContainer(node) {
+    if (!node || !Array.isArray(node.children) || node.children.length === 0) return false;
+    const isFrame = ['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'BOOLEAN_OPERATION'].includes(node.type);
+    if (!isFrame) return false;
+
+    // Must not have image fills
+    const hasImageFill = Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false);
+    if (hasImageFill) return false;
+
+    // Direct children must all be vectors or lines
+    return node.children.every(c => isVectorNode(c) || c.type === 'LINE');
+}
+
+/**
+ * Multiplies two 2x3 affine transformation matrices
+ * @param {object} m1
+ * @param {object} m2
+ * @returns {object}
+ */
+function multiplyMatrix(m1, m2) {
+    const a1 = m1?.m00 ?? 1, c1 = m1?.m01 ?? 0, e1 = m1?.m02 ?? 0;
+    const b1 = m1?.m10 ?? 0, d1 = m1?.m11 ?? 1, f1 = m1?.m12 ?? 0;
+
+    const a2 = m2?.m00 ?? 1, c2 = m2?.m01 ?? 0, e2 = m2?.m02 ?? 0;
+    const b2 = m2?.m10 ?? 0, d2 = m2?.m11 ?? 1, f2 = m2?.m12 ?? 0;
+
+    return {
+        m00: a1 * a2 + c1 * b2,
+        m01: a1 * c2 + c1 * d2,
+        m02: a1 * e2 + c1 * f2 + e1,
+        m10: b1 * a2 + d1 * b2,
+        m11: b1 * c2 + d1 * d2,
+        m12: b1 * e2 + d1 * f2 + f1
+    };
+}
+
+/**
+ * Recursively collects vector leaf nodes with their accumulated translation and transform matrix
+ * @param {object} parent
+ * @param {object|null} [parentMatrix=null]
+ * @returns {Array<{ node: object, tx: number, ty: number, transform: object }>}
+ */
+function collectVectorLeaves(parent, parentMatrix = null) {
+    const leaves = [];
+    if (!parent || !Array.isArray(parent.children)) return leaves;
+
+    for (const child of parent.children) {
+        if (!child || child.visible === false || child.mask === true || child.isMask === true) continue;
+        const childTransform = child.transform || { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 };
+        const combinedMatrix = parentMatrix ? multiplyMatrix(parentMatrix, childTransform) : childTransform;
+
+        if (isVectorNode(child)) {
+            leaves.push({
+                node: child,
+                tx: combinedMatrix.m02 || 0,
+                ty: combinedMatrix.m12 || 0,
+                transform: combinedMatrix
+            });
+        } else if (child.children && child.children.length > 0) {
+            leaves.push(...collectVectorLeaves(child, combinedMatrix));
+        }
+    }
+    return leaves;
+}
+
+/**
  * Parses Figma commandsBlob stream into SVG path string
  * Little-Endian float32 coordinates with opcode byte:
  * 1: MoveTo (x, y)
@@ -221,15 +291,23 @@ function parseVectorNetworkBlob(rawBlob) {
 }
 
 /**
- * Extracts SVG path string `d` from a Figma vector node using available binary blobs
+ * Extracts SVG path string `d` and normalization metadata from a Figma vector node
  * @param {object} node
  * @param {Array<Buffer|Uint8Array>} blobs
- * @returns {string} SVG path string
+ * @returns {{ d: string, isNormalized: boolean }}
  */
-function extractVectorPath(node, blobs = []) {
-    if (!node || !Array.isArray(blobs)) return '';
+function extractVectorPathInfo(node, blobs = []) {
+    if (!node || !Array.isArray(blobs)) return { d: '', isNormalized: false };
 
-    // 1. Try fillGeometry commandsBlob
+    // 1. If stroked vector without fillGeometry, prefer raw centerline vectorNetworkBlob
+    if (node.strokePaints?.length && (!node.fillGeometry || node.fillGeometry.length === 0)) {
+        if (node.vectorData?.vectorNetworkBlob !== undefined && blobs[node.vectorData.vectorNetworkBlob]) {
+            const d = parseVectorNetworkBlob(blobs[node.vectorData.vectorNetworkBlob]);
+            if (d) return { d, isNormalized: true };
+        }
+    }
+
+    // 2. Try fillGeometry commandsBlob
     if (Array.isArray(node.fillGeometry) && node.fillGeometry.length > 0) {
         const parts = [];
         for (const geom of node.fillGeometry) {
@@ -238,10 +316,16 @@ function extractVectorPath(node, blobs = []) {
                 if (d) parts.push(d);
             }
         }
-        if (parts.length > 0) return parts.join(' ');
+        if (parts.length > 0) return { d: parts.join(' '), isNormalized: false };
     }
 
-    // 2. Try strokeGeometry commandsBlob
+    // 3. Try vectorNetworkBlob
+    if (node.vectorData?.vectorNetworkBlob !== undefined && blobs[node.vectorData.vectorNetworkBlob]) {
+        const d = parseVectorNetworkBlob(blobs[node.vectorData.vectorNetworkBlob]);
+        if (d) return { d, isNormalized: true };
+    }
+
+    // 4. Try strokeGeometry commandsBlob
     if (Array.isArray(node.strokeGeometry) && node.strokeGeometry.length > 0) {
         const parts = [];
         for (const geom of node.strokeGeometry) {
@@ -250,15 +334,20 @@ function extractVectorPath(node, blobs = []) {
                 if (d) parts.push(d);
             }
         }
-        if (parts.length > 0) return parts.join(' ');
+        if (parts.length > 0) return { d: parts.join(' '), isNormalized: false };
     }
 
-    // 3. Try vectorNetworkBlob
-    if (node.vectorData?.vectorNetworkBlob !== undefined && blobs[node.vectorData.vectorNetworkBlob]) {
-        return parseVectorNetworkBlob(blobs[node.vectorData.vectorNetworkBlob]);
-    }
+    return { d: '', isNormalized: false };
+}
 
-    return '';
+/**
+ * Extracts SVG path string `d` from a Figma vector node using available binary blobs
+ * @param {object} node
+ * @param {Array<Buffer|Uint8Array>} blobs
+ * @returns {string} SVG path string
+ */
+function extractVectorPath(node, blobs = []) {
+    return extractVectorPathInfo(node, blobs).d;
 }
 
 /**
@@ -306,9 +395,13 @@ function getVectorFillAttribute(node) {
 
 module.exports = {
     isVectorNode,
+    isVectorContainer,
+    collectVectorLeaves,
+    multiplyMatrix,
     parseCommandsBlob,
     parseVectorNetworkBlob,
     extractVectorPath,
+    extractVectorPathInfo,
     getVectorStrokeAttributes,
     getVectorFillAttribute
 };

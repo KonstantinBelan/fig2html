@@ -143,6 +143,19 @@ function parseFontWeightAndStyle(fontStyleName) {
     };
 }
 
+function isVectorNodeCheck(n) {
+    if (!n) return false;
+    return ['VECTOR', 'STAR', 'REGULAR_POLYGON', 'BOOLEAN_OPERATION'].includes(n.type) || (n.vectorData && (!n.children || n.children.length === 0));
+}
+
+function isVectorContainerCheck(n) {
+    if (!n || !Array.isArray(n.children) || n.children.length === 0) return false;
+    if (!['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'BOOLEAN_OPERATION'].includes(n.type)) return false;
+    const hasImageFill = Array.isArray(n.fillPaints) && n.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false);
+    if (hasImageFill) return false;
+    return n.children.every(c => isVectorNodeCheck(c) || c.type === 'LINE');
+}
+
 /**
  * Generates an object of CSS styles for a Figma node
  * @param {object} node
@@ -180,7 +193,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                 } else if (fill.type === 'IMAGE' && fill.image?.hash) {
                     const isNativeImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0);
                     if (isNativeImg) {
-                        styles['object-fit'] = fill.imageScaleMode === 'FIT' ? 'contain' : (fill.imageScaleMode === 'STRETCH' ? 'fill' : 'cover');
+                        styles['object-fit'] = fill.imageScaleMode === 'FIT' ? 'contain' : 'cover';
                     } else {
                         const hashHex = Buffer.from(fill.image.hash).toString('hex').toLowerCase();
                         const imgObj = imageRegistry.get(hashHex);
@@ -196,8 +209,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                                 styles['background-size'] = 'contain';
                                 styles['background-repeat'] = 'no-repeat';
                                 styles['background-position'] = 'center';
-                            } else if (fill.imageScaleMode === 'STRETCH') {
-                                styles['background-size'] = '100% 100%';
+                            } else if (fill.imageScaleMode === 'TILE') {
+                                styles['background-repeat'] = 'repeat';
                             } else {
                                 styles['background-size'] = 'cover';
                                 styles['background-position'] = 'center';
@@ -321,12 +334,43 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             }
         }
 
+        if (node.textAlignVertical === 'CENTER') {
+            styles['display'] = 'flex';
+            styles['align-items'] = 'center';
+            if (node.textAlignHorizontal === 'CENTER') {
+                styles['justify-content'] = 'center';
+            } else if (node.textAlignHorizontal === 'RIGHT') {
+                styles['justify-content'] = 'flex-end';
+            }
+        } else if (node.textAlignVertical === 'BOTTOM') {
+            styles['display'] = 'flex';
+            styles['align-items'] = 'flex-end';
+            if (node.textAlignHorizontal === 'CENTER') {
+                styles['justify-content'] = 'center';
+            } else if (node.textAlignHorizontal === 'RIGHT') {
+                styles['justify-content'] = 'flex-end';
+            }
+        }
+
         if (node.textCase === 'UPPER') styles['text-transform'] = 'uppercase';
         else if (node.textCase === 'LOWER') styles['text-transform'] = 'lowercase';
         else if (node.textCase === 'TITLE') styles['text-transform'] = 'capitalize';
 
         if (node.textDecoration === 'UNDERLINE') styles['text-decoration'] = 'underline';
         else if (node.textDecoration === 'STRIKETHROUGH') styles['text-decoration'] = 'line-through';
+
+        if (node.textTruncation === 'ENDING' || node.textAutoResize === 'TRUNCATE') {
+            if (node.maxLines && node.maxLines > 1) {
+                styles['display'] = '-webkit-box';
+                styles['-webkit-line-clamp'] = String(node.maxLines);
+                styles['-webkit-box-orient'] = 'vertical';
+                styles['overflow'] = 'hidden';
+            } else {
+                styles['overflow'] = 'hidden';
+                styles['text-overflow'] = 'ellipsis';
+                styles['white-space'] = 'nowrap';
+            }
+        }
     }
 
     // 7. Auto Layout (Container Properties)
@@ -377,18 +421,32 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     const parentIsAutoLayout = parentNode && (parentNode.stackMode === 'HORIZONTAL' || parentNode.stackMode === 'VERTICAL');
     const isAbsolute = node.stackPositioning === 'ABSOLUTE' || (!parentIsAutoLayout && parentNode);
 
-    // If current node has absolute children or is a slide/card, it must be a positioned container
+    // If current node has absolute children or is a slide/card, or is a container with children and not auto-layout
+    const isContainer = ['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'COMPONENT'].includes(node.type);
     const isSlideOrCard = Boolean(node.name && node.name.toLowerCase().split(/\s+/).some(w => w === 'slide' || w === 'card'));
     const hasAbsoluteChildren = Array.isArray(node.children) && node.children.some(c => {
-        return c.stackPositioning === 'ABSOLUTE' || (!isAutoLayout && node.type === 'FRAME');
+        return c.stackPositioning === 'ABSOLUTE' || (!isAutoLayout && isContainer);
     });
-    if ((hasAbsoluteChildren || isSlideOrCard) && !styles['position']) {
+    const hasMaskChild = Array.isArray(node.children) && node.children.some(c => c.mask === true || c.isMask === true);
+
+    if ((hasAbsoluteChildren || isSlideOrCard || (isContainer && !isAutoLayout && node.children?.length > 0)) && !styles['position']) {
         styles['position'] = 'relative';
     }
 
-    // Overflow clipping for frames with absolute children, corner radius, slides/cards, or clipsContent
-    if (node.clipsContent || hasAbsoluteChildren || isSlideOrCard || (node.type === 'FRAME' && node.cornerRadius && node.children?.length)) {
+    // Overflow clipping for frames with absolute children, corner radius, slides/cards, masks, or clipsContent
+    if (node.clipsContent || hasAbsoluteChildren || isSlideOrCard || hasMaskChild || (node.type === 'FRAME' && node.cornerRadius && node.children?.length)) {
         styles['overflow'] = 'hidden';
+    }
+
+    if (hasMaskChild && !styles['border-radius']) {
+        const maskChild = node.children.find(c => c.mask === true || c.isMask === true);
+        if (maskChild) {
+            if (maskChild.type === 'ELLIPSE') {
+                styles['border-radius'] = '50%';
+            } else if (maskChild.cornerRadius) {
+                styles['border-radius'] = `${maskChild.cornerRadius}px`;
+            }
+        }
     }
 
     // If parent has absolute children and this node is in-flow, elevate it above absolute backgrounds
@@ -409,7 +467,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         if (node.size?.y) styles['height'] = `${Math.round(node.size.y)}px`;
     } else if (parentIsAutoLayout) {
         // Flow child in Auto Layout
-        if (node.stackChildPrimaryGrow === 1.0) {
+        const isGrow = node.stackChildPrimaryGrow === 1.0 || node.layoutGrow === 1.0 || node.layoutGrow === 1;
+        if (isGrow) {
             styles['flex-grow'] = '1';
             styles['flex-basis'] = '0';
             if (parentNode.stackMode === 'VERTICAL') {
@@ -419,10 +478,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             }
         }
 
-        if (node.stackChildAlignSelf === 'STRETCH') styles['align-self'] = 'stretch';
-        else if (node.stackChildAlignSelf === 'CENTER') styles['align-self'] = 'center';
-        else if (node.stackChildAlignSelf === 'MIN') styles['align-self'] = 'flex-start';
-        else if (node.stackChildAlignSelf === 'MAX') styles['align-self'] = 'flex-end';
+        const alignSelfVal = node.stackChildAlignSelf || node.layoutAlign;
+        if (alignSelfVal === 'STRETCH') styles['align-self'] = 'stretch';
+        else if (alignSelfVal === 'CENTER') styles['align-self'] = 'center';
+        else if (alignSelfVal === 'MIN') styles['align-self'] = 'flex-start';
+        else if (alignSelfVal === 'MAX') styles['align-self'] = 'flex-end';
 
         // Child margins
         const mt = node.stackChildMarginTop || 0;
@@ -439,38 +499,70 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             }
         }
 
-        // Explicit width/height for fixed sizes
+        // Sizing in Auto Layout
         const isRow = parentNode.stackMode === 'HORIZONTAL';
         const isShapeOrImage = ['ELLIPSE', 'RECTANGLE', 'VECTOR', 'REGULAR_POLYGON', 'STAR', 'LINE'].includes(node.type);
+        const isIconContainer = isVectorContainerCheck(node);
 
+        const nodeIsAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
+        let nodeHorizontalSizing = null;
+        let nodeVerticalSizing = null;
+
+        if (nodeIsAutoLayout) {
+            const isHorizontal = node.stackMode === 'HORIZONTAL';
+            const primaryIsFixed = node.stackPrimarySizing === 'FIXED';
+            const counterIsFixed = node.stackCounterSizing === 'FIXED';
+
+            nodeHorizontalSizing = isHorizontal ? (primaryIsFixed ? 'FIXED' : 'RESIZE_TO_FIT') : (counterIsFixed ? 'FIXED' : 'RESIZE_TO_FIT');
+            nodeVerticalSizing = isHorizontal ? (counterIsFixed ? 'FIXED' : 'RESIZE_TO_FIT') : (primaryIsFixed ? 'FIXED' : 'RESIZE_TO_FIT');
+        }
+
+        let isFixedX = false;
+        let isFixedY = false;
+
+        if (nodeIsAutoLayout) {
+            isFixedX = (nodeHorizontalSizing === 'FIXED');
+            isFixedY = (nodeVerticalSizing === 'FIXED');
+        } else if (isIconContainer) {
+            isFixedX = true;
+            isFixedY = true;
+        } else if (isShapeOrImage) {
+            isFixedX = true;
+            isFixedY = true;
+        } else if (node.type === 'TEXT') {
+            isFixedX = (node.textAutoResize === 'HEIGHT' || node.textAutoResize === 'NONE');
+            isFixedY = (node.textAutoResize === 'NONE');
+        } else {
+            // Non-auto-layout frame, instance, or group
+            isFixedX = !node.resizeToFit;
+            isFixedY = !node.resizeToFit;
+        }
+
+        // Primary & counter axis sizing
         if (isRow) {
-            // Primary axis is X (width)
-            if (!styles['flex-grow']) {
-                const isFixedX = (node.stackPrimarySizing === 'FIXED' || isShapeOrImage || (node.size?.x && node.stackPrimarySizing !== 'RESIZE_TO_FIT')) && (node.type !== 'TEXT' || node.textAutoResize === 'HEIGHT' || node.textAutoResize === 'NONE');
+            // Primary axis: Width
+            if (!styles['flex-grow'] && styles['align-self'] !== 'stretch') {
                 if (isFixedX && node.size?.x) {
                     styles['width'] = `${Math.round(node.size.x)}px`;
                     styles['flex-shrink'] = '0';
                 }
             }
-            // Counter axis is Y (height)
+            // Counter axis: Height
             if (styles['align-self'] !== 'stretch') {
-                const isFixedY = (node.stackCounterSizing === 'FIXED' || isShapeOrImage || (node.size?.y && node.stackCounterSizing !== 'RESIZE_TO_FIT')) && (node.type !== 'TEXT' || node.textAutoResize === 'NONE');
                 if (isFixedY && node.size?.y) {
                     styles['height'] = `${Math.round(node.size.y)}px`;
                 }
             }
         } else {
-            // Column: Primary axis is Y (height)
-            if (!styles['flex-grow']) {
-                const isFixedY = (node.stackPrimarySizing === 'FIXED' || isShapeOrImage || (node.size?.y && node.stackPrimarySizing !== 'RESIZE_TO_FIT')) && (node.type !== 'TEXT' || node.textAutoResize === 'NONE');
+            // Primary axis: Height
+            if (!styles['flex-grow'] && styles['align-self'] !== 'stretch') {
                 if (isFixedY && node.size?.y) {
                     styles['height'] = `${Math.round(node.size.y)}px`;
                     styles['flex-shrink'] = '0';
                 }
             }
-            // Counter axis is X (width)
+            // Counter axis: Width
             if (styles['align-self'] !== 'stretch') {
-                const isFixedX = (node.stackCounterSizing === 'FIXED' || isShapeOrImage || (node.size?.x && node.stackCounterSizing !== 'RESIZE_TO_FIT')) && (node.type !== 'TEXT' || node.textAutoResize === 'HEIGHT' || node.textAutoResize === 'NONE');
                 if (isFixedX && node.size?.x) {
                     styles['width'] = `${Math.round(node.size.x)}px`;
                 }

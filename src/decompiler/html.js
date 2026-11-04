@@ -1,7 +1,15 @@
 // src/decompiler/html.js
 const { computeNodeStyles, toStyleString, formatColor, parseFontWeightAndStyle, getExtensionForMime } = require('./css');
 const { StylesheetManager } = require('./stylesheet');
-const { isVectorNode, extractVectorPath, getVectorStrokeAttributes, getVectorFillAttribute } = require('./vector');
+const {
+    isVectorNode,
+    isVectorContainer,
+    collectVectorLeaves,
+    extractVectorPath,
+    extractVectorPathInfo,
+    getVectorStrokeAttributes,
+    getVectorFillAttribute
+} = require('./vector');
 
 /**
  * Escapes characters for safe HTML attribute and text content rendering
@@ -95,7 +103,7 @@ function renderRichText(textData, defaultNode, stylesheetManager = null) {
                 const solid = override.fillPaints.find(f => f.type === 'SOLID');
                 if (solid) {
                     const rawColor = formatColor(solid.color, solid.opacity);
-                    spanStyles['color'] = stylesheetManager ? stylesheetManager.substituteVar(rawColor) : rawColor;
+                    spanStyles['color'] = stylesheetManager ? stylesheetManager.substituteVar('color', rawColor) : rawColor;
                 }
             }
 
@@ -186,7 +194,7 @@ function determineContainerTag(node) {
  * @returns {string} HTML snippet
  */
 function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOptions = {}, maybeOptions = {}, maybeIndent = 2) {
-    if (!node || node.visible === false) return '';
+    if (!node || node.visible === false || node.mask === true || node.isMask === true) return '';
 
     let stylesheetManager = null;
     let options = {};
@@ -259,10 +267,87 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
         }
     }
 
-    // 5. VECTOR / SVG ELEMENT
+    // 5. VECTOR CONTAINER (Icon frame or multi-vector group like 1b87bb flattened into single SVG)
+    if (isVectorContainer(node)) {
+        const leaves = collectVectorLeaves(node);
+        if (leaves.length > 0) {
+            const w = Math.round((node.size?.x || 24) * 100) / 100;
+            const h = Math.round((node.size?.y || 24) * 100) / 100;
+            const pathElements = [];
+
+            for (const leaf of leaves) {
+                const info = extractVectorPathInfo(leaf.node, options.blobs);
+                if (!info.d) continue;
+
+                let fill = getVectorFillAttribute(leaf.node);
+                const { stroke, strokeWidth, strokeLinecap, strokeLinejoin } = getVectorStrokeAttributes(leaf.node);
+
+                if (fill === 'none' && stroke === 'none') {
+                    fill = 'currentColor';
+                }
+
+                const fillVal = stylesheetManager ? stylesheetManager.substituteVar('fill', fill) : fill;
+                const strokeVal = stylesheetManager ? stylesheetManager.substituteVar('stroke', stroke) : stroke;
+
+                // Scale factor for normalized vectorNetworkBlob coordinates
+                let sx = 1;
+                let sy = 1;
+                if (info.isNormalized && leaf.node.vectorData?.normalizedSize?.x && leaf.node.size?.x) {
+                    sx = leaf.node.size.x / leaf.node.vectorData.normalizedSize.x;
+                    sy = (leaf.node.vectorData?.normalizedSize?.y && leaf.node.size?.y)
+                        ? (leaf.node.size.y / leaf.node.vectorData.normalizedSize.y)
+                        : sx;
+                }
+
+                const m = leaf.transform || { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 };
+                // Combined affine transform: M * scale(sx, sy)
+                const a = (m.m00 ?? 1) * sx;
+                const b = (m.m10 ?? 0) * sx;
+                const c = (m.m01 ?? 0) * sy;
+                const dVal = (m.m11 ?? 1) * sy;
+                const e = m.m02 ?? 0;
+                const f = m.m12 ?? 0;
+
+                const r = n => Math.round(n * 1000) / 1000;
+                let transformAttr = '';
+
+                if (Math.abs(b) > 0.001 || Math.abs(c) > 0.001) {
+                    transformAttr = ` transform="matrix(${r(a)} ${r(b)} ${r(c)} ${r(dVal)} ${r(e)} ${r(f)})"`;
+                } else {
+                    const hasScale = Math.abs(a - 1) > 0.001 || Math.abs(dVal - 1) > 0.001;
+                    const hasTranslate = Math.abs(e) > 0.001 || Math.abs(f) > 0.001;
+                    if (hasScale && hasTranslate) {
+                        transformAttr = ` transform="translate(${r(e)} ${r(f)}) scale(${r(a)} ${r(dVal)})"`;
+                    } else if (hasTranslate) {
+                        transformAttr = ` transform="translate(${r(e)} ${r(f)})"`;
+                    } else if (hasScale) {
+                        transformAttr = ` transform="scale(${r(a)} ${r(dVal)})"`;
+                    }
+                }
+
+                let pathAttrs = `d="${info.d}" fill="${fillVal}"`;
+                if (transformAttr) pathAttrs = `${transformAttr} ${pathAttrs}`;
+                if (strokeVal !== 'none') {
+                    pathAttrs += ` stroke="${strokeVal}"`;
+                    pathAttrs += ` vector-effect="non-scaling-stroke"`;
+                }
+                if (strokeWidth) pathAttrs += ` stroke-width="${strokeWidth}"`;
+                if (strokeLinecap) pathAttrs += ` stroke-linecap="${strokeLinecap}"`;
+                if (strokeLinejoin) pathAttrs += ` stroke-linejoin="${strokeLinejoin}"`;
+
+                pathElements.push(`${indent}  <path ${pathAttrs} />`);
+            }
+
+            if (pathElements.length > 0) {
+                return `${indent}<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" xmlns="http://www.w3.org/2000/svg"${classAttr}${styleAttr}>\n${pathElements.join('\n')}\n${indent}</svg>\n`;
+            }
+        }
+    }
+
+    // 6. SINGLE VECTOR / SVG ELEMENT
     if (isVectorNode(node)) {
-        const d = extractVectorPath(node, options.blobs);
-        if (d) {
+        const info = extractVectorPathInfo(node, options.blobs);
+        if (info.d) {
             const w = Math.round((node.size?.x || 24) * 100) / 100;
             const h = Math.round((node.size?.y || 24) * 100) / 100;
             let fill = getVectorFillAttribute(node);
@@ -272,11 +357,27 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
                 fill = 'currentColor';
             }
 
-            const fillVal = stylesheetManager ? stylesheetManager.substituteVar(fill) : fill;
-            const strokeVal = stylesheetManager ? stylesheetManager.substituteVar(stroke) : stroke;
+            const fillVal = stylesheetManager ? stylesheetManager.substituteVar('fill', fill) : fill;
+            const strokeVal = stylesheetManager ? stylesheetManager.substituteVar('stroke', stroke) : stroke;
 
-            let pathAttrs = `d="${d}" fill="${fillVal}"`;
-            if (strokeVal !== 'none') pathAttrs += ` stroke="${strokeVal}"`;
+            let transformAttr = '';
+            if (info.isNormalized && node.vectorData?.normalizedSize?.x && node.size?.x) {
+                const sx = node.size.x / node.vectorData.normalizedSize.x;
+                const sy = (node.vectorData?.normalizedSize?.y && node.size?.y)
+                    ? (node.size.y / node.vectorData.normalizedSize.y)
+                    : sx;
+                if (Math.abs(sx - 1) > 0.001 || Math.abs(sy - 1) > 0.001) {
+                    const r = n => Math.round(n * 1000) / 1000;
+                    transformAttr = ` transform="scale(${r(sx)} ${r(sy)})"`;
+                }
+            }
+
+            let pathAttrs = `d="${info.d}" fill="${fillVal}"`;
+            if (transformAttr) pathAttrs = `${transformAttr} ${pathAttrs}`;
+            if (strokeVal !== 'none') {
+                pathAttrs += ` stroke="${strokeVal}"`;
+                pathAttrs += ` vector-effect="non-scaling-stroke"`;
+            }
             if (strokeWidth) pathAttrs += ` stroke-width="${strokeWidth}"`;
             if (strokeLinecap) pathAttrs += ` stroke-linecap="${strokeLinecap}"`;
             if (strokeLinejoin) pathAttrs += ` stroke-linejoin="${strokeLinejoin}"`;
@@ -391,8 +492,11 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
 
     // Pass 1: Walk entire scene tree and register all nodes
     function registerTree(node, parent) {
-        if (!node || node.visible === false) return;
+        if (!node || node.visible === false || node.mask === true || node.isMask === true) return;
         stylesheetManager.registerNode(node, parent, imageRegistry, options);
+        if (isVectorContainer(node)) {
+            return;
+        }
         if (node.children) {
             for (const child of node.children) {
                 registerTree(child, node);
@@ -406,7 +510,7 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
     // Generate CSS rules (classes + :root) or base resets if inlineStyles is requested
     let cssContent = '';
     if (options.inlineStyles) {
-        cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n  }\n  img {\n    max-width: 100%;\n    display: block;\n  }`;
+        cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n    line-height: 1.5;\n  }\n  button, input, optgroup, select, textarea {\n    font-family: inherit;\n    font-size: 100%;\n    line-height: inherit;\n    color: inherit;\n    margin: 0;\n    padding: 0;\n    border: 0;\n    background: transparent;\n    vertical-align: baseline;\n  }\n  button, [type="button"], [type="reset"], [type="submit"] {\n    -webkit-appearance: button;\n    appearance: button;\n    cursor: pointer;\n    background: transparent;\n    border: none;\n    outline: none;\n  }\n  input, textarea {\n    outline: none;\n    background: transparent;\n    border: none;\n  }\n  h1, h2, h3, h4, h5, h6, p {\n    margin: 0;\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  ul, ol {\n    list-style: none;\n    margin: 0;\n    padding: 0;\n  }\n  img, svg {\n    max-width: 100%;\n    display: block;\n  }\n  a {\n    color: inherit;\n    text-decoration: inherit;\n  }`;
     } else {
         cssContent = stylesheetManager.generateFullStylesheet(rootBg);
     }
