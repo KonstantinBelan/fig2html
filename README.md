@@ -87,11 +87,19 @@ npm run build
 
 #### 2. Обратная конвертация: .fig ➔ HTML
 ```bash
-# Декомпиляция .fig файла в чистый автономный HTML:
+# Декомпиляция .fig файла в чистый автономный HTML (все стили и картинки внутри):
 node cli-reverse.js design.fig
+
+# Декомпиляция с вынесением CSS в отдельный файл css/style.css и картинок в img/*:
+node cli-reverse.js design.fig -s
+# или:
+node cli-reverse.js design.fig index.html --separate-files
 
 # Указание имени выходного файла и страницы:
 node cli-reverse.js showcase.fig output.html --page "Page 1"
+
+# Тонкая настройка путей к CSS и картинкам:
+node cli-reverse.js test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir assets
 
 # Умный автовыбор направления через общую команду:
 node cli.js design.fig # автоматически определит .fig и создаст design.html
@@ -141,8 +149,12 @@ OPTIONS:
   -o, --output <file>      Выходной .html файл
   -p, --page <name>        Имя страницы в Figma (по умолчанию: "Page 1")
   -w, --watch              Режим наблюдения (авторебилд при изменении .fig)
-  --no-inline-images     Извлекать изображения в отдельные файлы вместо Base64
-  --assets-dir <dir>       Папка для извлеченных картинок (по умолчанию: "images")
+  -s, --separate-files     Извлекать отдельный CSS (css/style.css) и картинки (img/*)
+  --extract-css            Вынести стили в отдельный .css файл вместо <style> в <head>
+  --css-file <path>        Путь для внешнего файла стилей (по умолчанию: "css/style.css")
+  --no-inline-images       Извлекать изображения в отдельные файлы вместо Base64
+  --assets-dir <dir>       Папка для извлеченных картинок (по умолчанию: "img")
+  --inline-styles          Генерировать инлайн-атрибуты style="..." вместо классов
   -v, --verbose            Подробные логи процесса
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
@@ -179,15 +191,23 @@ build();
 const { convertFigToHtml } = require('html-to-fig');
 
 async function decompile() {
-    const result = await convertFigToHtml('showcase.fig', {
+    // 1. Автономный единый HTML файл (все стили в <head><style>, картинки в Base64):
+    const result1 = await convertFigToHtml('showcase.fig', {
         outputHtmlPath: 'output.html',
         pageName: 'Page 1',
-        inlineImages: true, // автономный HTML с Data URI изображениями
+        inlineImages: true,
         verbose: true
     });
 
-    console.log(`Декомпилировано ${result.totalNodes} нод за ${result.durationMs}мс!`);
-    console.log(`HTML сохранен в: ${result.outputPath}`);
+    // 2. Модульная структура с отдельным CSS (css/style.css) и картинками (img/*):
+    const result2 = await convertFigToHtml('showcase.fig', {
+        outputHtmlPath: 'dist/index.html',
+        separateFiles: true, // создает dist/css/style.css и dist/img/*
+        verbose: true
+    });
+
+    console.log(`Декомпилировано ${result2.totalNodes} нод за ${result2.durationMs}мс!`);
+    console.log(`HTML: ${result2.outputPath}, CSS: ${result2.cssPath}, Assets: ${result2.assetsDir}`);
 }
 
 decompile();
@@ -197,7 +217,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (35 тестов):
+Проект покрыт всесторонними автоматическими тестами (40 тестов):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -206,6 +226,8 @@ decompile();
 - Сквозная генерация и проверка валидности структуры декодером Figma Kiwi
 - Тестирование на сложных реальных макетах (`test/showcase.html` и `test/hard.html`)
 - Декомпиляция .fig в валидный адаптивный HTML с сохранением семантики, Flexbox и графики
+- Автоматическое формирование `:root` переменных и семантических классов слоев с транслитерацией
+- Определение форматов изображений по Magic Bytes и экспорт раздельных файлов (`css/style.css`, `img/*`)
 - Полный Round-Trip тест: HTML ➔ .fig ➔ HTML с проверкой целостности всех элементов
 
 Запуск тестов:
@@ -233,7 +255,8 @@ html-to-fig/
 │   │   ├── index.js        # Главный оркестратор декомпиляции
 │   │   ├── reader.js       # Чтение .fig ZIP, декомпрессия Kiwi и извлечение картинок
 │   │   ├── tree.js         # Восстановление иерархии сцены и сортировка слоев
-│   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS
+│   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, дедупликация и транслитерация
+│   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS и маппинг MIME типов
 │   │   └── html.js         # Генерация семантического HTML5, форм и Rich Text
 │   ├── parsers/
 │   │   ├── color.js        # Парсер всех типов CSS цветов
@@ -245,7 +268,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (35 тестов)
+    ├── run-tests.js        # Автоматический тестовый запуск (40 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
