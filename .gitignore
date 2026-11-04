@@ -13,7 +13,8 @@ Thumbs.db
 # Generated build and test artifacts
 *.fig
 test/*.fig
-!template.fig
+!templates/template.fig
+!templates/*.fig
 !test/showcase.fig
 !test/hard.fig
 

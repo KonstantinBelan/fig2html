@@ -22,7 +22,7 @@ module.exports = {
 if (require.main === module) {
     const htmlPath = process.argv[2] || 'test.html';
     const outputPath = process.argv[3] || 'output.fig';
-    const templatePath = process.argv[4] || 'template.fig';
+    const templatePath = process.argv[4] || 'templates/template.fig';
 
     console.log(`\x1b[36m⚡ Converting ${htmlPath} to ${outputPath}...\x1b[0m`);
 

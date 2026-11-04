@@ -24,7 +24,7 @@ async function getZstd() {
  * @param {string} [options.htmlPath] Path to HTML file
  * @param {string} [options.htmlContent] Direct HTML content string
  * @param {string} [options.outputPath='output.fig'] Target .fig output path
- * @param {string} [options.templatePath='template.fig'] Base template .fig path
+ * @param {string} [options.templatePath='templates/template.fig'] Base template .fig path
  * @param {string} [options.pageName='Page 1'] Target page name
  * @param {boolean} [options.allowRemoteImages=true] Allow fetching remote images
  * @param {boolean} [options.verbose=false] Print verbose logs
@@ -41,7 +41,20 @@ async function generateFigFile(options = {}) {
         }
     };
 
-    const templatePath = options.templatePath || path.resolve(__dirname, '../template.fig');
+    let templatePath = options.templatePath;
+    if (!templatePath || !fs.existsSync(templatePath)) {
+        const candidatePaths = [
+            templatePath,
+            path.resolve(__dirname, '../templates/template.fig'),
+            path.resolve(process.cwd(), 'templates/template.fig'),
+            path.resolve(__dirname, '../template.fig'),
+            path.resolve(process.cwd(), 'template.fig')
+        ].filter(Boolean);
+        const found = candidatePaths.find(p => fs.existsSync(p));
+        if (found) {
+            templatePath = found;
+        }
+    }
     const outputPath = options.outputPath || 'output.fig';
 
     if (!fs.existsSync(templatePath)) {

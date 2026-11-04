@@ -41,7 +41,7 @@ ${colors.bold}ARGUMENTS:${colors.reset}
 ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}-i, --input <file>${colors.reset}       Path to input HTML file
   ${colors.cyan}-o, --output <file>${colors.reset}      Path to output .fig file
-  ${colors.cyan}-t, --template <file>${colors.reset}    Path to template .fig (default: template.fig)
+  ${colors.cyan}-t, --template <file>${colors.reset}    Path to template .fig (default: templates/template.fig)
   ${colors.cyan}-p, --page <name>${colors.reset}        Target Figma page name (default: "Page 1")
   ${colors.cyan}-w, --watch${colors.reset}              Watch input file and rebuild automatically on change
   ${colors.cyan}--no-remote-images${colors.reset}     Disable downloading remote HTTP/HTTPS images
@@ -65,7 +65,7 @@ function parseArgs(args) {
     const options = {
         input: null,
         output: null,
-        template: 'template.fig',
+        template: 'templates/template.fig',
         page: 'Page 1',
         watch: false,
         remoteImages: true,
