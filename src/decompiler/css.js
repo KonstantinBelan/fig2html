@@ -260,7 +260,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                 if (fam.toLowerCase().includes('mono')) {
                     styles['font-family'] = `'${fam}', ui-monospace, Menlo, Consolas, monospace`;
                 } else {
-                    styles['font-family'] = `'${fam}', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+                    styles['font-family'] = `'${fam}', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
                 }
             }
             const { fontWeight, fontStyle } = parseFontWeightAndStyle(node.fontName.style);
@@ -468,7 +468,7 @@ function toStyleString(styleObj) {
     if (!styleObj) return '';
     return Object.entries(styleObj)
         .filter(([_, v]) => v !== undefined && v !== null && v !== '')
-        .map(([k, v]) => `${k}: ${v};`)
+        .map(([k, v]) => `${k}: ${String(v).replace(/"/g, "'")};`)
         .join(' ');
 }
 
