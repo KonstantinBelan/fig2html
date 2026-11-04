@@ -57,7 +57,7 @@ ${colors.bold}EXAMPLES:${colors.reset}
   $ html-to-fig landing.html landing-design.fig
 
   ${colors.gray}# Live reload / watch mode:${colors.reset}
-  $ html-to-fig test.html -w
+  $ html-to-fig test/test.html -w
 `);
 }
 

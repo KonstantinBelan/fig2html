@@ -115,7 +115,7 @@ OPTIONS:
   -V, --version            Версия утилиты
 
 ПРИМЕРЫ:
-  $ html-to-fig test.html
+  $ html-to-fig test/test.html
   $ html-to-fig test/hard.html test/hard.fig --verbose
   $ html-to-fig test/showcase.html showcase.fig
   $ html-to-fig index.html -w
@@ -173,7 +173,6 @@ html-to-fig/
 ├── cli.js                  # CLI интерфейс и watch режим
 ├── index.js                # Главная точка входа программного API
 ├── package.json            # Зависимости и метаданные проекта
-├── test.html               # Базовый тестовый HTML
 ├── templates/
 │   └── template.fig        # Эталонный бинарный шаблон Figma контейнера
 ├── src/
@@ -191,6 +190,7 @@ html-to-fig/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
     ├── run-tests.js        # Автоматический тестовый запуск
+    ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
 ```

@@ -65,11 +65,17 @@ async function generateFigFile(options = {}) {
     let baseDir = process.cwd();
 
     if (options.htmlPath) {
-        if (!fs.existsSync(options.htmlPath)) {
-            throw new Error(`HTML input file not found at: ${options.htmlPath}`);
+        let resolvedHtmlPath = options.htmlPath;
+        if (!fs.existsSync(resolvedHtmlPath)) {
+            const fallbackPath = path.resolve(process.cwd(), 'test', options.htmlPath);
+            if (fs.existsSync(fallbackPath)) {
+                resolvedHtmlPath = fallbackPath;
+            } else {
+                throw new Error(`HTML input file not found at: ${options.htmlPath}`);
+            }
         }
-        htmlContent = fs.readFileSync(options.htmlPath, 'utf8');
-        baseDir = path.dirname(path.resolve(options.htmlPath));
+        htmlContent = fs.readFileSync(resolvedHtmlPath, 'utf8');
+        baseDir = path.dirname(path.resolve(resolvedHtmlPath));
     }
 
     if (!htmlContent) {

@@ -230,10 +230,10 @@ async function runAllTests() {
 
     // 7. End-to-End Generation & Kiwi Verification
     console.log('\n\x1b[1m7. End-to-End Generation Tests\x1b[0m');
-    await itAsync('generates valid output.fig from test.html', async () => {
+    await itAsync('generates valid output.fig from test/test.html', async () => {
         const outPath = 'test/test_out.fig';
         const res = await generateFigFile({
-            htmlPath: 'test.html',
+            htmlPath: 'test/test.html',
             outputPath: outPath
         });
         assert(fs.existsSync(outPath));

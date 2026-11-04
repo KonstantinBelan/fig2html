@@ -20,7 +20,7 @@ module.exports = {
 
 // When run directly as `node index.js`
 if (require.main === module) {
-    const htmlPath = process.argv[2] || 'test.html';
+    const htmlPath = process.argv[2] || 'test/test.html';
     const outputPath = process.argv[3] || 'output.fig';
     const templatePath = process.argv[4] || 'templates/template.fig';
 
