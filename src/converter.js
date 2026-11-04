@@ -612,7 +612,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         // -------------------------------------------------------------
         if (tagName === 'img') {
             const src = element.getAttribute('src');
-            const alt = element.getAttribute('alt') || 'Image';
+            const alt = element.getAttribute('alt') || element.className || 'Image';
             const objectFit = getProp('object-fit', 'objectFit') || 'cover';
             const scaleMode = objectFit === 'contain' ? 'FIT' : objectFit === 'fill' ? 'STRETCH' : 'FILL';
 
@@ -1186,7 +1186,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             strokeAlign: 'INSIDE',
             effects: effects,
             cornerRadius: borderRadius,
-            clipsContent: getProp('overflow', 'overflow') === 'hidden' || getProp('overflow', 'overflow') === 'clip'
+            frameMaskDisabled: !(getProp('overflow', 'overflow') === 'hidden' || getProp('overflow', 'overflow') === 'clip')
         };
 
         if (isAbsolute) {

@@ -24,9 +24,11 @@ function escapeHtml(str) {
 function isValidClassName(name) {
     if (!name || typeof name !== 'string') return false;
     const clean = name.trim();
-    // Exclude generic Figma names or names with spaces and special chars
-    if (clean.includes(' ') || clean.includes('[') || clean.includes('(') || clean.includes('#')) return false;
-    return /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(clean);
+    if (!clean) return false;
+    // Exclude generic Figma names, text content, or names with special characters
+    if (clean.includes('[') || clean.includes('(') || clean.includes('#') || clean.includes('/') || clean.includes('\n') || clean.includes(':') || clean.includes('·')) return false;
+    const tokens = clean.split(/\s+/);
+    return tokens.length > 0 && tokens.every(token => /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(token));
 }
 
 /**
@@ -213,9 +215,9 @@ function renderNodeToHtml(node, parentNode, imageRegistry, options = {}, indentL
     }
 
     // 3. DIVIDER / HORIZONTAL RULE (<hr>)
-    if ((nodeName === 'Divider' || nodeName === 'Line') && node.type === 'RECTANGLE' && (node.size?.y <= 3 || !node.children?.length)) {
+    if ((nodeName === 'Divider' || nodeName === 'Line' || nodeName === 'hairline') && node.type === 'RECTANGLE' && (node.size?.y <= 3 || !node.children?.length)) {
         const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-        return `${indent}<div class="divider" style="${toStyleString(styles)}"></div>\n`;
+        return `${indent}<div class="${cleanClassName || 'hairline'}" style="${toStyleString(styles)}"></div>\n`;
     }
 
     // 4. IMAGE RECTANGLE (<img />)
@@ -237,7 +239,9 @@ function renderNodeToHtml(node, parentNode, imageRegistry, options = {}, indentL
             delete styles['background-image'];
             styles['object-fit'] = imgPaint.imageScaleMode === 'FIT' ? 'contain' : (imgPaint.imageScaleMode === 'STRETCH' ? 'fill' : 'cover');
 
-            const classAttr = cleanClassName ? ` class="${cleanClassName}"` : '';
+            const isDefaultImgName = nodeName === 'Image' || nodeName === 'SVG Icon';
+            const imgClass = (!isDefaultImgName && cleanClassName) ? cleanClassName : '';
+            const classAttr = imgClass ? ` class="${imgClass}"` : '';
             return `${indent}<img src="${imgSrc}" alt="${escapeHtml(nodeName)}"${classAttr} style="${toStyleString(styles)}">\n`;
         }
     }
@@ -355,6 +359,14 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
     const fontFamilies = collectFontFamilies(rootNodes);
     const googleFontsUrl = generateGoogleFontsUrl(fontFamilies);
 
+    let rootBg = '#0d1117';
+    if (rootNodes[0] && Array.isArray(rootNodes[0].fillPaints)) {
+        const solid = rootNodes[0].fillPaints.find(f => f.type === 'SOLID' && f.visible !== false);
+        if (solid) {
+            rootBg = formatColor(solid.color, solid.opacity);
+        }
+    }
+
     let bodyContent = '';
     for (const root of rootNodes) {
         bodyContent += renderNodeToHtml(root, null, imageRegistry, options, 2);
@@ -376,12 +388,11 @@ ${googleFontsUrl ? `  <link rel="preconnect" href="https://fonts.googleapis.com"
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
-      background-color: #0d1117;
+      background-color: ${rootBg};
       color: #c9d1d9;
     }
     img {
       max-width: 100%;
-      height: auto;
       display: block;
     }
   </style>
