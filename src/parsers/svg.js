@@ -1,4 +1,5 @@
 // src/parsers/svg.js
+const { Resvg } = require('@resvg/resvg-js');
 
 /**
  * Serializes an SVG DOM element into a valid, standalone SVG string
@@ -46,7 +47,29 @@ function getSvgDimensions(svgElement, win) {
     };
 }
 
+/**
+ * Renders SVG XML into a high-DPI PNG buffer using Resvg
+ */
+function renderSvgToPng(svgXml, targetWidth = 64) {
+    try {
+        let clean = svgXml.trim();
+        if (!clean.includes('xmlns=')) {
+            clean = clean.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+        }
+        const pixelWidth = Math.max(32, Math.round(targetWidth * 2));
+        const resvg = new Resvg(clean, {
+            fitTo: { mode: 'width', value: pixelWidth }
+        });
+        const png = resvg.render().asPng();
+        return png;
+    } catch (e) {
+        console.warn(`[WARN] SVG rasterization failed: ${e.message}`);
+        return null;
+    }
+}
+
 module.exports = {
     serializeSvgElement,
-    getSvgDimensions
+    getSvgDimensions,
+    renderSvgToPng
 };

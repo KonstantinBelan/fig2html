@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { renderSvgToPng } = require('./svg');
 
 /**
  * Extracts width and height from common image formats (PNG, JPEG, GIF, WebP, SVG)
@@ -102,9 +103,18 @@ class ImageRegistry {
         this.sourceCache = new Map(); // srcKey -> { sha1Hex, sha1Buffer, width, height }
     }
 
-    registerBuffer(buffer, name = 'image') {
+    registerBuffer(buffer, name = 'image', targetWidth = 100) {
         if (!buffer || buffer.length === 0) {
             buffer = createFallbackImage();
+        }
+
+        // If buffer is SVG XML, rasterize it to high-res PNG for native Figma rendering
+        const headerText = buffer.slice(0, 100).toString('utf8').trim();
+        if (headerText.startsWith('<svg') || headerText.includes('<?xml') || headerText.includes('<svg')) {
+            const pngBuf = renderSvgToPng(buffer.toString('utf8'), targetWidth);
+            if (pngBuf) {
+                buffer = pngBuf;
+            }
         }
 
         const sha1 = crypto.createHash('sha1').update(buffer).digest();
@@ -125,7 +135,7 @@ class ImageRegistry {
         };
     }
 
-    async resolveImage(src, name = 'image') {
+    async resolveImage(src, name = 'image', targetWidth = 200) {
         if (!src) return null;
         const cleanSrc = src.trim();
 
@@ -182,7 +192,7 @@ class ImageRegistry {
             buffer = createFallbackImage();
         }
 
-        const registered = this.registerBuffer(buffer, name);
+        const registered = this.registerBuffer(buffer, name, targetWidth);
         this.sourceCache.set(cleanSrc, registered);
         return registered;
     }
@@ -197,7 +207,11 @@ class ImageRegistry {
                 hash: registeredImage.sha1Buffer,
                 name: registeredImage.name
             },
-            imageScaleMode: scaleMode
+            imageScaleMode: scaleMode,
+            transform: {
+                m00: 1, m01: 0, m02: 0,
+                m10: 0, m11: 1, m12: 0
+            }
         };
     }
 
