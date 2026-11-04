@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { generateFigFile } = require('./src/generator');
+const { convertFigToHtml } = require('./src/decompiler');
 const pkg = require('./package.json');
 
 // Terminal ANSI styling
@@ -112,7 +113,7 @@ function parseArgs(args) {
     if (!options.output && options.input) {
         const ext = path.extname(options.input);
         const base = path.basename(options.input, ext);
-        options.output = `${base}.fig`;
+        options.output = ext.toLowerCase() === '.fig' ? `${base}.html` : `${base}.fig`;
     }
 
     return options;
@@ -127,6 +128,35 @@ function formatBytes(bytes) {
 async function runConversion(options) {
     const inputPath = path.resolve(options.input);
     const outputPath = path.resolve(options.output);
+    const isReverse = inputPath.toLowerCase().endsWith('.fig');
+
+    if (isReverse) {
+        console.log(`${colors.magenta}⚡ Decompiling:${colors.reset} ${path.basename(inputPath)} -> ${path.basename(outputPath)}...`);
+
+        const result = await convertFigToHtml(inputPath, {
+            outputHtmlPath: outputPath,
+            pageName: options.page,
+            inlineImages: true,
+            verbose: options.verbose
+        });
+
+        const outStat = fs.statSync(outputPath);
+
+        console.log(`\n${colors.green}${colors.bold}✔ Decompilation complete in ${result.durationMs}ms!${colors.reset}`);
+        console.log(`${colors.bold}┌─────────────────────────────────────────┐${colors.reset}`);
+        console.log(`│ ${colors.bold}File:${colors.reset}       ${path.basename(outputPath).padEnd(27)} │`);
+        console.log(`│ ${colors.bold}Size:${colors.reset}       ${formatBytes(outStat.size).padEnd(27)} │`);
+        console.log(`│ ${colors.bold}Nodes:${colors.reset}      ${String(result.totalNodes + ' total in fig').padEnd(27)} │`);
+        console.log(`│   ${colors.dim}Frames:${colors.reset}   ${String(result.stats.frames).padEnd(27)} │`);
+        console.log(`│   ${colors.dim}Text:${colors.reset}     ${String(result.stats.textNodes).padEnd(27)} │`);
+        console.log(`│   ${colors.dim}Images:${colors.reset}   ${String(result.stats.images).padEnd(27)} │`);
+        console.log(`│   ${colors.dim}Shapes:${colors.reset}   ${String(result.stats.shapes).padEnd(27)} │`);
+        console.log(`│ ${colors.bold}Images:${colors.reset}     ${String(result.imagesCount + ' extracted').padEnd(27)} │`);
+        console.log(`${colors.bold}└─────────────────────────────────────────┘${colors.reset}`);
+        console.log(`\n${colors.gray}Open ${colors.bold}${outputPath}${colors.reset}${colors.gray} in any browser to view.${colors.reset}\n`);
+
+        return result;
+    }
 
     console.log(`${colors.cyan}⚡ Compiling:${colors.reset} ${path.basename(inputPath)} -> ${path.basename(outputPath)}...`);
 

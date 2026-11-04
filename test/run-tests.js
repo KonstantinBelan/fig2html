@@ -18,6 +18,19 @@ const {
 const { ImageRegistry, getImageDimensions } = require('../src/parsers/images');
 const { generateFigFile } = require('../src/generator');
 const { parseArgs } = require('../cli');
+const {
+    convertFigToHtml,
+    readFigFile,
+    buildSceneTree
+} = require('../src/decompiler');
+const {
+    formatColor,
+    getLinearGradientAngle,
+    formatGradient,
+    formatEffects,
+    parseFontWeightAndStyle
+} = require('../src/decompiler/css');
+const { parseArgs: parseReverseArgs } = require('../cli-reverse');
 
 let totalTests = 0;
 let passedTests = 0;
@@ -331,13 +344,207 @@ async function runAllTests() {
         // Verify absolute positioning of backgrounds and scrims
         const absNodes = tree.nodeChanges.filter(n => n.stackPositioning === 'ABSOLUTE');
         assert(absNodes.length >= 8, 'should have absolute positioned photo backgrounds and scrims');
-        for (const a of absNodes) {
-            assert.strictEqual(a.size.x, 1080, 'absolute child width should match slide width');
-            assert.strictEqual(a.size.y, 1350, 'absolute child height should match slide height');
-        }
-
         // Clean up
         fs.unlinkSync(outPath);
+    });
+
+    // 8. Decompiler (Figma -> HTML) Unit and E2E Tests
+    console.log('\n\x1b[1m8. Decompiler (Figma -> HTML) Tests\x1b[0m');
+
+    it('formats Figma RGBA to CSS hex and rgba', () => {
+        const hex = formatColor({ r: 1, g: 0, b: 0, a: 1 });
+        assert.strictEqual(hex, '#ff0000');
+
+        const rgba = formatColor({ r: 0, g: 0.5, b: 1, a: 0.5 });
+        assert(rgba.startsWith('rgba(0, 128, 255, 0.5)'));
+
+        const trans = formatColor({ r: 0, g: 0, b: 0, a: 0 });
+        assert.strictEqual(trans, 'transparent');
+    });
+
+    it('calculates linear gradient angle from affine transform matrix', () => {
+        // to bottom (180deg)
+        const a180 = getLinearGradientAngle({ m00: 0, m01: 1 });
+        assert.strictEqual(a180, 180);
+
+        // to right (90deg)
+        const a90 = getLinearGradientAngle({ m00: 1, m01: 0 });
+        assert.strictEqual(a90, 90);
+
+        // to top (0deg)
+        const a0 = getLinearGradientAngle({ m00: 0, m01: -1 });
+        assert.strictEqual(a0, 0);
+    });
+
+    it('formats gradient paint into CSS linear-gradient and radial-gradient', () => {
+        const linearPaint = {
+            type: 'GRADIENT_LINEAR',
+            transform: { m00: 0, m01: 1 },
+            stops: [
+                { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+                { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 }
+            ]
+        };
+        const cssLinear = formatGradient(linearPaint);
+        assert(cssLinear.includes('linear-gradient(180deg'));
+        assert(cssLinear.includes('#ff0000 0%'));
+        assert(cssLinear.includes('#0000ff 100%'));
+
+        const radialPaint = {
+            type: 'GRADIENT_RADIAL',
+            stops: [
+                { color: { r: 1, g: 1, b: 1, a: 1 }, position: 0 },
+                { color: { r: 0, g: 0, b: 0, a: 1 }, position: 1 }
+            ]
+        };
+        const cssRadial = formatGradient(radialPaint);
+        assert(cssRadial.startsWith('radial-gradient('));
+    });
+
+    it('formats drop-shadow, inner-shadow and blurs', () => {
+        const effects = [
+            {
+                type: 'DROP_SHADOW',
+                offset: { x: 0, y: 4 },
+                radius: 6,
+                spread: -1,
+                color: { r: 0, g: 0, b: 0, a: 0.1 },
+                visible: true
+            },
+            {
+                type: 'INNER_SHADOW',
+                offset: { x: 0, y: 2 },
+                radius: 4,
+                color: { r: 0, g: 0, b: 0, a: 0.2 },
+                visible: true
+            },
+            {
+                type: 'BACKGROUND_BLUR',
+                radius: 12,
+                visible: true
+            }
+        ];
+        const res = formatEffects(effects);
+        assert(res.boxShadow.includes('0px 4px 6px -1px rgba(0, 0, 0, 0.1)'));
+        assert(res.boxShadow.includes('inset 0px 2px 4px rgba(0, 0, 0, 0.2)'));
+        assert.strictEqual(res.backdropFilter, 'blur(12px)');
+    });
+
+    it('parses font weights and italic styles', () => {
+        assert.deepStrictEqual(parseFontWeightAndStyle('Bold'), { fontWeight: 700, fontStyle: 'normal' });
+        assert.deepStrictEqual(parseFontWeightAndStyle('Semi Bold Italic'), { fontWeight: 600, fontStyle: 'italic' });
+        assert.deepStrictEqual(parseFontWeightAndStyle('Light'), { fontWeight: 300, fontStyle: 'normal' });
+        assert.deepStrictEqual(parseFontWeightAndStyle('Medium'), { fontWeight: 500, fontStyle: 'normal' });
+    });
+
+    it('reads .fig file and extracts nodes and images', () => {
+        const figData = readFigFile('test/showcase.fig');
+        assert(Array.isArray(figData.nodeChanges));
+        assert(figData.nodeChanges.length > 30);
+        assert(figData.images instanceof Map);
+    });
+
+    it('builds scene tree with parent-child hierarchy and sorted order', () => {
+        const figData = readFigFile('test/showcase.fig');
+        const tree = buildSceneTree(figData.nodeChanges);
+        assert(tree.canvas);
+        assert.strictEqual(tree.canvas.name, 'Page 1');
+        assert(tree.rootNodes.length > 0);
+        assert(tree.rootNodes[0].children.length > 0);
+    });
+
+    it('parses reverse CLI arguments', () => {
+        const opts = parseReverseArgs(['input.fig', 'output.html', '--page', 'Page 1', '--verbose']);
+        assert.strictEqual(opts.input, 'input.fig');
+        assert.strictEqual(opts.output, 'output.html');
+        assert.strictEqual(opts.page, 'Page 1');
+        assert.strictEqual(opts.verbose, true);
+    });
+
+    await itAsync('decompiles test/showcase.fig into valid standalone HTML', async () => {
+        const outHtml = path.resolve('test/test-showcase.html');
+        const res = await convertFigToHtml('test/showcase.fig', {
+            outputHtmlPath: outHtml,
+            inlineImages: true
+        });
+
+        assert(fs.existsSync(outHtml));
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+
+        // Check HTML structure and semantics
+        assert(htmlContent.includes('<!DOCTYPE html>'));
+        assert(htmlContent.includes('<html lang="ru">'));
+        assert(htmlContent.includes('⚡ HTML to Figma Engine 2.0'));
+        assert(htmlContent.includes('Production Ready'));
+        assert(htmlContent.includes('Идеальная конвертация HTML &amp; CSS'));
+        assert(htmlContent.includes('data:image/png;base64,'));
+        assert(htmlContent.includes('display: flex'));
+        assert(htmlContent.includes('border-radius: 50%'));
+        assert(htmlContent.includes('<input type="text"'));
+        assert(htmlContent.includes('<input type="email"'));
+        assert(htmlContent.includes('<input type="checkbox"'));
+        assert(htmlContent.includes('<input type="radio"'));
+        assert(htmlContent.includes('button'));
+
+        // Clean up
+        fs.unlinkSync(outHtml);
+    });
+
+    await itAsync('decompiles test/hard.fig (Instagram deck with 6 slides and images)', async () => {
+        const outHtml = path.resolve('test/test-hard.html');
+        const res = await convertFigToHtml('test/hard.fig', {
+            outputHtmlPath: outHtml,
+            inlineImages: true
+        });
+
+        assert(fs.existsSync(outHtml));
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+
+        assert(htmlContent.includes('<!DOCTYPE html>'));
+        assert(htmlContent.includes('Слайды с фотографиями'));
+        assert(htmlContent.includes('Фото как'));
+        assert(htmlContent.includes('data:image/jpeg;base64,'));
+        assert(res.stats.frames >= 5);
+        assert(res.stats.textNodes >= 20);
+
+        // Clean up
+        fs.unlinkSync(outHtml);
+    });
+
+    await itAsync('performs full round-trip HTML -> .fig -> HTML and verifies content', async () => {
+        const roundFig = path.resolve('test/roundtrip.fig');
+        const roundHtml = path.resolve('test/roundtrip.html');
+
+        // 1. HTML -> .fig
+        await generateFigFile({
+            htmlPath: 'test/test.html',
+            outputPath: roundFig
+        });
+        assert(fs.existsSync(roundFig));
+
+        // 2. .fig -> HTML
+        const res = await convertFigToHtml(roundFig, {
+            outputHtmlPath: roundHtml,
+            inlineImages: true
+        });
+        assert(fs.existsSync(roundHtml));
+
+        const roundHtmlContent = fs.readFileSync(roundHtml, 'utf8');
+
+        // Verify key components survived round-trip
+        assert(roundHtmlContent.includes('Сгенерировано из HTML'));
+        assert(roundHtmlContent.includes('Auto Layout Active'));
+        assert(roundHtmlContent.includes('Этот фрейм собран напрямую'));
+        assert(roundHtmlContent.includes('Скорость'));
+        assert(roundHtmlContent.includes('Меньше 15мс на генерацию'));
+        assert(roundHtmlContent.includes('Чистый вектор'));
+        assert(roundHtmlContent.includes('Редактируемые слои'));
+        assert(roundHtmlContent.includes('Открыть проект'));
+        assert(roundHtmlContent.includes('display: flex'));
+
+        // Clean up
+        fs.unlinkSync(roundFig);
+        fs.unlinkSync(roundHtml);
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);

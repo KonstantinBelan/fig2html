@@ -1,0 +1,405 @@
+// src/decompiler/html.js
+const { computeNodeStyles, toStyleString, formatColor, parseFontWeightAndStyle } = require('./css');
+
+/**
+ * Escapes characters for safe HTML attribute and text content rendering
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+/**
+ * Checks if a string is a valid CSS class name
+ * @param {string} name
+ * @returns {boolean}
+ */
+function isValidClassName(name) {
+    if (!name || typeof name !== 'string') return false;
+    const clean = name.trim();
+    // Exclude generic Figma names or names with spaces and special chars
+    if (clean.includes(' ') || clean.includes('[') || clean.includes('(') || clean.includes('#')) return false;
+    return /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(clean);
+}
+
+/**
+ * Reconstructs Rich Text content from characters, characterStyleIDs and styleOverrideTable
+ * @param {object} textData
+ * @param {object} defaultNode
+ * @returns {string} HTML string with styled <span> tags where necessary
+ */
+function renderRichText(textData, defaultNode) {
+    if (!textData || !textData.characters) {
+        return '';
+    }
+
+    const characters = textData.characters;
+    const styleIDs = textData.characterStyleIDs;
+    const styleTable = textData.styleOverrideTable;
+
+    // Plain text without overrides
+    if (!Array.isArray(styleIDs) || styleIDs.length === 0 || !Array.isArray(styleTable) || styleTable.length === 0) {
+        return escapeHtml(characters).replace(/\n/g, '<br>');
+    }
+
+    // Map styleID -> style object
+    const styleMap = new Map();
+    for (const item of styleTable) {
+        if (item.styleID !== undefined) {
+            styleMap.set(item.styleID, item);
+        }
+    }
+
+    // Group characters into contiguous runs with identical styleID
+    const runs = [];
+    let currentID = styleIDs[0] || 0;
+    let currentRunChars = characters[0] || '';
+
+    for (let i = 1; i < characters.length; i++) {
+        const id = (i < styleIDs.length) ? styleIDs[i] : 0;
+        if (id === currentID) {
+            currentRunChars += characters[i];
+        } else {
+            runs.push({ id: currentID, text: currentRunChars });
+            currentID = id;
+            currentRunChars = characters[i];
+        }
+    }
+    if (currentRunChars.length > 0) {
+        runs.push({ id: currentID, text: currentRunChars });
+    }
+
+    // Render each run
+    const resultParts = [];
+    for (const run of runs) {
+        const escaped = escapeHtml(run.text).replace(/\n/g, '<br>');
+        if (run.id === 0 || !styleMap.has(run.id)) {
+            resultParts.push(escaped);
+        } else {
+            const override = styleMap.get(run.id);
+            const spanStyles = {};
+
+            if (override.fillPaints && override.fillPaints.length > 0) {
+                const solid = override.fillPaints.find(f => f.type === 'SOLID');
+                if (solid) spanStyles['color'] = formatColor(solid.color, solid.opacity);
+            }
+
+            if (override.fontSize && override.fontSize !== defaultNode.fontSize) {
+                spanStyles['font-size'] = `${override.fontSize}px`;
+            }
+
+            if (override.fontName) {
+                if (override.fontName.family && override.fontName.family !== defaultNode.fontName?.family) {
+                    spanStyles['font-family'] = `'${override.fontName.family}', sans-serif`;
+                }
+                const { fontWeight, fontStyle } = parseFontWeightAndStyle(override.fontName.style);
+                const defaultParsed = parseFontWeightAndStyle(defaultNode.fontName?.style);
+                if (fontWeight !== defaultParsed.fontWeight) spanStyles['font-weight'] = String(fontWeight);
+                if (fontStyle !== defaultParsed.fontStyle) spanStyles['font-style'] = fontStyle;
+            }
+
+            if (override.textDecoration === 'UNDERLINE') spanStyles['text-decoration'] = 'underline';
+            else if (override.textDecoration === 'STRIKETHROUGH') spanStyles['text-decoration'] = 'line-through';
+
+            const styleStr = toStyleString(spanStyles);
+            if (styleStr) {
+                resultParts.push(`<span style="${styleStr}">${escaped}</span>`);
+            } else {
+                resultParts.push(escaped);
+            }
+        }
+    }
+
+    return resultParts.join('');
+}
+
+/**
+ * Determines appropriate HTML tag for a text node
+ * @param {object} node
+ * @returns {string} Tag name (h1..h6, p, span)
+ */
+function determineTextTag(node) {
+    const name = (node.name || '').toLowerCase().trim();
+
+    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'label', 'blockquote', 'code'].includes(name)) {
+        return name;
+    }
+
+    const fs = node.fontSize || 16;
+    const { fontWeight } = parseFontWeightAndStyle(node.fontName?.style);
+
+    if (fs >= 32 && fontWeight >= 600) return 'h1';
+    if (fs >= 24 && fontWeight >= 600) return 'h2';
+    if (fs >= 18 && fontWeight >= 600) return 'h3';
+    if (fs >= 15 && fontWeight >= 600) return 'h4';
+
+    const text = node.textData?.characters || '';
+    if (text.includes('\n') || text.length > 80) {
+        return 'p';
+    }
+
+    return 'span';
+}
+
+/**
+ * Determines appropriate HTML tag for a frame or container node
+ * @param {object} node
+ * @returns {string} Tag name (div, header, nav, section, etc.)
+ */
+function determineContainerTag(node) {
+    const name = (node.name || '').toLowerCase().trim();
+
+    if (['header', 'nav', 'footer', 'section', 'article', 'aside', 'main', 'form'].includes(name)) {
+        return name;
+    }
+
+    if (name.startsWith('btn') || name === 'button') {
+        return 'button';
+    }
+
+    return 'div';
+}
+
+/**
+ * Renders a Figma node and its children into semantic HTML
+ * @param {object} node
+ * @param {object} parentNode
+ * @param {Map<string, object>} imageRegistry
+ * @param {object} options
+ * @param {number} indentLevel
+ * @returns {string} HTML snippet
+ */
+function renderNodeToHtml(node, parentNode, imageRegistry, options = {}, indentLevel = 2) {
+    if (!node || node.visible === false) return '';
+
+    const indent = '  '.repeat(indentLevel);
+    const nodeName = node.name || '';
+    const cleanClassName = isValidClassName(nodeName) ? nodeName : '';
+
+    // 1. INPUT ELEMENT DETECTION
+    if (nodeName.startsWith('Input[') && nodeName.endsWith(']')) {
+        const inputType = nodeName.slice('Input['.length, -1).toLowerCase();
+        const placeholderNode = (node.children || []).find(c => c.name === 'Placeholder' || c.type === 'TEXT');
+        const placeholderText = placeholderNode ? (placeholderNode.textData?.characters || placeholderNode.name || '') : '';
+
+        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+        // Clean default borders on native input if needed
+        styles['outline'] = 'none';
+
+        const styleStr = toStyleString(styles);
+        const classAttr = cleanClassName ? ` class="${cleanClassName}"` : '';
+        const phAttr = placeholderText ? ` placeholder="${escapeHtml(placeholderText)}"` : '';
+
+        return `${indent}<input type="${inputType}"${classAttr}${phAttr} style="${styleStr}">\n`;
+    }
+
+    // 2. CHECKBOX / RADIO DETECTION
+    if (nodeName === 'Checkbox' && node.type === 'RECTANGLE' && node.size?.x <= 24) {
+        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+        styles['cursor'] = 'pointer';
+        return `${indent}<input type="checkbox" style="${toStyleString(styles)}">\n`;
+    }
+    if (nodeName === 'Radio' && node.type === 'ELLIPSE' && node.size?.x <= 24) {
+        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+        styles['cursor'] = 'pointer';
+        return `${indent}<input type="radio" style="${toStyleString(styles)}">\n`;
+    }
+
+    // 3. DIVIDER / HORIZONTAL RULE (<hr>)
+    if ((nodeName === 'Divider' || nodeName === 'Line') && node.type === 'RECTANGLE' && (node.size?.y <= 3 || !node.children?.length)) {
+        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+        return `${indent}<div class="divider" style="${toStyleString(styles)}"></div>\n`;
+    }
+
+    // 4. IMAGE RECTANGLE (<img />)
+    const hasImageFill = Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false);
+    const hasNoChildren = !node.children || node.children.length === 0;
+
+    if (node.type === 'RECTANGLE' && hasImageFill && hasNoChildren) {
+        const imgPaint = node.fillPaints.find(f => f.type === 'IMAGE' && f.visible !== false);
+        const hashHex = imgPaint?.image?.hash ? Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase() : null;
+        const imgObj = hashHex ? imageRegistry.get(hashHex) : null;
+
+        if (imgObj) {
+            const imgSrc = options.inlineImages !== false
+                ? imgObj.base64
+                : `${options.assetUrlPrefix || 'images/'}${hashHex}.${imgObj.mime === 'image/jpeg' ? 'jpg' : 'png'}`;
+
+            const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+            // Delete background-image since we're using native <img>
+            delete styles['background-image'];
+            styles['object-fit'] = imgPaint.imageScaleMode === 'FIT' ? 'contain' : (imgPaint.imageScaleMode === 'STRETCH' ? 'fill' : 'cover');
+
+            const classAttr = cleanClassName ? ` class="${cleanClassName}"` : '';
+            return `${indent}<img src="${imgSrc}" alt="${escapeHtml(nodeName)}"${classAttr} style="${toStyleString(styles)}">\n`;
+        }
+    }
+
+    // 5. TEXT ELEMENT
+    if (node.type === 'TEXT') {
+        const tag = determineTextTag(node);
+        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+
+        // Normalize default margins on p / h1..h6
+        if (['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag) && !styles['margin']) {
+            styles['margin'] = '0';
+        }
+
+        const classAttr = cleanClassName ? ` class="${cleanClassName}"` : '';
+        const styleStr = toStyleString(styles);
+        const textContent = renderRichText(node.textData || { characters: node.name }, node);
+
+        return `${indent}<${tag}${classAttr}${styleStr ? ` style="${styleStr}"` : ''}>${textContent}</${tag}>\n`;
+    }
+
+    // 6. GENERAL CONTAINER (FRAME / GROUP / COMPONENT / INSTANCE / ELLIPSE)
+    const tag = determineContainerTag(node);
+    const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+
+    // If button tag, reset browser button border
+    if (tag === 'button') {
+        if (!styles['border']) styles['border'] = 'none';
+        styles['cursor'] = 'pointer';
+    }
+
+    const classAttr = cleanClassName ? ` class="${cleanClassName}"` : '';
+    const styleStr = toStyleString(styles);
+
+    // Self-closing if empty and not a container tag
+    if ((!node.children || node.children.length === 0) && tag !== 'div' && tag !== 'button') {
+        return `${indent}<${tag}${classAttr}${styleStr ? ` style="${styleStr}"` : ''}></${tag}>\n`;
+    }
+
+    let innerHtml = '';
+    if (node.children && node.children.length > 0) {
+        for (const child of node.children) {
+            innerHtml += renderNodeToHtml(child, node, imageRegistry, options, indentLevel + 1);
+        }
+    }
+
+    if (!innerHtml.trim()) {
+        return `${indent}<${tag}${classAttr}${styleStr ? ` style="${styleStr}"` : ''}></${tag}>\n`;
+    }
+
+    return `${indent}<${tag}${classAttr}${styleStr ? ` style="${styleStr}"` : ''}>\n${innerHtml}${indent}</${tag}>\n`;
+}
+
+/**
+ * Collects all unique font families from the scene tree
+ * @param {Array<object>} rootNodes
+ * @returns {Set<string>}
+ */
+function collectFontFamilies(rootNodes) {
+    const fonts = new Set();
+
+    function traverse(node) {
+        if (!node) return;
+        if (node.type === 'TEXT' && node.fontName?.family) {
+            fonts.add(node.fontName.family);
+        }
+        if (node.children) {
+            for (const child of node.children) {
+                traverse(child);
+            }
+        }
+    }
+
+    for (const r of rootNodes) {
+        traverse(r);
+    }
+    return fonts;
+}
+
+/**
+ * Generates Google Fonts URL query string for given font families
+ * @param {Set<string>} fontFamilies
+ * @returns {string|null}
+ */
+function generateGoogleFontsUrl(fontFamilies) {
+    if (!fontFamilies || fontFamilies.size === 0) return null;
+
+    const googleFontCandidates = [
+        'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins',
+        'Source Sans Pro', 'Raleway', 'Ubuntu', 'Nunito', 'Playfair Display',
+        'Rubik', 'Plus Jakarta Sans', 'Fira Sans', 'Work Sans', 'DM Sans'
+    ];
+
+    const familiesToLoad = [];
+    for (const fam of fontFamilies) {
+        const matched = googleFontCandidates.find(c => c.toLowerCase() === fam.toLowerCase());
+        if (matched) {
+            familiesToLoad.push(`family=${matched.replace(/\s+/g, '+')}:wght@300;400;500;600;700;800;900`);
+        }
+    }
+
+    if (familiesToLoad.length === 0) return null;
+    return `https://fonts.googleapis.com/css2?${familiesToLoad.join('&')}&display=swap`;
+}
+
+/**
+ * Generates a full standalone HTML5 document from the root Figma nodes
+ * @param {Array<object>} rootNodes
+ * @param {Map<string, object>} imageRegistry
+ * @param {object} [options={}]
+ * @returns {string} Complete HTML document
+ */
+function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
+    const title = options.title || (rootNodes[0]?.name) || 'Exported Figma Design';
+    const fontFamilies = collectFontFamilies(rootNodes);
+    const googleFontsUrl = generateGoogleFontsUrl(fontFamilies);
+
+    let bodyContent = '';
+    for (const root of rootNodes) {
+        bodyContent += renderNodeToHtml(root, null, imageRegistry, options, 2);
+    }
+
+    return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)}</title>
+${googleFontsUrl ? `  <link rel="preconnect" href="https://fonts.googleapis.com">\n  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n  <link href="${googleFontsUrl}" rel="stylesheet">\n` : ''}  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      background-color: #0d1117;
+      color: #c9d1d9;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+${bodyContent}</body>
+</html>
+`;
+}
+
+module.exports = {
+    escapeHtml,
+    isValidClassName,
+    renderRichText,
+    determineTextTag,
+    determineContainerTag,
+    renderNodeToHtml,
+    collectFontFamilies,
+    generateGoogleFontsUrl,
+    generateFullHtmlDocument
+};

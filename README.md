@@ -1,6 +1,6 @@
-# 🎨 HTML to .fig (Figma Binary Generator)
+# 🎨 HTML to .fig & .fig to HTML (Figma Bi-Directional Engine)
 
-Высокопроизводительный генератор нативных бинарных файлов Figma (`.fig`) напрямую из HTML и CSS. Проект производит чистый бинарный поток по спецификации **Kiwi Schema v101**, упакованный в сжатый архив Zstandard (.fig контейнер) со всеми стилями, векторными нодами, Auto Layout параметрами и встроенными изображениями.
+Высокопроизводительный генератор и декомпилятор нативных бинарных файлов Figma (`.fig`) напрямую из/в HTML и CSS. Проект производит чистый бинарный поток по спецификации **Kiwi Schema v101**, упакованный в сжатый архив Zstandard (.fig контейнер), а также выполняет **обратную трансляцию .fig файлов в семантический адаптивный HTML5/CSS** со всеми стилями, Flexbox/Auto Layout параметрами и встроенными изображениями.
 
 ---
 
@@ -73,6 +73,7 @@
 
 ### Запуск через CLI
 
+#### 1. Прямая конвертация: HTML ➔ .fig
 ```bash
 # Простой запуск для HTML файла:
 node cli.js index.html
@@ -84,49 +85,76 @@ node cli.js landing.html landing.fig
 npm run build
 ```
 
-Вы также можете связать утилиту глобально:
+#### 2. Обратная конвертация: .fig ➔ HTML
+```bash
+# Декомпиляция .fig файла в чистый автономный HTML:
+node cli-reverse.js design.fig
+
+# Указание имени выходного файла и страницы:
+node cli-reverse.js showcase.fig output.html --page "Page 1"
+
+# Умный автовыбор направления через общую команду:
+node cli.js design.fig # автоматически определит .fig и создаст design.html
+```
+
+Вы также можете связать утилиты глобально:
 ```bash
 npm link
 html-to-fig input.html output.fig
+fig-to-html input.fig output.html
 ```
 
 ---
 
 ## 💻 CLI Справка
 
+### html-to-fig
 ```text
 USAGE:
-  $ html-to-fig <input.html> [output.fig] [options]
+  $ html-to-fig <input.html|.fig> [output] [options]
   $ html-to-fig -i <input.html> -o <output.fig>
 
 ARGUMENTS:
-  <input.html>      Путь к исходному HTML файлу
-  [output.fig]      Путь к создаваемому .fig файлу (по умолчанию: <имя-файла>.fig)
+  <input>           Путь к исходному HTML или .fig файлу
+  [output]          Путь к создаваемому файлу (по умолчанию: <имя-файла>.fig или .html)
 
 OPTIONS:
-  -i, --input <file>       Входной HTML файл
-  -o, --output <file>      Выходной .fig файл
+  -i, --input <file>       Входной файл
+  -o, --output <file>      Выходной файл
   -t, --template <file>    Файл шаблона .fig (по умолчанию: templates/template.fig)
   -p, --page <name>        Имя страницы в Figma (по умолчанию: "Page 1")
-  -w, --watch              Режим наблюдения (автосборка при изменении HTML)
+  -w, --watch              Режим наблюдения (автосборка при изменении)
   --no-remote-images     Отключить скачивание внешних картинок (HTTP/HTTPS)
   -v, --verbose            Подробные логи процесса сборки
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
+```
 
-ПРИМЕРЫ:
-  $ html-to-fig test/test.html
-  $ html-to-fig test/hard.html test/hard.fig --verbose
-  $ html-to-fig test/showcase.html showcase.fig
-  $ html-to-fig index.html -w
+### fig-to-html
+```text
+USAGE:
+  $ fig-to-html <input.fig> [output.html] [options]
+  $ fig-to-html -i <input.fig> -o <output.html>
+
+OPTIONS:
+  -i, --input <file>       Входной .fig файл
+  -o, --output <file>      Выходной .html файл
+  -p, --page <name>        Имя страницы в Figma (по умолчанию: "Page 1")
+  -w, --watch              Режим наблюдения (авторебилд при изменении .fig)
+  --no-inline-images     Извлекать изображения в отдельные файлы вместо Base64
+  --assets-dir <dir>       Папка для извлеченных картинок (по умолчанию: "images")
+  -v, --verbose            Подробные логи процесса
+  -h, --help               Справка по командам
+  -V, --version            Версия утилиты
 ```
 
 ---
 
 ## 🛠 Программный API (Node.js)
 
-Вы можете использовать генератор как библиотеку в своих скриптах и бэкендах:
+Вы можете использовать библиотеку в своих скриптах и бэкендах для обоих направлений:
 
+### Прямая конвертация (HTML ➔ .fig)
 ```javascript
 const { generateFigFile } = require('html-to-fig');
 
@@ -146,18 +174,39 @@ async function build() {
 build();
 ```
 
+### Обратная конвертация (.fig ➔ HTML)
+```javascript
+const { convertFigToHtml } = require('html-to-fig');
+
+async function decompile() {
+    const result = await convertFigToHtml('showcase.fig', {
+        outputHtmlPath: 'output.html',
+        pageName: 'Page 1',
+        inlineImages: true, // автономный HTML с Data URI изображениями
+        verbose: true
+    });
+
+    console.log(`Декомпилировано ${result.totalNodes} нод за ${result.durationMs}мс!`);
+    console.log(`HTML сохранен в: ${result.outputPath}`);
+}
+
+decompile();
+```
+
 ---
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами:
+Проект покрыт всесторонними автоматическими тестами (35 тестов):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
-- Линейные и радиальные градиенты, расчёт матриц трансформации
+- Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
-- Типографика (font-weight, style, line-height multipliers, letter-spacing)
+- Типографика (font-weight, style, line-height multipliers, letter-spacing, Rich Text)
 - Определение габаритов изображений и хеширование SHA-1
 - Сквозная генерация и проверка валидности структуры декодером Figma Kiwi
 - Тестирование на сложных реальных макетах (`test/showcase.html` и `test/hard.html`)
+- Декомпиляция .fig в валидный адаптивный HTML с сохранением семантики, Flexbox и графики
+- Полный Round-Trip тест: HTML ➔ .fig ➔ HTML с проверкой целостности всех элементов
 
 Запуск тестов:
 ```bash
@@ -170,8 +219,9 @@ npm test
 
 ```text
 html-to-fig/
-├── cli.js                  # CLI интерфейс и watch режим
-├── index.js                # Главная точка входа программного API
+├── cli.js                  # Главный CLI интерфейс (HTML -> FIG и автодетекция)
+├── cli-reverse.js          # CLI интерфейс декомпилятора (FIG -> HTML)
+├── index.js                # Главная точка входа программного API (двусторонний)
 ├── package.json            # Зависимости и метаданные проекта
 ├── templates/
 │   └── template.fig        # Эталонный бинарный шаблон Figma контейнера
@@ -179,6 +229,12 @@ html-to-fig/
 │   ├── generator.js        # Оркестратор сборки бинарного .fig (Kiwi + Zstd)
 │   ├── converter.js        # HTML/CSS -> Figma AST транслятор (Auto Layout, Layout Pass)
 │   ├── schema.js           # Компилятор и кэш Kiwi схемы
+│   ├── decompiler/         # ДВИЖОК ОБРАТНОЙ КОНВЕРТАЦИИ (FIG -> HTML)
+│   │   ├── index.js        # Главный оркестратор декомпиляции
+│   │   ├── reader.js       # Чтение .fig ZIP, декомпрессия Kiwi и извлечение картинок
+│   │   ├── tree.js         # Восстановление иерархии сцены и сортировка слоев
+│   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS
+│   │   └── html.js         # Генерация семантического HTML5, форм и Rich Text
 │   ├── parsers/
 │   │   ├── color.js        # Парсер всех типов CSS цветов
 │   │   ├── gradient.js     # Парсер линейных и радиальных градиентов
@@ -189,7 +245,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск
+    ├── run-tests.js        # Автоматический тестовый запуск (35 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)

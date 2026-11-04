@@ -6,16 +6,29 @@ const { ImageRegistry } = require('./src/parsers/images');
 const { parseColor } = require('./src/parsers/color');
 const { parseGradient } = require('./src/parsers/gradient');
 const { parseAllEffects } = require('./src/parsers/effects');
+const {
+    convertFigToHtml,
+    readFigFile,
+    buildSceneTree,
+    generateFullHtmlDocument
+} = require('./src/decompiler');
 
 // Programmatic API
 module.exports = {
+    // HTML -> Figma (.fig)
     generateFigFile,
     convertHtmlToNodes,
     getCompiledSchema,
     ImageRegistry,
     parseColor,
     parseGradient,
-    parseAllEffects
+    parseAllEffects,
+
+    // Figma (.fig) -> HTML
+    convertFigToHtml,
+    readFigFile,
+    buildSceneTree,
+    generateFullHtmlDocument
 };
 
 // When run directly as `node index.js`

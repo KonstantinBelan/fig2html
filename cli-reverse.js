@@ -1,0 +1,219 @@
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const { convertFigToHtml } = require('./src/decompiler');
+const pkg = require('./package.json');
+
+const colors = {
+    reset: '\x1b[0m',
+    bold: '\x1b[1m',
+    dim: '\x1b[2m',
+    cyan: '\x1b[36m',
+    green: '\x1b[32m',
+    yellow: '\x1b[33m',
+    red: '\x1b[31m',
+    magenta: '\x1b[35m',
+    blue: '\x1b[34m',
+    gray: '\x1b[90m'
+};
+
+function printBanner() {
+    console.log(`
+${colors.magenta}${colors.bold}┌──────────────────────────────────────────┐
+│             Figma to HTML CLI            │
+│               v${pkg.version.padEnd(25)} │
+└──────────────────────────────────────────┘${colors.reset}`);
+}
+
+function printHelp() {
+    printBanner();
+    console.log(`
+${colors.bold}USAGE:${colors.reset}
+  $ fig-to-html <input.fig> [output.html] [options]
+  $ fig-to-html -i <input.fig> -o <output.html>
+
+${colors.bold}ARGUMENTS:${colors.reset}
+  ${colors.green}<input.fig>${colors.reset}       Path to the source .fig file
+  ${colors.green}[output.html]${colors.reset}     Path for the generated .html file (default: <input-basename>.html)
+
+${colors.bold}OPTIONS:${colors.reset}
+  ${colors.cyan}-i, --input <file>${colors.reset}         Path to input .fig file
+  ${colors.cyan}-o, --output <file>${colors.reset}        Path to output .html file
+  ${colors.cyan}-p, --page <name>${colors.reset}          Target Figma page name (default: "Page 1")
+  ${colors.cyan}-w, --watch${colors.reset}                Watch input file and rebuild automatically on change
+  ${colors.cyan}--no-inline-images${colors.reset}       Extract images to separate files instead of Base64
+  ${colors.cyan}--assets-dir <dir>${colors.reset}        Directory for extracted images (default: "images")
+  ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
+  ${colors.cyan}-h, --help${colors.reset}                 Display this help message
+  ${colors.cyan}-V, --version${colors.reset}              Display version number
+
+${colors.bold}EXAMPLES:${colors.reset}
+  ${colors.gray}# Simple reverse conversion:${colors.reset}
+  $ fig-to-html design.fig
+
+  ${colors.gray}# Specify custom output name and page:${colors.reset}
+  $ fig-to-html showcase.fig index.html --page "Page 1"
+
+  ${colors.gray}# Live reload / watch mode:${colors.reset}
+  $ fig-to-html test/hard.fig -w
+`);
+}
+
+function parseArgs(args) {
+    const options = {
+        input: null,
+        output: null,
+        page: 'Page 1',
+        watch: false,
+        inlineImages: true,
+        assetsDir: 'images',
+        verbose: false
+    };
+
+    const positionals = [];
+
+    for (let i = 0; i < args.length; i++) {
+        const arg = args[i];
+
+        if (arg === '-h' || arg === '--help') {
+            printHelp();
+            process.exit(0);
+        } else if (arg === '-V' || arg === '--version') {
+            console.log(`v${pkg.version}`);
+            process.exit(0);
+        } else if (arg === '-i' || arg === '--input') {
+            options.input = args[++i];
+        } else if (arg === '-o' || arg === '--output') {
+            options.output = args[++i];
+        } else if (arg === '-p' || arg === '--page') {
+            options.page = args[++i];
+        } else if (arg === '-w' || arg === '--watch') {
+            options.watch = true;
+        } else if (arg === '--no-inline-images') {
+            options.inlineImages = false;
+        } else if (arg === '--assets-dir') {
+            options.assetsDir = args[++i];
+        } else if (arg === '-v' || arg === '--verbose') {
+            options.verbose = true;
+        } else if (!arg.startsWith('-')) {
+            positionals.push(arg);
+        }
+    }
+
+    if (!options.input && positionals.length > 0) {
+        options.input = positionals[0];
+    }
+    if (!options.output && positionals.length > 1) {
+        options.output = positionals[1];
+    }
+
+    if (!options.output && options.input) {
+        const ext = path.extname(options.input);
+        const base = path.basename(options.input, ext);
+        options.output = `${base}.html`;
+    }
+
+    return options;
+}
+
+function formatBytes(bytes) {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+async function runConversion(options) {
+    const inputPath = path.resolve(options.input);
+    const outputPath = path.resolve(options.output);
+
+    console.log(`${colors.magenta}⚡ Decompiling:${colors.reset} ${path.basename(inputPath)} -> ${path.basename(outputPath)}...`);
+
+    const result = await convertFigToHtml(inputPath, {
+        outputHtmlPath: outputPath,
+        pageName: options.page,
+        inlineImages: options.inlineImages,
+        assetsDir: path.resolve(path.dirname(outputPath), options.assetsDir),
+        verbose: options.verbose
+    });
+
+    const outStat = fs.statSync(outputPath);
+
+    console.log(`\n${colors.green}${colors.bold}✔ Decompilation complete in ${result.durationMs}ms!${colors.reset}`);
+    console.log(`${colors.bold}┌─────────────────────────────────────────┐${colors.reset}`);
+    console.log(`│ ${colors.bold}File:${colors.reset}       ${path.basename(outputPath).padEnd(27)} │`);
+    console.log(`│ ${colors.bold}Size:${colors.reset}       ${formatBytes(outStat.size).padEnd(27)} │`);
+    console.log(`│ ${colors.bold}Nodes:${colors.reset}      ${String(result.totalNodes + ' total in fig').padEnd(27)} │`);
+    console.log(`│   ${colors.dim}Frames:${colors.reset}   ${String(result.stats.frames).padEnd(27)} │`);
+    console.log(`│   ${colors.dim}Text:${colors.reset}     ${String(result.stats.textNodes).padEnd(27)} │`);
+    console.log(`│   ${colors.dim}Images:${colors.reset}   ${String(result.stats.images).padEnd(27)} │`);
+    console.log(`│   ${colors.dim}Shapes:${colors.reset}   ${String(result.stats.shapes).padEnd(27)} │`);
+    console.log(`│ ${colors.bold}Images:${colors.reset}     ${String(result.imagesCount + ' extracted').padEnd(27)} │`);
+    console.log(`${colors.bold}└─────────────────────────────────────────┘${colors.reset}`);
+    console.log(`\n${colors.gray}Open ${colors.bold}${outputPath}${colors.reset}${colors.gray} in any browser.${colors.reset}\n`);
+
+    return result;
+}
+
+async function main() {
+    const args = process.argv.slice(2);
+
+    if (args.length === 0) {
+        printHelp();
+        process.exit(1);
+    }
+
+    const options = parseArgs(args);
+
+    if (!options.input) {
+        console.error(`${colors.red}Error: No input .fig file specified.${colors.reset}`);
+        console.log(`Run ${colors.magenta}fig-to-html --help${colors.reset} for usage information.`);
+        process.exit(1);
+    }
+
+    if (!fs.existsSync(options.input)) {
+        console.error(`${colors.red}Error: Input file "${options.input}" not found.${colors.reset}`);
+        process.exit(1);
+    }
+
+    printBanner();
+
+    try {
+        await runConversion(options);
+
+        // Watch mode
+        if (options.watch) {
+            console.log(`${colors.yellow}👀 Watching for file changes on "${options.input}"... (Ctrl+C to stop)${colors.reset}`);
+
+            let debounceTimer = null;
+            fs.watch(options.input, (eventType) => {
+                if (eventType === 'change') {
+                    if (debounceTimer) clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(async () => {
+                        console.log(`\n${colors.cyan}🔄 File changed, re-converting...${colors.reset}`);
+                        try {
+                            await runConversion(options);
+                        } catch (err) {
+                            console.error(`${colors.red}Conversion failed: ${err.message}${colors.reset}`);
+                        }
+                    }, 200);
+                }
+            });
+        }
+    } catch (err) {
+        console.error(`\n${colors.red}${colors.bold}✖ Error during decompilation:${colors.reset} ${err.message}`);
+        if (options.verbose) {
+            console.error(err.stack);
+        }
+        process.exit(1);
+    }
+}
+
+if (require.main === module) {
+    main();
+}
+
+module.exports = {
+    parseArgs,
+    runConversion
+};
