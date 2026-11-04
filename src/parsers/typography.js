@@ -11,17 +11,20 @@ function parseFontStyle(weightStr, styleStr, family = 'Inter') {
     else if (weightStr === 'lighter') weightNum = 300;
     else if (weightStr === 'normal' || !weightNum) weightNum = 400;
 
+    // Round weight to nearest 100 for font style mapping (e.g. 510 -> 500 = Medium)
+    const roundedWeight = Math.round(weightNum / 100) * 100;
+
     let styleName = 'Regular';
     let psSuffix = 'Regular';
 
-    if (weightNum <= 100) { styleName = 'Thin'; psSuffix = 'Thin'; }
-    else if (weightNum <= 200) { styleName = 'Extra Light'; psSuffix = 'ExtraLight'; }
-    else if (weightNum <= 300) { styleName = 'Light'; psSuffix = 'Light'; }
-    else if (weightNum <= 400) { styleName = 'Regular'; psSuffix = 'Regular'; }
-    else if (weightNum <= 500) { styleName = 'Medium'; psSuffix = 'Medium'; }
-    else if (weightNum <= 600) { styleName = 'Semi Bold'; psSuffix = 'SemiBold'; }
-    else if (weightNum <= 700) { styleName = 'Bold'; psSuffix = 'Bold'; }
-    else if (weightNum <= 800) { styleName = 'Extra Bold'; psSuffix = 'ExtraBold'; }
+    if (roundedWeight <= 100) { styleName = 'Thin'; psSuffix = 'Thin'; }
+    else if (roundedWeight <= 200) { styleName = 'Extra Light'; psSuffix = 'ExtraLight'; }
+    else if (roundedWeight <= 300) { styleName = 'Light'; psSuffix = 'Light'; }
+    else if (roundedWeight <= 400) { styleName = 'Regular'; psSuffix = 'Regular'; }
+    else if (roundedWeight <= 500) { styleName = 'Medium'; psSuffix = 'Medium'; }
+    else if (roundedWeight <= 600) { styleName = 'Semi Bold'; psSuffix = 'SemiBold'; }
+    else if (roundedWeight <= 700) { styleName = 'Bold'; psSuffix = 'Bold'; }
+    else if (roundedWeight <= 800) { styleName = 'Extra Bold'; psSuffix = 'ExtraBold'; }
     else { styleName = 'Black'; psSuffix = 'Black'; }
 
     if (isItalic) {
@@ -29,16 +32,42 @@ function parseFontStyle(weightStr, styleStr, family = 'Inter') {
         psSuffix = psSuffix === 'Regular' ? 'Italic' : `${psSuffix}Italic`;
     }
 
-    // Extract primary family from fallback list: "Inter, -apple-system, sans-serif" -> "Inter"
+    // Extract primary real font family from fallback list, skipping synthetic keywords
     let cleanFamily = 'Inter';
     if (family) {
-        const first = family.split(',')[0].trim().replace(/['"]/g, '');
-        if (first && first.toLowerCase() !== 'sans-serif' && first.toLowerCase() !== 'serif' && first.toLowerCase() !== 'monospace') {
-            cleanFamily = first;
-        } else if (first.toLowerCase() === 'monospace') {
-            cleanFamily = 'Courier New';
-        } else if (first.toLowerCase() === 'serif') {
-            cleanFamily = 'Georgia';
+        let famStr = String(family);
+        if (famStr.includes('var(')) {
+            famStr = famStr.replace(/var\([^)]+\)/g, '').trim();
+        }
+
+        const genericAndSystemFonts = new Set([
+            'ui-monospace', 'ui-sans-serif', 'ui-serif', 'ui-rounded',
+            '-apple-system', 'blinkmacsystemfont', 'system-ui',
+            'sans-serif', 'serif', 'monospace', 'cursive', 'fantasy'
+        ]);
+
+        const candidates = famStr.split(',').map(s => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+        let chosen = null;
+        for (const c of candidates) {
+            const lower = c.toLowerCase();
+            if (!genericAndSystemFonts.has(lower)) {
+                chosen = c;
+                break;
+            }
+        }
+
+        if (chosen) {
+            cleanFamily = chosen;
+        } else {
+            const isMono = candidates.some(c => c.toLowerCase().includes('mono'));
+            const isSerif = candidates.some(c => c.toLowerCase().includes('serif'));
+            if (isMono) {
+                cleanFamily = 'SF Mono';
+            } else if (isSerif) {
+                cleanFamily = 'Georgia';
+            } else {
+                cleanFamily = 'Inter';
+            }
         }
     }
 
@@ -48,7 +77,7 @@ function parseFontStyle(weightStr, styleStr, family = 'Inter') {
 }
 
 /**
- * Parses CSS line-height into Figma Number struct
+ * Parses CSS line-height into Figma Number struct (using explicit PIXELS to ensure exact display in Figma)
  */
 function parseLineHeight(lhValue, fontSize = 16) {
     if (!lhValue || lhValue === 'normal' || lhValue === 'auto') {
@@ -58,18 +87,22 @@ function parseLineHeight(lhValue, fontSize = 16) {
     const str = String(lhValue).trim();
 
     if (str.endsWith('px')) {
-        return { value: parseFloat(str) || fontSize * 1.2, units: 'PIXELS' };
+        const val = parseFloat(str) || fontSize * 1.2;
+        return { value: Math.round(val * 10) / 10, units: 'PIXELS' };
     }
     if (str.endsWith('%')) {
-        return { value: parseFloat(str) || 100, units: 'PERCENT' };
+        const pct = parseFloat(str) || 100;
+        const px = (pct / 100) * fontSize;
+        return { value: Math.round(px * 10) / 10, units: 'PIXELS' };
     }
 
     const num = parseFloat(str);
     if (!isNaN(num)) {
         if (num > 3) {
-            return { value: num, units: 'PIXELS' };
+            return { value: Math.round(num * 10) / 10, units: 'PIXELS' };
         }
-        return { value: Math.round(num * 100), units: 'PERCENT' };
+        const px = num * fontSize;
+        return { value: Math.round(px * 10) / 10, units: 'PIXELS' };
     }
 
     return { value: 100, units: 'PERCENT' };

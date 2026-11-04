@@ -179,8 +179,8 @@ async function runAllTests() {
         const lhPx = parseLineHeight('24px');
         assert.deepStrictEqual(lhPx, { value: 24, units: 'PIXELS' });
 
-        const lhMult = parseLineHeight('1.5');
-        assert.deepStrictEqual(lhMult, { value: 150, units: 'PERCENT' });
+        const lhMult = parseLineHeight('1.5', 16);
+        assert.deepStrictEqual(lhMult, { value: 24, units: 'PIXELS' });
     });
     it('parses letter-spacing and text decorations', () => {
         const ls = parseLetterSpacing('0.05em', 16);

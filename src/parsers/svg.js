@@ -3,10 +3,41 @@ const { Resvg } = require('@resvg/resvg-js');
 
 /**
  * Serializes an SVG DOM element into a valid, standalone SVG string,
- * inlining any <use href="#symbolId"> references and resolving currentColor.
+ * inlining any <use href="#symbolId"> references and resolving computed CSS styles & currentColor.
  */
-function serializeSvgElement(svgElement, colorString = '', targetWidth = 24, targetHeight = 24) {
+function serializeSvgElement(svgElement, colorString = '', targetWidth = 24, targetHeight = 24, win = null) {
     const clone = svgElement.cloneNode(true);
+    const resolvedWin = win || (svgElement.ownerDocument ? svgElement.ownerDocument.defaultView : null);
+
+    // Extract computed styles from DOM if available to preserve CSS-styled SVGs (e.g. stroke, fill)
+    if (resolvedWin) {
+        try {
+            const computed = resolvedWin.getComputedStyle(svgElement);
+            const fill = computed.fill || computed.getPropertyValue('fill');
+            const stroke = computed.stroke || computed.getPropertyValue('stroke');
+            const strokeWidth = computed.strokeWidth || computed.getPropertyValue('stroke-width');
+            const strokeLinecap = computed.strokeLinecap || computed.getPropertyValue('stroke-linecap');
+            const strokeLinejoin = computed.strokeLinejoin || computed.getPropertyValue('stroke-linejoin');
+            const effectiveColor = colorString || computed.color || computed.getPropertyValue('color') || '#ffffff';
+
+            if (fill && !clone.hasAttribute('fill')) {
+                clone.setAttribute('fill', fill === 'currentColor' ? effectiveColor : fill);
+            }
+            if (stroke && stroke !== 'none' && !clone.hasAttribute('stroke')) {
+                clone.setAttribute('stroke', stroke === 'currentColor' ? effectiveColor : stroke);
+            }
+            if (strokeWidth && strokeWidth !== 'none' && !clone.hasAttribute('stroke-width')) {
+                clone.setAttribute('stroke-width', strokeWidth);
+            }
+            if (strokeLinecap && !clone.hasAttribute('stroke-linecap')) {
+                clone.setAttribute('stroke-linecap', strokeLinecap);
+            }
+            if (strokeLinejoin && !clone.hasAttribute('stroke-linejoin')) {
+                clone.setAttribute('stroke-linejoin', strokeLinejoin);
+            }
+        } catch (_) {}
+    }
+
     const uses = clone.querySelectorAll('use');
     for (const use of uses) {
         const href = use.getAttribute('href') || use.getAttribute('xlink:href');

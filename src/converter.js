@@ -133,7 +133,7 @@ function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
 /**
  * Extracts rich text with character-level style overrides
  */
-function extractRichText(element, win, defaultStyles) {
+function extractRichText(element, win, defaultStyles, resolveVar = null) {
     let fullText = '';
     const charStyles = [];
     const styleOverrideTable = [];
@@ -165,7 +165,10 @@ function extractRichText(element, win, defaultStyles) {
 
             const computed = win.getComputedStyle(node);
             const inline = node.style;
-            const getProp = (p, c) => inline[c] || inline.getPropertyValue(p) || computed[c] || computed.getPropertyValue(p);
+            const getProp = (p, c) => {
+                const raw = inline[c] || inline.getPropertyValue(p) || computed[c] || computed.getPropertyValue(p);
+                return resolveVar ? resolveVar(raw, node) : raw;
+            };
 
             const colorParsed = parseColor(getProp('color', 'color'), defaultStyles.color);
             const fontWeight = getProp('font-weight', 'fontWeight') || defaultStyles.fontWeight;
@@ -457,7 +460,14 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         }
         const alignSelf = getProp('align-self', 'alignSelf');
 
-        // Margin check for centering (margin: auto or margin: 0 auto)
+        // Margin offsets & auto-centering check
+        const marginOffsets = parseBoxOffsets(
+            getProp('margin', 'margin'),
+            getProp('margin-top', 'marginTop'),
+            getProp('margin-right', 'marginRight'),
+            getProp('margin-bottom', 'marginBottom'),
+            getProp('margin-left', 'marginLeft')
+        );
         const marginStr = getProp('margin', 'margin');
         const mlStr = getProp('margin-left', 'marginLeft');
         const mrStr = getProp('margin-right', 'marginRight');
@@ -653,10 +663,14 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 } else if (alignSelf === 'center') {
                     imgNode.stackChildAlignSelf = 'CENTER';
                 }
+                if (marginOffsets.top) imgNode.stackChildMarginTop = marginOffsets.top;
+                if (marginOffsets.right) imgNode.stackChildMarginRight = marginOffsets.right;
+                if (marginOffsets.bottom) imgNode.stackChildMarginBottom = marginOffsets.bottom;
+                if (marginOffsets.left) imgNode.stackChildMarginLeft = marginOffsets.left;
             }
 
             nodeChanges.push(imgNode);
-            return { node: imgNode, width: imgWidth, height: imgHeight, isAbsolute };
+            return { node: imgNode, width: imgWidth, height: imgHeight, isAbsolute, marginTop: marginOffsets.top, marginBottom: marginOffsets.bottom, marginLeft: marginOffsets.left, marginRight: marginOffsets.right };
         }
 
         // -------------------------------------------------------------
@@ -671,7 +685,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             const svgHeight = dims.height;
 
             const iconColor = getProp('color', 'color') || inheritedStyles.color || '#000000';
-            const svgXml = serializeSvgElement(element, iconColor, svgWidth, svgHeight);
+            const svgXml = serializeSvgElement(element, iconColor, svgWidth, svgHeight, win);
             const pngBuffer = renderSvgToPng(svgXml, svgWidth);
             const resolved = imageRegistry.registerBuffer(pngBuffer || Buffer.from(svgXml, 'utf8'), element.id || 'svg-icon', svgWidth);
 
@@ -700,10 +714,14 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 if (flexGrow > 0) svgNode.stackChildPrimaryGrow = 1.0;
                 if (alignSelf === 'stretch') svgNode.stackChildAlignSelf = 'STRETCH';
                 else if (alignSelf === 'center') svgNode.stackChildAlignSelf = 'CENTER';
+                if (marginOffsets.top) svgNode.stackChildMarginTop = marginOffsets.top;
+                if (marginOffsets.right) svgNode.stackChildMarginRight = marginOffsets.right;
+                if (marginOffsets.bottom) svgNode.stackChildMarginBottom = marginOffsets.bottom;
+                if (marginOffsets.left) svgNode.stackChildMarginLeft = marginOffsets.left;
             }
 
             nodeChanges.push(svgNode);
-            return { node: svgNode, width: svgWidth, height: svgHeight, isAbsolute };
+            return { node: svgNode, width: svgWidth, height: svgHeight, isAbsolute, marginTop: marginOffsets.top, marginBottom: marginOffsets.bottom, marginLeft: marginOffsets.left, marginRight: marginOffsets.right };
         }
 
         // -------------------------------------------------------------
@@ -741,8 +759,15 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 stackChildAlignSelf: 'STRETCH'
             };
 
+            if (parentContext && parentContext.isFlex && !isAbsolute) {
+                if (marginOffsets.top) hrNode.stackChildMarginTop = marginOffsets.top;
+                if (marginOffsets.right) hrNode.stackChildMarginRight = marginOffsets.right;
+                if (marginOffsets.bottom) hrNode.stackChildMarginBottom = marginOffsets.bottom;
+                if (marginOffsets.left) hrNode.stackChildMarginLeft = marginOffsets.left;
+            }
+
             nodeChanges.push(hrNode);
-            return { node: hrNode, width: hrWidth, height: hrThickness, isAbsolute };
+            return { node: hrNode, width: hrWidth, height: hrThickness, isAbsolute, marginTop: marginOffsets.top, marginBottom: marginOffsets.bottom, marginLeft: marginOffsets.left, marginRight: marginOffsets.right };
         }
 
         // -------------------------------------------------------------
@@ -779,7 +804,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     fontFamily: cleanFamily,
                     fontWeight: inheritedStyles.fontWeight,
                     fontStyle: inheritedStyles.fontStyle
-                });
+                }, resolveVar);
                 displayCharacters = richResult.characters;
                 textData = {
                     characters: displayCharacters,
@@ -864,10 +889,14 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 } else if (alignSelf === 'center') {
                     textNode.stackChildAlignSelf = 'CENTER';
                 }
+                if (marginOffsets.top) textNode.stackChildMarginTop = marginOffsets.top;
+                if (marginOffsets.right) textNode.stackChildMarginRight = marginOffsets.right;
+                if (marginOffsets.bottom) textNode.stackChildMarginBottom = marginOffsets.bottom;
+                if (marginOffsets.left) textNode.stackChildMarginLeft = marginOffsets.left;
             }
 
             nodeChanges.push(textNode);
-            return { node: textNode, width: textGeom.width, height: textGeom.height, isAbsolute };
+            return { node: textNode, width: textGeom.width, height: textGeom.height, isAbsolute, marginTop: marginOffsets.top, marginBottom: marginOffsets.bottom, marginLeft: marginOffsets.left, marginRight: marginOffsets.right };
         }
 
         // -------------------------------------------------------------
@@ -949,6 +978,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 strokeAlign: 'INSIDE',
                 cornerRadius: borderRadius || 6,
                 stackMode: 'HORIZONTAL',
+                stackLayoutVersion: 4,
                 stackPadding: 10,
                 stackHorizontalPadding: 14,
                 stackVerticalPadding: 10,
@@ -961,6 +991,11 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             if (isAbsolute) {
                 inputFrame.stackPositioning = 'ABSOLUTE';
                 inputFrame.transform = { m00: 1, m01: 0, m02: posX, m10: 0, m11: 1, m12: posY };
+            } else if (parentContext && parentContext.isFlex) {
+                if (marginOffsets.top) inputFrame.stackChildMarginTop = marginOffsets.top;
+                if (marginOffsets.right) inputFrame.stackChildMarginRight = marginOffsets.right;
+                if (marginOffsets.bottom) inputFrame.stackChildMarginBottom = marginOffsets.bottom;
+                if (marginOffsets.left) inputFrame.stackChildMarginLeft = marginOffsets.left;
             }
 
             nodeChanges.push(inputFrame);
@@ -1006,7 +1041,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 };
                 nodeChanges.push(placeholderNode);
             }
-            return { node: inputFrame, width: inputW, height: inputH, isAbsolute };
+            return { node: inputFrame, width: inputW, height: inputH, isAbsolute, marginTop: marginOffsets.top, marginBottom: marginOffsets.bottom, marginLeft: marginOffsets.left, marginRight: marginOffsets.right };
         }
 
         // -------------------------------------------------------------
@@ -1155,14 +1190,17 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     (ai === 'flex-end' || ai === 'end') ? 'MAX' :
                         ai === 'baseline' ? 'BASELINE' : 'MIN';
 
+                const isInline = display === 'inline-flex' || display === 'inline-block' || display === 'inline';
+                const isContentWidth = rawWidthStr === 'max-content' || rawWidthStr === 'min-content' || rawWidthStr === 'fit-content';
+
                 // Axes:
                 // HORIZONTAL stack: primary = WIDTH, counter = HEIGHT
                 // VERTICAL stack: primary = HEIGHT, counter = WIDTH
                 if (isColumn) {
                     frameNode.stackPrimarySizing = (hasExplicitHeight || isHeightPercent) ? 'FIXED' : 'RESIZE_TO_FIT';
-                    frameNode.stackCounterSizing = (hasExplicitWidth || isWidthPercent || (parentContext && parentContext.isColumn)) ? 'FIXED' : 'RESIZE_TO_FIT';
+                    frameNode.stackCounterSizing = (hasExplicitWidth || isWidthPercent || (parentContext && parentContext.isColumn)) && !isInline && !isContentWidth ? 'FIXED' : 'RESIZE_TO_FIT';
                 } else {
-                    frameNode.stackPrimarySizing = (hasExplicitWidth || isWidthPercent || (jc === 'space-between' && frameWidth > 200)) ? 'FIXED' : 'RESIZE_TO_FIT';
+                    frameNode.stackPrimarySizing = (hasExplicitWidth || isWidthPercent || (jc === 'space-between' && frameWidth > 200)) && !isContentWidth ? 'FIXED' : 'RESIZE_TO_FIT';
                     frameNode.stackCounterSizing = (hasExplicitHeight || isHeightPercent) ? 'FIXED' : 'RESIZE_TO_FIT';
                 }
             } else if (element.children.length > 0) {
@@ -1183,15 +1221,27 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             } else {
                 frameNode.stackMode = 'NONE';
             }
+
+            if (frameNode.stackMode && frameNode.stackMode !== 'NONE') {
+                frameNode.stackLayoutVersion = 4;
+            }
         }
 
         // Child sizing inside parent flex/block container
         if (!isAbsolute && parentContext && parentContext.isFlex) {
+            if (marginOffsets.top) frameNode.stackChildMarginTop = marginOffsets.top;
+            if (marginOffsets.right) frameNode.stackChildMarginRight = marginOffsets.right;
+            if (marginOffsets.bottom) frameNode.stackChildMarginBottom = marginOffsets.bottom;
+            if (marginOffsets.left) frameNode.stackChildMarginLeft = marginOffsets.left;
+
+            const isInline = display === 'inline-flex' || display === 'inline-block' || display === 'inline';
+            const isContentWidth = rawWidthStr === 'max-content' || rawWidthStr === 'min-content' || rawWidthStr === 'fit-content';
+
             if (isMarginAuto && parentContext.isColumn) {
                 frameNode.stackChildAlignSelf = 'CENTER';
             } else if (parentContext.isColumn) {
                 // In column container, cross-axis is WIDTH
-                const shouldStretchW = alignSelf === 'stretch' || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start');
+                const shouldStretchW = (alignSelf === 'stretch' || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start')) && !isInline && !isContentWidth;
                 if (shouldStretchW) {
                     frameNode.stackChildAlignSelf = 'STRETCH';
                     if (!isColumn) {
@@ -1203,7 +1253,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     frameNode.stackChildAlignSelf = 'CENTER';
                 } else if (alignSelf === 'flex-end' || alignSelf === 'end') {
                     frameNode.stackChildAlignSelf = 'MAX';
-                } else if (alignSelf === 'flex-start' || alignSelf === 'start') {
+                } else if (alignSelf === 'flex-start' || alignSelf === 'start' || isInline || isContentWidth) {
                     frameNode.stackChildAlignSelf = 'MIN';
                 }
 
@@ -1320,7 +1370,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const flowChildren = childResults.filter(c => !c.isAbsolute);
         if (flowChildren.length > 0) {
             if (frameNode.stackMode === 'HORIZONTAL') {
-                const maxChildH = Math.max(0, ...flowChildren.map(c => c.height || 0));
+                const maxChildH = Math.max(0, ...flowChildren.map(c => (c.height || 0) + (c.marginTop || 0) + (c.marginBottom || 0)));
                 if (!hasExplicitHeight && tagName !== 'body') {
                     const contentH = paddingTop + paddingBottom + maxChildH;
                     frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
@@ -1334,7 +1384,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     }
                 }
             } else if (frameNode.stackMode === 'VERTICAL') {
-                const totalChildH = flowChildren.reduce((acc, c) => acc + (c.height || 0), 0) + (gap * Math.max(0, flowChildren.length - 1));
+                const totalChildH = flowChildren.reduce((acc, c) => acc + (c.height || 0) + (c.marginTop || 0) + (c.marginBottom || 0), 0) + (gap * Math.max(0, flowChildren.length - 1));
                 if ((!hasExplicitHeight && !isHeightPercent) || tagName === 'body') {
                     const contentH = paddingTop + paddingBottom + totalChildH;
                     frameNode.size.y = Math.max(contentH, frameNode.size.y || 40);
@@ -1342,7 +1392,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
         }
 
-        return { node: frameNode, width: frameNode.size.x, height: frameNode.size.y, isAbsolute };
+        return { node: frameNode, width: frameNode.size.x, height: frameNode.size.y, isAbsolute, marginTop: marginOffsets.top, marginBottom: marginOffsets.bottom, marginLeft: marginOffsets.left, marginRight: marginOffsets.right };
     }
 
     // Process root body element
