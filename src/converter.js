@@ -1166,14 +1166,18 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             const textConsumptionEntries = [];
             const fsVar = getVarForProp('font-size', 'fontSize');
             if (fsVar) {
-                textConsumptionEntries.push({
-                    nodeField: 21,
-                    variableField: 'FONT_SIZE',
-                    variableData: createFloatVar(fsVar)
-                });
+                const vData = createFloatVar(fsVar);
+                if (vData) {
+                    textConsumptionEntries.push({
+                        variableField: 'FONT_SIZE',
+                        variableData: vData
+                    });
+                }
             }
             if (textConsumptionEntries.length > 0) {
-                textNode.variableConsumptionMap = { entries: textConsumptionEntries };
+                const mapObj = { entries: textConsumptionEntries };
+                textNode.parameterConsumptionMap = mapObj;
+                textNode.variableConsumptionMap = mapObj;
             }
 
             if (isAbsolute) {
@@ -1362,15 +1366,26 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
             const inputRadiusVar = getVarForProp('border-radius', 'borderRadius') || (borderRadius > 0 ? (radiusToVarMap.get(borderRadius) || floatToVarMap.get(borderRadius)) : null);
             if (inputRadiusVar) {
-                inputFrame.variableConsumptionMap = {
-                    entries: [
-                        {
-                            nodeField: 20,
-                            variableField: 'CORNER_RADIUS',
-                            variableData: createFloatVar(inputRadiusVar)
-                        }
-                    ]
-                };
+                const rVal = borderRadius || inputRadiusVar.floatValue || 6;
+                inputFrame.rectangleCornerRadiiIndependent = true;
+                inputFrame.rectangleTopLeftCornerRadius = rVal;
+                inputFrame.rectangleTopRightCornerRadius = rVal;
+                inputFrame.rectangleBottomLeftCornerRadius = rVal;
+                inputFrame.rectangleBottomRightCornerRadius = rVal;
+                delete inputFrame.cornerRadius;
+
+                const vData = createFloatVar(inputRadiusVar);
+                if (vData) {
+                    const inputEntries = [
+                        { variableField: 'RECTANGLE_TOP_LEFT_CORNER_RADIUS', variableData: vData },
+                        { variableField: 'RECTANGLE_TOP_RIGHT_CORNER_RADIUS', variableData: vData },
+                        { variableField: 'RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS', variableData: vData },
+                        { variableField: 'RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS', variableData: vData }
+                    ];
+                    const mapObj = { entries: inputEntries };
+                    inputFrame.parameterConsumptionMap = mapObj;
+                    inputFrame.variableConsumptionMap = mapObj;
+                }
             }
 
             nodeChanges.push(inputFrame);
@@ -1726,11 +1741,19 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
         // Assemble variable consumption map for frameNode
         const consumptionEntries = [];
-        function addFloatConsumption(nodeField, variableField, varInfo) {
+        function addFloatConsumption(arg1, arg2, arg3) {
+            let variableField, varInfo;
+            if (typeof arg1 === 'string') {
+                variableField = arg1;
+                varInfo = arg2;
+            } else {
+                variableField = arg2;
+                varInfo = arg3;
+            }
+            if (!varInfo) return;
             const vData = createFloatVar(varInfo);
             if (vData) {
                 consumptionEntries.push({
-                    nodeField,
                     variableField,
                     variableData: vData
                 });
@@ -1744,14 +1767,32 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             const brVar = getVarForProp('border-bottom-right-radius', 'borderBottomRightRadius') || (brRadius > 0 ? (radiusToVarMap.get(brRadius) || floatToVarMap.get(brRadius)) : null);
             const blVar = getVarForProp('border-bottom-left-radius', 'borderBottomLeftRadius') || (blRadius > 0 ? (radiusToVarMap.get(blRadius) || floatToVarMap.get(blRadius)) : null);
 
-            if (tlRadius > 0) addFloatConsumption(145, 'RECTANGLE_TOP_LEFT_CORNER_RADIUS', tlVar);
-            if (trRadius > 0) addFloatConsumption(146, 'RECTANGLE_TOP_RIGHT_CORNER_RADIUS', trVar);
-            if (brRadius > 0) addFloatConsumption(148, 'RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS', brVar);
-            if (blRadius > 0) addFloatConsumption(147, 'RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS', blVar);
+            frameNode.rectangleCornerRadiiIndependent = true;
+            frameNode.rectangleTopLeftCornerRadius = tlRadius;
+            frameNode.rectangleTopRightCornerRadius = trRadius;
+            frameNode.rectangleBottomLeftCornerRadius = blRadius;
+            frameNode.rectangleBottomRightCornerRadius = brRadius;
+            delete frameNode.cornerRadius;
+
+            if (tlVar) addFloatConsumption('RECTANGLE_TOP_LEFT_CORNER_RADIUS', tlVar);
+            if (trVar) addFloatConsumption('RECTANGLE_TOP_RIGHT_CORNER_RADIUS', trVar);
+            if (blVar) addFloatConsumption('RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS', blVar);
+            if (brVar) addFloatConsumption('RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS', brVar);
         } else {
             const radiusVar = getVarForProp('border-radius', 'borderRadius') || (borderRadius > 0 ? (radiusToVarMap.get(borderRadius) || floatToVarMap.get(borderRadius)) : null);
-            if (borderRadius > 0) {
-                addFloatConsumption(20, 'CORNER_RADIUS', radiusVar);
+            if (radiusVar) {
+                const rVal = borderRadius || radiusVar.floatValue || 0;
+                frameNode.rectangleCornerRadiiIndependent = true;
+                frameNode.rectangleTopLeftCornerRadius = rVal;
+                frameNode.rectangleTopRightCornerRadius = rVal;
+                frameNode.rectangleBottomLeftCornerRadius = rVal;
+                frameNode.rectangleBottomRightCornerRadius = rVal;
+                delete frameNode.cornerRadius;
+
+                addFloatConsumption('RECTANGLE_TOP_LEFT_CORNER_RADIUS', radiusVar);
+                addFloatConsumption('RECTANGLE_TOP_RIGHT_CORNER_RADIUS', radiusVar);
+                addFloatConsumption('RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS', radiusVar);
+                addFloatConsumption('RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS', radiusVar);
             }
         }
 
@@ -1762,27 +1803,29 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             const leftWVar = getVarForProp('border-left-width', 'borderLeftWidth') || (borderLeftW > 0 ? floatToVarMap.get(borderLeftW) : null);
             const rightWVar = getVarForProp('border-right-width', 'borderRightWidth') || (borderRightW > 0 ? floatToVarMap.get(borderRightW) : null);
 
-            if (borderTopW > 0) addFloatConsumption(295, 'BORDER_TOP_WEIGHT', topWVar);
-            if (borderBottomW > 0) addFloatConsumption(296, 'BORDER_BOTTOM_WEIGHT', bottomWVar);
-            if (borderLeftW > 0) addFloatConsumption(297, 'BORDER_LEFT_WEIGHT', leftWVar);
-            if (borderRightW > 0) addFloatConsumption(298, 'BORDER_RIGHT_WEIGHT', rightWVar);
+            if (borderTopW > 0) addFloatConsumption('BORDER_TOP_WEIGHT', topWVar);
+            if (borderBottomW > 0) addFloatConsumption('BORDER_BOTTOM_WEIGHT', bottomWVar);
+            if (borderLeftW > 0) addFloatConsumption('BORDER_LEFT_WEIGHT', leftWVar);
+            if (borderRightW > 0) addFloatConsumption('BORDER_RIGHT_WEIGHT', rightWVar);
         } else {
             const strokeWVar = getVarForProp('border-width', 'borderWidth') || (borderWidth > 0 ? floatToVarMap.get(borderWidth) : null);
             if (borderWidth > 0) {
-                addFloatConsumption(26, 'STROKE_WEIGHT', strokeWVar);
+                addFloatConsumption('STROKE_WEIGHT', strokeWVar);
             }
         }
 
         // 3. Auto Layout Spacing (Gap) & Padding
         if (frameNode.stackMode && frameNode.stackMode !== 'NONE') {
             const gapVar = getVarForProp('gap', 'gap', 'column-gap', 'columnGap', 'row-gap', 'rowGap') || (gap > 0 ? (spaceToVarMap.get(gap) || floatToVarMap.get(gap)) : null);
-            if (gap > 0) {
-                addFloatConsumption(107, 'STACK_SPACING', gapVar);
+            if (gapVar) {
+                addFloatConsumption('STACK_SPACING', gapVar);
             }
 
             if (frameNode.stackCounterSpacing && frameNode.stackCounterSpacing > 0) {
                 const counterGapVar = getVarForProp('row-gap', 'rowGap') || (spaceToVarMap.get(frameNode.stackCounterSpacing) || floatToVarMap.get(frameNode.stackCounterSpacing));
-                addFloatConsumption(324, 'STACK_COUNTER_SPACING', counterGapVar);
+                if (counterGapVar) {
+                    addFloatConsumption('STACK_COUNTER_SPACING', counterGapVar);
+                }
             }
 
             const paddingVar = getVarForProp('padding', 'padding');
@@ -1791,22 +1834,22 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             const leftPadVar = getVarForProp('padding-left', 'paddingLeft') || paddingVar || (paddingLeft > 0 ? (spaceToVarMap.get(paddingLeft) || floatToVarMap.get(paddingLeft)) : null);
             const rightPadVar = getVarForProp('padding-right', 'paddingRight') || paddingVar || (paddingRight > 0 ? (spaceToVarMap.get(paddingRight) || floatToVarMap.get(paddingRight)) : null);
 
-            if (paddingLeft > 0) addFloatConsumption(209, 'STACK_PADDING_LEFT', leftPadVar);
-            if (paddingTop > 0) addFloatConsumption(210, 'STACK_PADDING_TOP', topPadVar);
-            if (paddingRight > 0) addFloatConsumption(233, 'STACK_PADDING_RIGHT', rightPadVar);
-            if (paddingBottom > 0) addFloatConsumption(234, 'STACK_PADDING_BOTTOM', bottomPadVar);
+            if (leftPadVar) addFloatConsumption('STACK_PADDING_LEFT', leftPadVar);
+            if (topPadVar) addFloatConsumption('STACK_PADDING_TOP', topPadVar);
+            if (rightPadVar) addFloatConsumption('STACK_PADDING_RIGHT', rightPadVar);
+            if (bottomPadVar) addFloatConsumption('STACK_PADDING_BOTTOM', bottomPadVar);
         }
 
         // 4. Opacity
         const opacityVar = getVarForProp('opacity', 'opacity');
         if (opacityVar) {
-            addFloatConsumption(8, 'OPACITY', opacityVar);
+            addFloatConsumption('OPACITY', opacityVar);
         }
 
         if (consumptionEntries.length > 0) {
-            frameNode.variableConsumptionMap = {
-                entries: consumptionEntries
-            };
+            const mapObj = { entries: consumptionEntries };
+            frameNode.parameterConsumptionMap = mapObj;
+            frameNode.variableConsumptionMap = mapObj;
         }
 
         nodeChanges.push(frameNode);
@@ -1896,14 +1939,18 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     const textConsumptionEntries = [];
                     const fsVar = getVarForProp('font-size', 'fontSize');
                     if (fsVar) {
-                        textConsumptionEntries.push({
-                            nodeField: 21,
-                            variableField: 'FONT_SIZE',
-                            variableData: createFloatVar(fsVar)
-                        });
+                        const vData = createFloatVar(fsVar);
+                        if (vData) {
+                            textConsumptionEntries.push({
+                                variableField: 'FONT_SIZE',
+                                variableData: vData
+                            });
+                        }
                     }
                     if (textConsumptionEntries.length > 0) {
-                        childTextNode.variableConsumptionMap = { entries: textConsumptionEntries };
+                        const mapObj = { entries: textConsumptionEntries };
+                        childTextNode.parameterConsumptionMap = mapObj;
+                        childTextNode.variableConsumptionMap = mapObj;
                     }
                     nodeChanges.push(childTextNode);
                     stats.textNodes++;

@@ -610,7 +610,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     // Overflow clipping for frames with corner radius, slides/cards, masks, or clipsContent
     // Note: Synthesized virtual frames should NEVER clip content unless explicitly marked clipsContent
-    if (!node.isSynthesized && (node.clipsContent || isSlideOrCard || hasMaskChild || (node.type === 'FRAME' && node.cornerRadius && node.children?.length))) {
+    if (!node.isSynthesized && (node.clipsContent || isSlideOrCard || hasMaskChild || (node.type === 'FRAME' && (node.cornerRadius || node.rectangleCornerRadiiIndependent) && node.children?.length))) {
         styles['overflow'] = 'hidden';
     }
 

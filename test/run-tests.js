@@ -1395,17 +1395,24 @@ async function runAllTests() {
         assert(btnNode.strokePaints[0].colorVar, 'Button strokePaint should have colorVar binding');
         assert.deepStrictEqual(btnNode.strokePaints[0].colorVar.value.alias.guid, borderVar.guid);
 
-        // Check variableConsumptionMap
+        // Check parameterConsumptionMap and variableConsumptionMap
+        assert(btnNode.parameterConsumptionMap && btnNode.parameterConsumptionMap.entries, 'Button should have parameterConsumptionMap');
         assert(btnNode.variableConsumptionMap && btnNode.variableConsumptionMap.entries, 'Button should have variableConsumptionMap');
-        const radiusEntry = btnNode.variableConsumptionMap.entries.find(e => e.variableField === 'CORNER_RADIUS');
-        assert(radiusEntry, 'Button should bind CORNER_RADIUS');
+
+        // Check independent corners and cornerRadius removal
+        assert.strictEqual(btnNode.rectangleCornerRadiiIndependent, true, 'Button should have independent corner radii');
+        assert.strictEqual(btnNode.cornerRadius, undefined, 'Button cornerRadius scalar should be undefined');
+        assert.strictEqual(btnNode.rectangleTopLeftCornerRadius, 8, 'Button rectangleTopLeftCornerRadius should match');
+
+        const radiusEntry = btnNode.parameterConsumptionMap.entries.find(e => e.variableField === 'RECTANGLE_TOP_LEFT_CORNER_RADIUS');
+        assert(radiusEntry, 'Button should bind RECTANGLE_TOP_LEFT_CORNER_RADIUS');
         assert.deepStrictEqual(radiusEntry.variableData.value.alias.guid, radiusVar.guid);
 
-        const padTopEntry = btnNode.variableConsumptionMap.entries.find(e => e.variableField === 'STACK_PADDING_TOP');
+        const padTopEntry = btnNode.parameterConsumptionMap.entries.find(e => e.variableField === 'STACK_PADDING_TOP');
         assert(padTopEntry, 'Button should bind STACK_PADDING_TOP');
         assert.deepStrictEqual(padTopEntry.variableData.value.alias.guid, spaceVar.guid);
 
-        const gapEntry = btnNode.variableConsumptionMap.entries.find(e => e.variableField === 'STACK_SPACING');
+        const gapEntry = btnNode.parameterConsumptionMap.entries.find(e => e.variableField === 'STACK_SPACING');
         assert(gapEntry, 'Button should bind STACK_SPACING');
         assert.deepStrictEqual(gapEntry.variableData.value.alias.guid, gapVar.guid);
 

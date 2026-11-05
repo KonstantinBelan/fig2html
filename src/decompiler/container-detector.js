@@ -20,7 +20,13 @@ function hasContainerVisualStyles(node) {
     // Check corner radius
     const hasCornerRadius = Boolean(
         (node.cornerRadius && node.cornerRadius > 0) ||
-        (Array.isArray(node.rectangleCornerRadii) && node.rectangleCornerRadii.some(r => r > 0))
+        (Array.isArray(node.rectangleCornerRadii) && node.rectangleCornerRadii.some(r => r > 0)) ||
+        (node.rectangleCornerRadiiIndependent && (
+            (node.rectangleTopLeftCornerRadius && node.rectangleTopLeftCornerRadius > 0) ||
+            (node.rectangleTopRightCornerRadius && node.rectangleTopRightCornerRadius > 0) ||
+            (node.rectangleBottomLeftCornerRadius && node.rectangleBottomLeftCornerRadius > 0) ||
+            (node.rectangleBottomRightCornerRadius && node.rectangleBottomRightCornerRadius > 0)
+        ))
     );
 
     // Check effects (box shadows, blurs)
