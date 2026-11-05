@@ -68,6 +68,15 @@
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
+- **Режимы вёрстки и адаптивность (Fluid & Relative)**:
+  - **Fluid (резиновая вёрстка)**: главный контейнер страницы растягивается на всю ширину (`width: 100vw; min-height: 100dvh;`), для типографики и отступов генерируются гибкие выражения `clamp()`, `min()`, `max()`, подключается `<meta name="viewport" content="width=device-width, initial-scale=1">`, а вместо фиксированных пикселей используются `rem`, `em`, `vw`, `vh`.
+  - **Relative (относительные единицы)**: замена всех фиксированных `px` на относительные единицы `rem`, `em`, `vw`, `vh` для гармоничного масштабирования шрифтов и отступов.
+  - **Default**: классическая фиксированная вёрстка с точным соответствием размерам в Figma в `px`.
+- **Оптимизация и обработка изображений**:
+  - Автоматическое масштабирование картинок по размеру в CSS с множителем x2 для идеального Retina-качества.
+  - Генерация адаптивных атрибутов `srcset` и `sizes` под экраны смартфонов, планшетов и компьютеров (с возможностью отключения через `--no-srcset`).
+  - Сжатие картинок без потери качества (Lossless) через Sharp/MozJPEG.
+  - Конвертация в ультрасовременные форматы `WebP` и `AVIF`.
 - **Полный CSS Reset**: генерация современного сброса стилей (`*, *::before, *::after { box-sizing: border-box; }`, сброс кнопок, полей ввода, списков, таблиц, ссылок), гарантирующий консистентное отображение во всех браузерах.
 - **Поддержка компонентов и переопределений (Instance Overrides)**:
   - Автоматическое разрешение `INSTANCE` нод через клонирование мастер-компонентов (`SYMBOL`).
@@ -117,10 +126,19 @@ npm run build
 # Декомпиляция .fig файла в чистый автономный HTML (Retina 2x + адаптивный srcset / sizes):
 node cli-reverse.js design.fig
 
+# Полноценная резиновая (fluid) вёрстка на всю ширину (100vw / 100dvh, clamp(), min(), max(), rem):
+node cli-reverse.js design.fig index.html --fluid
+
+# Использование относительных единиц измерения (rem, em, vw, vh вместо px):
+node cli-reverse.js design.fig index.html --relative
+
 # Декомпиляция с вынесением CSS в отдельный файл css/style.css и картинок в img/*:
 node cli-reverse.js design.fig -s
 # или:
 node cli-reverse.js design.fig index.html --separate-files
+
+# Резиновая вёрстка с отдельными WebP картинками и внешним CSS:
+node cli-reverse.js design.fig index.html -s --fluid --webp
 
 # Экспорт с картинками в современном формате WebP:
 node cli-reverse.js design.fig index.html -s --webp
@@ -197,6 +215,9 @@ OPTIONS:
   --format <fmt>           Конвертация в современный формат: webp, avif, original (по умолчанию: original)
   --webp                   Шорткат для --format webp
   --avif                   Шорткат для --format avif
+  --layout <mode>          Режим вёрстки: default (px), relative (rem/em/vw/vh) или fluid (clamp/min/max)
+  --fluid                  Шорткат для --layout fluid (100vw/100dvh, clamp(), rem, vw/vh)
+  --relative, --rem        Шорткат для --layout relative (rem, em, vw/vh вместо px)
   -v, --verbose            Подробные логи процесса
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
@@ -252,6 +273,15 @@ async function decompile() {
         verbose: true
     });
 
+    // 3. Полноценная резиновая (fluid) вёрстка на всю ширину страницы:
+    const result3 = await convertFigToHtml('showcase.fig', {
+        outputHtmlPath: 'dist/fluid.html',
+        layoutMode: 'fluid', // 'fluid' (100vw, 100dvh, clamp, min, max, rem) | 'relative' (rem, em, vw, vh) | 'default' (px)
+        separateFiles: true,
+        imageFormat: 'webp',
+        verbose: true
+    });
+
     console.log(`Декомпилировано ${result2.totalNodes} нод за ${result2.durationMs}мс!`);
     console.log(`HTML: ${result2.outputPath}, CSS: ${result2.cssPath}, Assets: ${result2.assetsDir}`);
 }
@@ -263,7 +293,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (48 тестов):
+Проект покрыт всесторонними автоматическими тестами (52 теста):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -279,6 +309,9 @@ decompile();
 - Возможность отключения `srcset` / `sizes` через параметр CLI (`--no-srcset`)
 - Сжатие размера и качества картинок без потери качества (lossless, mozjpeg, webp/avif lossless)
 - Конвертация изображений в современные медиа-форматы (`WebP`, `AVIF`) через параметры CLI
+- Относительные единицы измерения (`rem`, `em`, `vw`, `vh`) вместо фиксированных `px` (`--relative`, `--rem`)
+- Полноценная резиновая (fluid) вёрстка на всю ширину страницы (`width: 100vw; min-height: 100dvh;`) с функциями `min()`, `max()`, `clamp()` (`--fluid`)
+- Добавление `<meta name="viewport" content="width=device-width, initial-scale=1">` для полной мобильной адаптивности
 - Полный Round-Trip тест: HTML ➔ .fig ➔ HTML с проверкой целостности всех элементов
 - Декодирование бинарных `commandsBlob` и `VectorNetwork` в масштабируемые SVG пути
 - Сохранение фиксированных габаритов Auto Layout при растяжении по поперечной оси (`align-self: stretch`)
@@ -312,6 +345,7 @@ html-to-fig/
 │   │   ├── tree.js         # Восстановление иерархии сцены, инстансы компонентов и overrides
 │   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, дедупликация и транслитерация
 │   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS и маппинг MIME типов
+│   │   ├── units.js        # Преобразование единиц (rem, em, vw, vh) и fluid-расчеты (clamp, min, max)
 │   │   ├── html.js         # Генерация семантического HTML5, форм и Rich Text
 │   │   └── vector.js       # Декодирование бинарных VectorNetwork и commandsBlob в SVG
 │   ├── parsers/
@@ -324,7 +358,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (43 теста)
+    ├── run-tests.js        # Автоматический тестовый запуск (52 теста)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)

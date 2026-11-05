@@ -54,6 +54,9 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--format <fmt>${colors.reset}             Convert images to modern format: webp, avif, or original (default: original)
   ${colors.cyan}--webp${colors.reset}                     Shortcut for --format webp
   ${colors.cyan}--avif${colors.reset}                     Shortcut for --format avif
+  ${colors.cyan}--layout <mode>${colors.reset}           Layout mode: default (px), relative (rem/em/vw/vh), or fluid (clamp/min/max)
+  ${colors.cyan}--fluid${colors.reset}                   Shortcut for --layout fluid (100vw/100dvh, clamp(), rem, vw/vh)
+  ${colors.cyan}--relative, --rem${colors.reset}         Shortcut for --layout relative (rem, em, vw/vh instead of px)
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
   ${colors.cyan}-h, --help${colors.reset}                 Display this help message
   ${colors.cyan}-V, --version${colors.reset}              Display version number
@@ -92,7 +95,8 @@ function parseArgs(args) {
         imageScale: 2,
         responsiveImages: true,
         compress: false,
-        imageFormat: 'original'
+        imageFormat: 'original',
+        layoutMode: 'default'
     };
 
     const positionals = [];
@@ -144,6 +148,12 @@ function parseArgs(args) {
             options.imageFormat = 'webp';
         } else if (arg === '--avif') {
             options.imageFormat = 'avif';
+        } else if (arg === '--layout' || arg === '--layout-mode' || arg === '--mode') {
+            options.layoutMode = args[++i];
+        } else if (arg === '--fluid') {
+            options.layoutMode = 'fluid';
+        } else if (arg === '--relative' || arg === '--rem') {
+            options.layoutMode = 'relative';
         } else if (arg === '-v' || arg === '--verbose') {
             options.verbose = true;
         } else if (!arg.startsWith('-')) {
@@ -192,7 +202,8 @@ async function runConversion(options) {
         imageScale: options.imageScale,
         responsiveImages: options.responsiveImages,
         compress: options.compress,
-        imageFormat: options.imageFormat
+        imageFormat: options.imageFormat,
+        layoutMode: options.layoutMode
     });
 
     const outStat = fs.statSync(outputPath);
@@ -201,6 +212,10 @@ async function runConversion(options) {
     console.log(`${colors.bold}┌─────────────────────────────────────────┐${colors.reset}`);
     console.log(`│ ${colors.bold}HTML:${colors.reset}       ${path.basename(outputPath).padEnd(27)} │`);
     console.log(`│ ${colors.bold}HTML Size:${colors.reset}  ${formatBytes(outStat.size).padEnd(27)} │`);
+    if (options.layoutMode && options.layoutMode !== 'default') {
+        const layoutLabel = options.layoutMode === 'fluid' ? 'Fluid (100vw/100dvh)' : 'Relative (rem/vw)';
+        console.log(`│ ${colors.bold}Layout:${colors.reset}     ${layoutLabel.padEnd(27)} │`);
+    }
     if (result.cssPath && fs.existsSync(result.cssPath)) {
         const cssStat = fs.statSync(result.cssPath);
         const relCss = path.relative(path.dirname(outputPath), result.cssPath);

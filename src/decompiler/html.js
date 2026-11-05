@@ -1,5 +1,6 @@
 // src/decompiler/html.js
 const { computeNodeStyles, toStyleString, formatColor, parseFontWeightAndStyle, getExtensionForMime } = require('./css');
+const { toRem, formatFluidFontSize } = require('./units');
 const { StylesheetManager } = require('./stylesheet');
 const {
     isVectorNode,
@@ -108,7 +109,15 @@ function renderRichText(textData, defaultNode, stylesheetManager = null) {
             }
 
             if (override.fontSize && override.fontSize !== defaultNode.fontSize) {
-                spanStyles['font-size'] = `${override.fontSize}px`;
+                const layoutMode = stylesheetManager?.options?.layoutMode || 'default';
+                const cw = stylesheetManager?.options?.canvasWidth || 1440;
+                if (layoutMode === 'fluid') {
+                    spanStyles['font-size'] = formatFluidFontSize(override.fontSize, cw);
+                } else if (layoutMode === 'relative') {
+                    spanStyles['font-size'] = toRem(override.fontSize);
+                } else {
+                    spanStyles['font-size'] = `${override.fontSize}px`;
+                }
             }
 
             if (override.fontName) {
@@ -543,7 +552,7 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
 ${googleFontsUrl ? `  <link rel="preconnect" href="https://fonts.googleapis.com">\n  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n  <link href="${googleFontsUrl}" rel="stylesheet">\n` : ''}${styleTagOrLink}</head>
 <body>

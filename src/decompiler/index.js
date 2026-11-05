@@ -114,6 +114,10 @@ async function convertFigToHtml(figInput, options = {}) {
     // 6. Generate semantic HTML and CSS styles
     log('Generating semantic HTML5 and CSS styles...');
 
+    const canvasWidth = Math.round(canvas.size?.x || rootNodes[0]?.size?.x || 1440);
+    const canvasHeight = Math.round(canvas.size?.y || rootNodes[0]?.size?.y || 900);
+    const layoutMode = options.layoutMode || (options.fluid ? 'fluid' : (options.relative || options.rem ? 'relative' : 'default'));
+
     const docResult = generateFullHtmlDocument(rootNodes, processedImages, {
         inlineImages: isInlineImages,
         inlineStyles: options.inlineStyles === true,
@@ -124,7 +128,10 @@ async function convertFigToHtml(figInput, options = {}) {
         blobs: blobs,
         title: options.title || canvas.name || 'Exported Figma Design',
         nodeImageMap,
-        responsiveImages: isResponsive
+        responsiveImages: isResponsive,
+        layoutMode,
+        canvasWidth,
+        canvasHeight
     });
 
     const html = typeof docResult === 'string' ? docResult : docResult.html;

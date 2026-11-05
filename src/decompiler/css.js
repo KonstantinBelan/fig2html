@@ -1,4 +1,14 @@
 // src/decompiler/css.js
+const {
+    toRem,
+    toEm,
+    toVw,
+    toVh,
+    formatFluidFontSize,
+    formatFluidSpacing,
+    formatFluidDimension,
+    formatEffectsWithUnits
+} = require('./units');
 
 /**
  * Maps an image MIME type to its standard file extension
@@ -76,11 +86,16 @@ function formatGradient(paint) {
 /**
  * Formats Figma shadow and blur effects into CSS declarations
  * @param {Array<object>} effects
+ * @param {object} [options={}]
  * @returns {{ boxShadow: string|null, filter: string|null, backdropFilter: string|null }}
  */
-function formatEffects(effects) {
+function formatEffects(effects, options = {}) {
     if (!Array.isArray(effects) || effects.length === 0) {
         return { boxShadow: null, filter: null, backdropFilter: null };
+    }
+
+    if (options.layoutMode === 'fluid' || options.layoutMode === 'relative') {
+        return formatEffectsWithUnits(effects, options, formatColor);
     }
 
     const shadows = [];
@@ -168,6 +183,29 @@ function isVectorContainerCheck(n) {
 function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     const styles = {};
 
+    const layoutMode = options.layoutMode || (options.fluid ? 'fluid' : (options.relative || options.rem ? 'relative' : 'default'));
+    const isFluid = layoutMode === 'fluid';
+    const isRelative = layoutMode === 'relative';
+    const useRelativeUnits = isFluid || isRelative;
+    const cw = options.canvasWidth || 1440;
+    const ch = options.canvasHeight || 900;
+
+    const fmtSpacing = (val) => {
+        if (isFluid) return formatFluidSpacing(val, cw);
+        if (isRelative) return toRem(val);
+        return `${Math.round(val * 10) / 10}px`;
+    };
+    const fmtW = (w) => {
+        if (isFluid) return formatFluidDimension(w, cw, true);
+        if (isRelative) return toRem(w);
+        return `${Math.round(w)}px`;
+    };
+    const fmtH = (h) => {
+        if (isFluid) return formatFluidDimension(h, ch, false);
+        if (isRelative) return toRem(h);
+        return `${Math.round(h)}px`;
+    };
+
     const isSvgVector = node.type === 'VECTOR' || node.type === 'STAR' || node.type === 'REGULAR_POLYGON' || node.type === 'BOOLEAN_OPERATION' || (node.vectorData && (!node.children || node.children.length === 0));
 
     // 1. Fills & Backgrounds
@@ -237,23 +275,26 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         if (solidStroke) {
             const strokeColor = formatColor(solidStroke.color, solidStroke.opacity);
 
+            const fmtBorderW = (w) => useRelativeUnits ? (w <= 1 ? '1px' : toRem(w)) : `${w}px`;
+
             if (node.borderStrokeWeightsIndependent) {
                 const topW = node.borderTopWeight || 0;
                 const rightW = node.borderRightWeight || 0;
                 const bottomW = node.borderBottomWeight || 0;
                 const leftW = node.borderLeftWeight || 0;
 
-                if (topW > 0) styles['border-top'] = `${topW}px solid ${strokeColor}`;
-                if (rightW > 0) styles['border-right'] = `${rightW}px solid ${strokeColor}`;
-                if (bottomW > 0) styles['border-bottom'] = `${bottomW}px solid ${strokeColor}`;
-                if (leftW > 0) styles['border-left'] = `${leftW}px solid ${strokeColor}`;
+                if (topW > 0) styles['border-top'] = `${fmtBorderW(topW)} solid ${strokeColor}`;
+                if (rightW > 0) styles['border-right'] = `${fmtBorderW(rightW)} solid ${strokeColor}`;
+                if (bottomW > 0) styles['border-bottom'] = `${fmtBorderW(bottomW)} solid ${strokeColor}`;
+                if (leftW > 0) styles['border-left'] = `${fmtBorderW(leftW)} solid ${strokeColor}`;
             } else {
-                styles['border'] = `${node.strokeWeight}px solid ${strokeColor}`;
+                styles['border'] = `${fmtBorderW(node.strokeWeight)} solid ${strokeColor}`;
             }
         }
     }
 
     // 3. Border Radius
+    const fmtRadius = (r) => useRelativeUnits ? toRem(r) : `${r}px`;
     if (node.type === 'ELLIPSE') {
         styles['border-radius'] = '50%';
     } else if (node.rectangleCornerRadiiIndependent) {
@@ -263,13 +304,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         const bl = node.rectangleBottomLeftCornerRadius || 0;
         if (tl || tr || br || bl) {
             if (tl === tr && tr === br && br === bl) {
-                styles['border-radius'] = `${tl}px`;
+                styles['border-radius'] = fmtRadius(tl);
             } else {
-                styles['border-radius'] = `${tl}px ${tr}px ${br}px ${bl}px`;
+                styles['border-radius'] = `${fmtRadius(tl)} ${fmtRadius(tr)} ${fmtRadius(br)} ${fmtRadius(bl)}`;
             }
         }
     } else if (node.cornerRadius && node.cornerRadius > 0) {
-        styles['border-radius'] = `${node.cornerRadius}px`;
+        styles['border-radius'] = fmtRadius(node.cornerRadius);
     }
 
     if (isSvgVector) {
@@ -277,7 +318,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     }
 
     // 4. Effects (Shadows & Blurs)
-    const eff = formatEffects(node.effects);
+    const eff = formatEffects(node.effects, { layoutMode });
     if (eff.boxShadow) styles['box-shadow'] = eff.boxShadow;
     if (eff.filter) styles['filter'] = eff.filter;
     if (eff.backdropFilter) styles['backdrop-filter'] = eff.backdropFilter;
@@ -296,7 +337,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     // 6. Typography
     if (node.type === 'TEXT') {
         if (node.fontSize) {
-            styles['font-size'] = `${node.fontSize}px`;
+            if (isFluid) {
+                styles['font-size'] = formatFluidFontSize(node.fontSize, cw);
+            } else if (isRelative) {
+                styles['font-size'] = toRem(node.fontSize);
+            } else {
+                styles['font-size'] = `${node.fontSize}px`;
+            }
         }
 
         if (node.fontName) {
@@ -315,14 +362,16 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
         if (node.lineHeight) {
             if (typeof node.lineHeight === 'number') {
-                styles['line-height'] = `${Math.round(node.lineHeight * 10) / 10}px`;
+                const lh = Math.round(node.lineHeight * 10) / 10;
+                styles['line-height'] = useRelativeUnits ? toRem(lh) : `${lh}px`;
             } else if (node.lineHeight.units === 'RAW' && typeof node.lineHeight.value === 'number') {
                 styles['line-height'] = String(Math.round(node.lineHeight.value * 100) / 100);
             } else if (node.lineHeight.units === 'PERCENT' && typeof node.lineHeight.value === 'number') {
                 const val = node.lineHeight.value > 10 ? node.lineHeight.value / 100 : node.lineHeight.value;
                 styles['line-height'] = String(Math.round(val * 100) / 100);
             } else if (node.lineHeight.units === 'PIXELS' && typeof node.lineHeight.value === 'number') {
-                styles['line-height'] = `${Math.round(node.lineHeight.value * 10) / 10}px`;
+                const lh = Math.round(node.lineHeight.value * 10) / 10;
+                styles['line-height'] = useRelativeUnits ? toRem(lh) : `${lh}px`;
             }
         }
 
@@ -331,12 +380,14 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                 const emVal = Math.round((node.letterSpacing.value / 100) * 1000) / 1000;
                 styles['letter-spacing'] = `${emVal}em`;
             } else if (node.letterSpacing.units === 'PIXELS') {
-                styles['letter-spacing'] = `${Math.round(node.letterSpacing.value * 10) / 10}px`;
+                const ls = Math.round(node.letterSpacing.value * 10) / 10;
+                styles['letter-spacing'] = useRelativeUnits ? toEm(ls, node.fontSize || 16) : `${ls}px`;
             } else if (node.letterSpacing.units === 'RAW') {
                 styles['letter-spacing'] = `${Math.round(node.letterSpacing.value * 1000) / 1000}em`;
             }
         } else if (typeof node.letterSpacing === 'number') {
-            styles['letter-spacing'] = `${Math.round(node.letterSpacing * 10) / 10}px`;
+            const ls = Math.round(node.letterSpacing * 10) / 10;
+            styles['letter-spacing'] = useRelativeUnits ? toEm(ls, node.fontSize || 16) : `${ls}px`;
         } else if (typeof node.textTracking === 'number') {
             const emVal = Math.abs(node.textTracking) > 1 ? node.textTracking / 1000 : node.textTracking;
             styles['letter-spacing'] = `${Math.round(emVal * 1000) / 1000}em`;
@@ -395,13 +446,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         styles['flex-direction'] = node.stackMode === 'HORIZONTAL' ? 'row' : 'column';
 
         if (node.stackSpacing && node.stackSpacing > 0) {
-            styles['gap'] = `${Math.round(node.stackSpacing * 10) / 10}px`;
+            styles['gap'] = fmtSpacing(node.stackSpacing);
         }
         if (node.stackWrap === 'WRAP') {
             styles['flex-wrap'] = 'wrap';
             if (node.stackCounterSpacing && node.stackCounterSpacing > 0) {
-                if (node.stackMode === 'HORIZONTAL') styles['row-gap'] = `${node.stackCounterSpacing}px`;
-                else styles['column-gap'] = `${node.stackCounterSpacing}px`;
+                if (node.stackMode === 'HORIZONTAL') styles['row-gap'] = fmtSpacing(node.stackCounterSpacing);
+                else styles['column-gap'] = fmtSpacing(node.stackCounterSpacing);
             }
         }
 
@@ -413,11 +464,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
         if (pt || pr || pb || pl) {
             if (pt === pb && pr === pl && pt === pr) {
-                styles['padding'] = `${pt}px`;
+                styles['padding'] = fmtSpacing(pt);
             } else if (pt === pb && pr === pl) {
-                styles['padding'] = `${pt}px ${pr}px`;
+                styles['padding'] = `${fmtSpacing(pt)} ${fmtSpacing(pr)}`;
             } else {
-                styles['padding'] = `${pt}px ${pr}px ${pb}px ${pl}px`;
+                styles['padding'] = `${fmtSpacing(pt)} ${fmtSpacing(pr)} ${fmtSpacing(pb)} ${fmtSpacing(pl)}`;
             }
         }
 
@@ -460,7 +511,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             if (maskChild.type === 'ELLIPSE') {
                 styles['border-radius'] = '50%';
             } else if (maskChild.cornerRadius) {
-                styles['border-radius'] = `${maskChild.cornerRadius}px`;
+                styles['border-radius'] = useRelativeUnits ? toRem(maskChild.cornerRadius) : `${maskChild.cornerRadius}px`;
             }
         }
     }
@@ -476,11 +527,20 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         styles['position'] = 'absolute';
         const posX = Math.round((node.transform?.m02 || 0) * 10) / 10;
         const posY = Math.round((node.transform?.m12 || 0) * 10) / 10;
-        styles['left'] = `${posX}px`;
-        styles['top'] = `${posY}px`;
 
-        if (node.size?.x) styles['width'] = `${Math.round(node.size.x)}px`;
-        if (node.size?.y) styles['height'] = `${Math.round(node.size.y)}px`;
+        if (isFluid) {
+            styles['left'] = toVw(posX, cw);
+            styles['top'] = toVh(posY, ch);
+        } else if (isRelative) {
+            styles['left'] = toRem(posX);
+            styles['top'] = toRem(posY);
+        } else {
+            styles['left'] = `${posX}px`;
+            styles['top'] = `${posY}px`;
+        }
+
+        if (node.size?.x) styles['width'] = fmtW(node.size.x);
+        if (node.size?.y) styles['height'] = fmtH(node.size.y);
     } else if (parentHasMask) {
         // Masked child filling its container
         styles['width'] = '100%';
@@ -512,11 +572,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         const ml = node.stackChildMarginLeft || 0;
         if (mt || mr || mb || ml) {
             if (mt === mb && mr === ml && mt === mr) {
-                styles['margin'] = `${mt}px`;
+                styles['margin'] = fmtSpacing(mt);
             } else if (mt === mb && mr === ml) {
-                styles['margin'] = `${mt}px ${mr}px`;
+                styles['margin'] = `${fmtSpacing(mt)} ${fmtSpacing(mr)}`;
             } else {
-                styles['margin'] = `${mt}px ${mr}px ${mb}px ${ml}px`;
+                styles['margin'] = `${fmtSpacing(mt)} ${fmtSpacing(mr)} ${fmtSpacing(mb)} ${fmtSpacing(ml)}`;
             }
         }
 
@@ -565,38 +625,54 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             // Primary axis: Width
             if (!styles['flex'] && !styles['flex-grow']) {
                 if (isFixedX && node.size?.x) {
-                    styles['width'] = `${Math.round(node.size.x)}px`;
+                    styles['width'] = fmtW(node.size.x);
                     styles['flex-shrink'] = '0';
                 }
             }
             // Counter axis: Height
             if (styles['align-self'] !== 'stretch') {
                 if (isFixedY && node.size?.y) {
-                    styles['height'] = `${Math.round(node.size.y)}px`;
+                    styles['height'] = fmtH(node.size.y);
                 }
             }
         } else {
             // Primary axis: Height
             if (!styles['flex'] && !styles['flex-grow']) {
                 if (isFixedY && node.size?.y) {
-                    styles['height'] = `${Math.round(node.size.y)}px`;
+                    styles['height'] = fmtH(node.size.y);
                     styles['flex-shrink'] = '0';
                 }
             }
             // Counter axis: Width
             if (styles['align-self'] !== 'stretch') {
                 if (isFixedX && node.size?.x) {
-                    styles['width'] = `${Math.round(node.size.x)}px`;
+                    styles['width'] = fmtW(node.size.x);
                 }
             }
         }
     } else {
         // Root element or independent artboard
-        if (node.size?.x) styles['width'] = `${Math.round(node.size.x)}px`;
-        if (node.size?.y) styles['min-height'] = `${Math.round(node.size.y)}px`;
-        styles['margin'] = '0 auto';
-        if (node.children && node.children.length > 0) {
+        if (isFluid) {
+            styles['width'] = '100vw';
+            styles['min-height'] = '100dvh';
+            styles['max-width'] = '100%';
+            styles['box-sizing'] = 'border-box';
+            styles['margin'] = '0 auto';
             styles['position'] = 'relative';
+        } else if (isRelative) {
+            styles['width'] = '100vw';
+            styles['min-height'] = '100vh';
+            styles['max-width'] = '100%';
+            styles['box-sizing'] = 'border-box';
+            styles['margin'] = '0 auto';
+            styles['position'] = 'relative';
+        } else {
+            if (node.size?.x) styles['width'] = `${Math.round(node.size.x)}px`;
+            if (node.size?.y) styles['min-height'] = `${Math.round(node.size.y)}px`;
+            styles['margin'] = '0 auto';
+            if (node.children && node.children.length > 0) {
+                styles['position'] = 'relative';
+            }
         }
     }
 
