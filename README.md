@@ -114,13 +114,22 @@ npm run build
 
 #### 2. Обратная конвертация: .fig ➔ HTML
 ```bash
-# Декомпиляция .fig файла в чистый автономный HTML (все стили и картинки внутри):
+# Декомпиляция .fig файла в чистый автономный HTML (Retina 2x + адаптивный srcset / sizes):
 node cli-reverse.js design.fig
 
 # Декомпиляция с вынесением CSS в отдельный файл css/style.css и картинок в img/*:
 node cli-reverse.js design.fig -s
 # или:
 node cli-reverse.js design.fig index.html --separate-files
+
+# Экспорт с картинками в современном формате WebP:
+node cli-reverse.js design.fig index.html -s --webp
+
+# Экспорт с картинками в формате AVIF и сжатием без потери качества (lossless):
+node cli-reverse.js design.fig index.html -s --avif --compress
+
+# Отключение адаптивного srcset (генерирует единую четкую 2x Retina картинку в src):
+node cli-reverse.js design.fig index.html --no-srcset
 
 # Указание имени выходного файла и страницы:
 node cli-reverse.js showcase.fig output.html --page "Page 1"
@@ -191,21 +200,6 @@ OPTIONS:
   -v, --verbose            Подробные логи процесса
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
-```
-
-#### Примеры использования fig-to-html:
-```bash
-# 1. Автономный HTML файл с автоматическим 2x ресайзом под размер в CSS и адаптивным srcset:
-fig-to-html design.fig index.html
-
-# 2. Экспорт с отдельным CSS и картинками в современном формате WebP:
-fig-to-html design.fig index.html -s --webp
-
-# 3. Конвертация картинок в AVIF со сжатием без потери качества (lossless):
-fig-to-html design.fig index.html -s --avif --compress
-
-# 4. Отключение responsive srcset (генерирует единую 2x Retina картинку в src):
-fig-to-html design.fig index.html --no-srcset
 ```
 
 ---
