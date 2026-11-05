@@ -3,7 +3,7 @@
 # 🎨 HTML to .fig & .fig to HTML
 ### Figma Bi-Directional Engine 2.0
 
-[![Version](https://img.shields.io/badge/version-1.1.0-6366f1.svg?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/version-1.2.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Tests: 61 passed](https://img.shields.io/badge/tests-61%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -43,7 +43,7 @@ $ html-to-fig showcase.html showcase.fig
 
 ┌──────────────────────────────────────────┐
 │             HTML to Figma CLI            │
-│               v1.0.0                     │
+│               v1.2.0                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
 
@@ -69,7 +69,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 
 ┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
-│               v1.0.0                     │
+│               v1.2.0                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
 
@@ -231,6 +231,14 @@ node cli-reverse.js design.fig index.html --fluid
 # Использование относительных единиц измерения (rem, em, vw, vh вместо px):
 node cli-reverse.js design.fig index.html --relative
 
+# Декомпиляция с генерацией адаптивной CSS Grid сетки вместо Flexbox:
+node cli-reverse.js design.fig index.html --grid
+# или:
+node cli-reverse.js design.fig index.html --layout grid
+
+# Экспорт нативных Figma Variables в файл дизайн-токенов JSON (W3C Design Tokens format):
+node cli-reverse.js design.fig index.html --tokens tokens.json
+
 # Декомпиляция с вынесением CSS в отдельный файл css/style.css и картинок в img/*:
 node cli-reverse.js design.fig -s
 # или:
@@ -314,9 +322,11 @@ OPTIONS:
   --format <fmt>           Конвертация в современный формат: webp, avif, original (по умолчанию: original)
   --webp                   Шорткат для --format webp
   --avif                   Шорткат для --format avif
-  --layout <mode>          Режим вёрстки: default (px), relative (rem/em/vw/vh) или fluid (clamp/min/max)
+  --layout <mode>          Режим вёрстки: default (px), relative (rem/em/vw/vh), fluid (clamp/min/max) или grid
   --fluid                  Шорткат для --layout fluid (100vw/100dvh, clamp(), rem, vw/vh)
   --relative, --rem        Шорткат для --layout relative (rem, em, vw/vh вместо px)
+  --grid                   Шорткат для --layout grid (CSS Grid разметка)
+  --tokens [path]          Экспорт Figma Variables в файл дизайн-токенов JSON (по умолчанию: tokens.json)
   -v, --verbose            Подробные логи процесса
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
@@ -392,7 +402,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (52 теста):
+Проект покрыт всесторонними автоматическими тестами (61 тест):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -416,6 +426,11 @@ decompile();
 - Сохранение фиксированных габаритов Auto Layout при растяжении по поперечной оси (`align-self: stretch`)
 - Полная поддержка `symbolOverrides` для инстансов компонентов (подмена текста, переопределения `letter-spacing`, `line-height` и стилей)
 - Корректная обработка масок и встраивание замаскированных картинок в поток документа
+- Поддержка нативных переменных Figma (`VARIABLE_SET`, `VARIABLE`) и экспорт дизайн-токенов в JSON (`--tokens`)
+- Трансляция CSS Grid (`repeat(N, 1fr)`) в Auto Layout Wrap и обратная декомпиляция (`--layout grid`, `--grid`)
+- Генерация интерактивных связей прототипа (`prototypeInteractions`) для состояний `:hover`
+- Автоматическое обнаружение Google Fonts и расчет размеров текста по таблице метрик `FONT_METRICS_TABLE`
+- Оптимизация памяти при чтении бинарных `.fig` (ленивое декодирование изображений в Base64)
 
 Запуск тестов:
 ```bash
@@ -459,7 +474,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (52 теста)
+    ├── run-tests.js        # Автоматический тестовый запуск (61 тест)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)

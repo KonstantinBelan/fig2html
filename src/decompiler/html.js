@@ -546,6 +546,7 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
     // Pass 2: Render semantic HTML
     let bodyContent = '';
     for (const root of rootNodes) {
+        if (root.isStateGroup) continue;
         bodyContent += renderNodeToHtml(root, null, imageRegistry, stylesheetManager, options, 2);
     }
 

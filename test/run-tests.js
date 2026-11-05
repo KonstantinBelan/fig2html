@@ -1274,7 +1274,7 @@ async function runAllTests() {
         const btnNode = res.nodeChanges.find(n => n.name === 'btn');
         assert(btnNode, 'btn frame should exist');
         assert(btnNode.prototypeInteractions, 'btn should have prototypeInteractions');
-        assert.strictEqual(btnNode.prototypeInteractions[0].event.interactionType, 'WHILE_HOVERING');
+        assert.strictEqual(btnNode.prototypeInteractions[0].event.interactionType, 'ON_HOVER');
     });
 
     it('provides lazy base64 evaluation in reader for memory efficiency', () => {

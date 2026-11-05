@@ -16,6 +16,10 @@ const {
 const { ImageRegistry } = require('./parsers/images');
 const { serializeSvgElement, getSvgDimensions, renderSvgToPng } = require('./parsers/svg');
 
+function cloneNode(obj) {
+    return JSON.parse(JSON.stringify(obj));
+}
+
 /**
  * Parses CSS grid-template-columns into an array of column size definitions
  * @param {string} gridCols
@@ -336,6 +340,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
     // 3. Collect interactive pseudo-class rules (:hover, :active, :focus)
     const pseudoRules = { hover: [], active: [], focus: [] };
+    let nextCompSetY = 40;
     for (const styleEl of doc.querySelectorAll('style')) {
         const css = styleEl.textContent || '';
         const ruleRegex = /([^{]+)\{([^}]+)\}/g;
@@ -1070,10 +1075,10 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     stackChildAlignSelf: shouldStretch ? 'STRETCH' : (alignSelf === 'center' ? 'CENTER' : 'MIN')
                 };
 
-                if (marginOffsets.top > 0) wrapperFrame.stackVerticalPadding = marginOffsets.top;
-                if (marginOffsets.bottom > 0) wrapperFrame.stackPaddingBottom = marginOffsets.bottom;
-                if (marginOffsets.left > 0) wrapperFrame.stackHorizontalPadding = marginOffsets.left;
-                if (marginOffsets.right > 0) wrapperFrame.stackPaddingRight = marginOffsets.right;
+                wrapperFrame.stackVerticalPadding = marginOffsets.top || 0;
+                wrapperFrame.stackPaddingBottom = marginOffsets.bottom || 0;
+                wrapperFrame.stackHorizontalPadding = marginOffsets.left || 0;
+                wrapperFrame.stackPaddingRight = marginOffsets.right || 0;
 
                 nodeChanges.push(wrapperFrame);
                 nodeChanges.push(textNode);
@@ -1269,17 +1274,27 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
         // Determine frame width
         let frameWidth = width;
+        const isInlineEl = display === 'inline-block' || display === 'inline-flex' || display === 'inline' || tagName === 'button';
+        const hasTextChildren = Array.from(element.childNodes).some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
+        const isGridChild = parentContext && (parentContext.isMultiColGrid || parentContext.gridChildWidth > 0);
+
         if (parentContext && parentContext.isMultiColGrid && parentContext.gridChildWidth > 0 && !hasExplicitWidth) {
             frameWidth = parentContext.gridChildWidth;
             width = parentContext.gridChildWidth;
         } else if (tagName === 'body') {
             frameWidth = width || 1440;
         } else if (!frameWidth || frameWidth === 0) {
-            if (parentContext && parentContext.isColumn && alignSelf !== 'center' && alignSelf !== 'flex-start' && !isMarginAuto) {
+            if (parentContext && parentContext.isColumn && alignSelf !== 'center' && alignSelf !== 'flex-start' && !isMarginAuto && !isInlineEl) {
                 // In a column parent, block children expand to parent's width by default
                 frameWidth = parentContext.width;
             } else if (parentContext && parentContext.isFlex && !parentContext.isColumn && flexGrow > 0) {
                 frameWidth = parentContext.width;
+            } else if (isInlineEl || (parentContext && !parentContext.isColumn && hasTextChildren && element.children.length === 0)) {
+                // For inline elements or buttons, estimate width from text content + padding
+                const textContent = element.textContent.trim();
+                const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles.fontSize || 14;
+                const charW = fontSize * 0.58;
+                frameWidth = Math.ceil(paddingLeft + paddingRight + textContent.length * charW);
             } else if (parentContext && !parentContext.isColumn) {
                 // In a flex row, default to remaining width or content width
                 frameWidth = Math.min(240, Math.max(60, parentContext.width - 60));
@@ -1353,20 +1368,22 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         if (frameType === 'FRAME') {
             if (tagName === 'body') {
                 frameNode.stackMode = 'VERTICAL';
-                if (gap > 0) frameNode.stackSpacing = gap;
-                if (paddingLeft > 0) frameNode.stackHorizontalPadding = paddingLeft;
-                if (paddingRight > 0) frameNode.stackPaddingRight = paddingRight;
-                if (paddingTop > 0) frameNode.stackVerticalPadding = paddingTop;
-                if (paddingBottom > 0) frameNode.stackPaddingBottom = paddingBottom;
+                frameNode.stackSpacing = gap || 0;
+                frameNode.stackHorizontalPadding = paddingLeft || 0;
+                frameNode.stackPaddingRight = paddingRight || 0;
+                frameNode.stackVerticalPadding = paddingTop || 0;
+                frameNode.stackPaddingBottom = paddingBottom || 0;
+                frameNode.stackPrimaryAlignItems = 'MIN';
+                frameNode.stackCounterAlignItems = 'MIN';
                 frameNode.stackPrimarySizing = 'RESIZE_TO_FIT';
                 frameNode.stackCounterSizing = 'FIXED';
             } else if (isFlex || isGrid) {
                 frameNode.stackMode = isColumn ? 'VERTICAL' : 'HORIZONTAL';
-                if (gap > 0) frameNode.stackSpacing = gap;
-                if (paddingLeft > 0) frameNode.stackHorizontalPadding = paddingLeft;
-                if (paddingRight > 0) frameNode.stackPaddingRight = paddingRight;
-                if (paddingTop > 0) frameNode.stackVerticalPadding = paddingTop;
-                if (paddingBottom > 0) frameNode.stackPaddingBottom = paddingBottom;
+                frameNode.stackSpacing = gap || 0;
+                frameNode.stackHorizontalPadding = paddingLeft || 0;
+                frameNode.stackPaddingRight = paddingRight || 0;
+                frameNode.stackVerticalPadding = paddingTop || 0;
+                frameNode.stackPaddingBottom = paddingBottom || 0;
 
                 const flexWrap = getProp('flex-wrap', 'flexWrap');
                 if (isMultiColGrid) {
@@ -1386,13 +1403,15 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 if (jc === 'center' || isPlaceCenter) frameNode.stackPrimaryAlignItems = 'CENTER';
                 else if (jc === 'flex-end' || jc === 'end') frameNode.stackPrimaryAlignItems = 'MAX';
                 else if (jc === 'space-between' || jc === 'space-around' || jc === 'space-evenly') frameNode.stackPrimaryAlignItems = 'SPACE_BETWEEN';
+                else frameNode.stackPrimaryAlignItems = 'MIN';
 
                 const ai = getProp('align-items', 'alignItems');
                 if (ai === 'center' || isPlaceCenter) frameNode.stackCounterAlignItems = 'CENTER';
                 else if (ai === 'flex-end' || ai === 'end') frameNode.stackCounterAlignItems = 'MAX';
                 else if (ai === 'baseline') frameNode.stackCounterAlignItems = 'BASELINE';
+                else frameNode.stackCounterAlignItems = 'MIN';
 
-                const isInline = display === 'inline-flex' || display === 'inline-block' || display === 'inline';
+                const isInline = isInlineEl;
                 const isContentWidth = rawWidthStr === 'max-content' || rawWidthStr === 'min-content' || rawWidthStr === 'fit-content';
 
                 // Axes:
@@ -1400,9 +1419,9 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 // VERTICAL stack: primary = HEIGHT, counter = WIDTH
                 if (isColumn) {
                     frameNode.stackPrimarySizing = (hasExplicitHeight || isHeightPercent) ? 'FIXED' : 'RESIZE_TO_FIT';
-                    frameNode.stackCounterSizing = (hasExplicitWidth || isWidthPercent || (parentContext && parentContext.isColumn)) && !isInline && !isContentWidth ? 'FIXED' : 'RESIZE_TO_FIT';
+                    frameNode.stackCounterSizing = (hasExplicitWidth || isWidthPercent || (parentContext && (parentContext.isColumn || isGridChild))) && !isInline && !isContentWidth ? 'FIXED' : 'RESIZE_TO_FIT';
                 } else {
-                    frameNode.stackPrimarySizing = (hasExplicitWidth || isWidthPercent || (jc === 'space-between' && frameWidth > 200)) && !isContentWidth ? 'FIXED' : 'RESIZE_TO_FIT';
+                    frameNode.stackPrimarySizing = (hasExplicitWidth || isWidthPercent || isGridChild || (jc === 'space-between' && frameWidth > 200)) && !isContentWidth ? 'FIXED' : 'RESIZE_TO_FIT';
                     frameNode.stackCounterSizing = (hasExplicitHeight || isHeightPercent) ? 'FIXED' : 'RESIZE_TO_FIT';
                 }
             } else if (element.children.length > 0) {
@@ -1410,19 +1429,42 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 // In HTML, block elements stack their children VERTICALLY
                 frameNode.stackMode = 'VERTICAL';
                 frameNode.stackSpacing = 2; // small default spacing between block items
-                if (paddingLeft > 0) frameNode.stackHorizontalPadding = paddingLeft;
-                if (paddingRight > 0) frameNode.stackPaddingRight = paddingRight;
-                if (paddingTop > 0) frameNode.stackVerticalPadding = paddingTop;
-                if (paddingBottom > 0) frameNode.stackPaddingBottom = paddingBottom;
+                frameNode.stackHorizontalPadding = paddingLeft || 0;
+                frameNode.stackPaddingRight = paddingRight || 0;
+                frameNode.stackVerticalPadding = paddingTop || 0;
+                frameNode.stackPaddingBottom = paddingBottom || 0;
+                frameNode.stackPrimaryAlignItems = 'MIN';
+                frameNode.stackCounterAlignItems = 'MIN';
 
                 frameNode.stackPrimarySizing = hasExplicitHeight ? 'FIXED' : 'RESIZE_TO_FIT';
-                frameNode.stackCounterSizing = (hasExplicitWidth || isWidthPercent || (parentContext && parentContext.isColumn)) ? 'FIXED' : 'RESIZE_TO_FIT';
+                frameNode.stackCounterSizing = (hasExplicitWidth || isWidthPercent || (parentContext && (parentContext.isColumn || isGridChild))) && !isInlineEl ? 'FIXED' : 'RESIZE_TO_FIT';
+            } else if (hasTextChildren && !isGridChild && (fills.length > 0 || strokePaints.length > 0 || effects.length > 0 || borderRadius > 0 || paddingLeft > 0 || paddingRight > 0 || paddingTop > 0 || paddingBottom > 0 || tagName === 'button' || isInlineEl)) {
+                // Inline container, button or badge with text (e.g. <button>, <div class="badge">, <a class="btn">)
+                frameNode.stackMode = 'HORIZONTAL';
+                frameNode.stackSpacing = gap || 0;
+                frameNode.stackHorizontalPadding = paddingLeft || 0;
+                frameNode.stackPaddingRight = paddingRight || 0;
+                frameNode.stackVerticalPadding = paddingTop || 0;
+                frameNode.stackPaddingBottom = paddingBottom || 0;
+
+                const ta = (getProp('text-align', 'textAlign') || '').toLowerCase();
+                frameNode.stackPrimaryAlignItems = (ta === 'center' || tagName === 'button') ? 'CENTER' : (ta === 'right' || ta === 'end' ? 'MAX' : 'MIN');
+                frameNode.stackCounterAlignItems = 'CENTER';
+
+                frameNode.stackPrimarySizing = (hasExplicitWidth || isWidthPercent) ? 'FIXED' : 'RESIZE_TO_FIT';
+                frameNode.stackCounterSizing = (hasExplicitHeight || isHeightPercent) ? 'FIXED' : 'RESIZE_TO_FIT';
             } else {
                 frameNode.stackMode = 'NONE';
             }
 
             if (frameNode.stackMode && frameNode.stackMode !== 'NONE') {
                 frameNode.stackLayoutVersion = 4;
+                if (frameNode.stackHorizontalPadding === undefined) frameNode.stackHorizontalPadding = 0;
+                if (frameNode.stackPaddingRight === undefined) frameNode.stackPaddingRight = 0;
+                if (frameNode.stackVerticalPadding === undefined) frameNode.stackVerticalPadding = 0;
+                if (frameNode.stackPaddingBottom === undefined) frameNode.stackPaddingBottom = 0;
+                if (frameNode.stackPrimaryAlignItems === undefined) frameNode.stackPrimaryAlignItems = 'MIN';
+                if (frameNode.stackCounterAlignItems === undefined) frameNode.stackCounterAlignItems = 'MIN';
             }
         }
 
@@ -1433,7 +1475,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             if (marginOffsets.bottom) frameNode.stackChildMarginBottom = marginOffsets.bottom;
             if (marginOffsets.left) frameNode.stackChildMarginLeft = marginOffsets.left;
 
-            const isInline = display === 'inline-flex' || display === 'inline-block' || display === 'inline';
+            const isInline = isInlineEl;
             const isContentWidth = rawWidthStr === 'max-content' || rawWidthStr === 'min-content' || rawWidthStr === 'fit-content';
 
             if (isMarginAuto && parentContext.isColumn) {
@@ -1480,7 +1522,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     frameNode.stackChildAlignSelf = 'CENTER';
                 } else if (alignSelf === 'flex-end' || parentContext.alignItems === 'flex-end') {
                     frameNode.stackChildAlignSelf = 'MAX';
-                } else if (alignSelf === 'flex-start' || parentContext.alignItems === 'flex-start') {
+                } else if (alignSelf === 'flex-start' || parentContext.alignItems === 'flex-start' || isInline) {
                     frameNode.stackChildAlignSelf = 'MIN';
                 }
 
@@ -1496,31 +1538,15 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         }
 
         let hasHoverRule = false;
+        let hoverRuleBody = null;
         for (const rule of pseudoRules.hover) {
             try {
                 if (element.matches(rule.selector)) {
                     hasHoverRule = true;
+                    hoverRuleBody = rule.body;
                     break;
                 }
             } catch (_) {}
-        }
-
-        if (hasHoverRule && options.createVariants !== false) {
-            frameNode.prototypeInteractions = [
-                {
-                    id: guidGen.next(),
-                    event: { interactionType: 'WHILE_HOVERING' },
-                    actions: [
-                        {
-                            navigationType: 'SWAP_STATE',
-                            transitionType: 'SMART_ANIMATE',
-                            transitionDuration: 0.18
-                        }
-                    ],
-                    isDeleted: false,
-                    stateManagementVersion: 1
-                }
-            ];
         }
 
         nodeChanges.push(frameNode);
@@ -1616,7 +1642,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     frameNode.size.x = contentW;
                 }
                 if (((!hasExplicitHeight && !isHeightPercent) || frameNode.stackCounterSizing === 'RESIZE_TO_FIT') && tagName !== 'body') {
-                    frameNode.size.y = Math.max(contentH, frameNode.size.y || 10);
+                    frameNode.size.y = (!hasExplicitHeight && !isHeightPercent) ? contentH : Math.max(contentH, frameNode.size.y || 10);
                 }
 
                 // Pre-compute child X coordinates along row
@@ -1739,6 +1765,162 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     }
                 }
             }
+        }
+
+        if (hasHoverRule && options.createVariants !== false) {
+            const compSetGuid = guidGen.next();
+            const defaultVariantGuid = guidGen.next();
+            const hoverVariantGuid = guidGen.next();
+
+            const compSetW = Math.max(100, frameNode.size.x * 2 + 60);
+            const compSetH = Math.max(60, frameNode.size.y + 40);
+
+            const compSetNode = {
+                guid: compSetGuid,
+                phase: 'CREATED',
+                parentIndex: { guid: parentCanvasGuid, position: '~' },
+                type: 'FRAME',
+                name: frameNode.name || 'Component',
+                visible: true,
+                opacity: 1,
+                size: { x: compSetW, y: compSetH },
+                transform: { m00: 1, m01: 0, m02: 1140, m10: 0, m11: 1, m12: nextCompSetY },
+                isStateGroup: true,
+                stackMode: 'HORIZONTAL',
+                stackSpacing: 20,
+                stackHorizontalPadding: 20,
+                stackVerticalPadding: 20,
+                stackPaddingRight: 20,
+                stackPaddingBottom: 20,
+                stackLayoutVersion: 4,
+                stackPrimaryAlignItems: 'MIN',
+                stackCounterAlignItems: 'CENTER',
+                stateGroupPropertyValueOrders: [
+                    { property: 'State', values: ['Default', 'Hover'] }
+                ]
+            };
+            nextCompSetY += compSetH + 40;
+
+            const defaultVariant = {
+                ...cloneNode(frameNode),
+                guid: defaultVariantGuid,
+                parentIndex: { guid: compSetGuid, position: '!' },
+                type: 'SYMBOL',
+                name: 'State=Default',
+                transform: { m00: 1, m01: 0, m02: 20, m10: 0, m11: 1, m12: 20 },
+                prototypeInteractions: [
+                    {
+                        id: guidGen.next(),
+                        event: { interactionType: 'ON_HOVER' },
+                        actions: [
+                            {
+                                transitionNodeID: hoverVariantGuid,
+                                transitionType: 'SMART_ANIMATE',
+                                transitionDuration: 0.18,
+                                navigationType: 'SWAP_STATE',
+                                connectionType: 'INTERNAL_NODE'
+                            }
+                        ],
+                        isDeleted: false,
+                        stateManagementVersion: 1
+                    }
+                ]
+            };
+
+            const hoverVariant = {
+                ...cloneNode(frameNode),
+                guid: hoverVariantGuid,
+                parentIndex: { guid: compSetGuid, position: '"' },
+                type: 'SYMBOL',
+                name: 'State=Hover',
+                transform: { m00: 1, m01: 0, m02: frameNode.size.x + 40, m10: 0, m11: 1, m12: 20 },
+                prototypeInteractions: undefined
+            };
+
+            if (hoverRuleBody) {
+                const bgMatch = hoverRuleBody.match(/(?:background-color|background)\s*:\s*([^;!]+)/i);
+                if (bgMatch) {
+                    const resolvedBg = resolveVar(bgMatch[1].trim(), element);
+                    const parsedBg = parseColor(resolvedBg);
+                    if (parsedBg) {
+                        hoverVariant.fillPaints = [{
+                            type: 'SOLID',
+                            color: { r: parsedBg.r, g: parsedBg.g, b: parsedBg.b, a: 1 },
+                            opacity: parsedBg.a !== undefined ? parsedBg.a : 1,
+                            visible: true,
+                            blendMode: 'NORMAL'
+                        }];
+                    }
+                }
+                const borderMatch = hoverRuleBody.match(/(?:border-color|border)\s*:\s*([^;!]+)/i);
+                if (borderMatch) {
+                    const resolvedBorder = resolveVar(borderMatch[1].trim(), element);
+                    const parsedBorder = parseColor(resolvedBorder);
+                    if (parsedBorder) {
+                        hoverVariant.strokePaints = [{
+                            type: 'SOLID',
+                            color: { r: parsedBorder.r, g: parsedBorder.g, b: parsedBorder.b, a: 1 },
+                            opacity: parsedBorder.a !== undefined ? parsedBorder.a : 1,
+                            visible: true,
+                            blendMode: 'NORMAL'
+                        }];
+                    }
+                }
+            }
+
+            for (const c of flowChildren) {
+                if (c.node) {
+                    const defChild = {
+                        ...cloneNode(c.node),
+                        guid: guidGen.next(),
+                        parentIndex: { guid: defaultVariantGuid, position: c.node.parentIndex?.position || '!' }
+                    };
+                    const hovChild = {
+                        ...cloneNode(c.node),
+                        guid: guidGen.next(),
+                        parentIndex: { guid: hoverVariantGuid, position: c.node.parentIndex?.position || '!' }
+                    };
+                    if (hoverRuleBody && c.node.type === 'TEXT') {
+                        const colorMatch = hoverRuleBody.match(/(?:^|[^-_])color\s*:\s*([^;!]+)/i);
+                        if (colorMatch) {
+                            const resolvedColor = resolveVar(colorMatch[1].trim(), element);
+                            const parsedColor = parseColor(resolvedColor);
+                            if (parsedColor) {
+                                hovChild.fillPaints = [{
+                                    type: 'SOLID',
+                                    color: { r: parsedColor.r, g: parsedColor.g, b: parsedColor.b, a: 1 },
+                                    opacity: parsedColor.a !== undefined ? parsedColor.a : 1,
+                                    visible: true,
+                                    blendMode: 'NORMAL'
+                                }];
+                            }
+                        }
+                    }
+                    nodeChanges.push(defChild, hovChild);
+                }
+            }
+
+            frameNode.type = 'INSTANCE';
+            frameNode.symbolData = { symbolID: defaultVariantGuid };
+            frameNode.prototypeInteractions = [
+                {
+                    id: guidGen.next(),
+                    event: { interactionType: 'ON_HOVER' },
+                    actions: [
+                        {
+                            transitionNodeID: hoverVariantGuid,
+                            transitionType: 'SMART_ANIMATE',
+                            transitionDuration: 0.18,
+                            navigationType: 'SWAP_STATE',
+                            connectionType: 'INTERNAL_NODE'
+                        }
+                    ],
+                    isDeleted: false,
+                    stateManagementVersion: 1
+                }
+            ];
+            nodeChanges.push(compSetNode, defaultVariant, hoverVariant);
+            stats.frames += 3;
         }
 
         return { node: frameNode, width: frameNode.size.x, height: frameNode.size.y, isAbsolute, marginTop: marginOffsets.top, marginBottom: marginOffsets.bottom, marginLeft: marginOffsets.left, marginRight: marginOffsets.right };

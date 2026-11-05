@@ -212,7 +212,7 @@ class StylesheetManager {
 
         let defaultVariant = variantChildren.find(c => /state=default|status=default|default/i.test((c.name || '').toLowerCase())) || variantChildren[0];
         const defaultStyles = computeNodeStyles(defaultVariant, containerNode, imageRegistry, options);
-        const baseClassName = this.classesByNode.get(defaultVariant) || this.classesByNode.get(containerNode) || toBaseClassName(containerNode.name);
+        const baseClassName = toBaseClassName(containerNode.name);
 
         for (const variant of variantChildren) {
             if (variant === defaultVariant) continue;
@@ -259,7 +259,7 @@ class StylesheetManager {
      * @returns {string} Assigned CSS class name
      */
     registerNode(node, parentNode, imageRegistry, options = {}) {
-        if (!node || node.visible === false || node.mask === true || node.isMask === true) {
+        if (!node || node.visible === false || node.mask === true || node.isMask === true || node.isStateGroup || parentNode?.isStateGroup) {
             return '';
         }
 

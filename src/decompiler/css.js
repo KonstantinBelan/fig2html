@@ -442,12 +442,19 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     // 7. Auto Layout (Container Properties)
     const isAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
     if (isAutoLayout) {
-        if (layoutMode === 'grid' && Array.isArray(node.children) && node.children.length > 1) {
+        const isGridContainer = layoutMode === 'grid' && Array.isArray(node.children) && node.children.length > 1 && (
+            node.stackWrap === 'WRAP' ||
+            /grid/i.test(node.name || '') ||
+            Boolean(node.gridColumns || node.gridRows) ||
+            Boolean(node.stackCounterSpacing && node.stackCounterSpacing > 0 && node.stackWrap === 'WRAP')
+        );
+
+        if (isGridContainer) {
             styles['display'] = 'grid';
             if (node.stackMode === 'HORIZONTAL') {
                 const childW = node.children[0]?.size?.x || 200;
                 const containerW = node.size?.x || cw;
-                const approxCols = Math.max(1, Math.min(node.children.length, Math.floor(containerW / Math.max(50, childW))));
+                const approxCols = Math.max(1, Math.min(node.children.length, Math.round(containerW / Math.max(50, childW))));
                 styles['grid-template-columns'] = `repeat(${approxCols}, 1fr)`;
             } else {
                 styles['grid-template-columns'] = '1fr';
@@ -583,6 +590,21 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         else if (alignSelfVal === 'CENTER') styles['align-self'] = 'center';
         else if (alignSelfVal === 'MIN') styles['align-self'] = 'flex-start';
         else if (alignSelfVal === 'MAX') styles['align-self'] = 'flex-end';
+
+        const parentIsGrid = layoutMode === 'grid' && parentNode && (
+            parentNode.stackWrap === 'WRAP' ||
+            /grid/i.test(parentNode.name || '') ||
+            Boolean(parentNode.gridColumns || parentNode.gridRows)
+        );
+        if (parentIsGrid) {
+            if (alignSelfVal === 'MIN') {
+                styles['justify-self'] = 'start';
+            } else if (alignSelfVal === 'CENTER') {
+                styles['justify-self'] = 'center';
+            } else if (alignSelfVal === 'MAX') {
+                styles['justify-self'] = 'end';
+            }
+        }
 
         // Child margins
         const mt = node.stackChildMarginTop || 0;
