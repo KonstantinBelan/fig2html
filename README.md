@@ -46,6 +46,7 @@ $ html-to-fig showcase.html showcase.fig
 │               v1.2.0                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
+[████████████████████] 100% • Packaging .fig archive... (0.7s)
 
 ✔ Build complete in 684ms!
 ┌─────────────────────────────────────────┐
@@ -72,6 +73,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 │               v1.2.0                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
+[████████████████████] 100% • Writing standalone HTML file... (0.1s)
 
 ✔ Decompilation complete in 66ms!
 ┌─────────────────────────────────────────┐
