@@ -90,13 +90,15 @@
     text-decoration: inherit;
   }
 
-  .figma-bi-directional-engine-v1-2-0 {
+  .main-container {
     background-color: var(--color-bg);
     display: flex;
     flex-direction: column;
     padding: 46px 40px 40px 40px;
-    width: 1080px;
+    width: 100%;
+    max-width: 1080px;
     min-height: 522px;
+    box-sizing: border-box;
     margin: 0 auto;
     position: relative;
   }
@@ -245,7 +247,7 @@
   </style>
 </head>
 <body>
-    <div class="figma-bi-directional-engine-v1-2-0">
+    <div class="main-container">
       <span class="engine-v1-2-0-new-features-dem">ENGINE v1.2.0 • NEW FEATURES DEMO</span>
       <h1 class="title">Новые возможности HTML ➔ Figma</h1>
       <p class="subtitle">Этот файл демонстрирует нативные Figma Variables, CSS Grid, интерактивные ховеры и Google Fonts.</p>

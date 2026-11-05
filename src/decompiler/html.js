@@ -518,21 +518,21 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
     }
 
     // Pass 1: Walk entire scene tree and register all nodes
-    function registerTree(node, parent) {
+    function registerTree(node, parent, isRoot = false) {
         if (!node || node.visible === false || node.mask === true || node.isMask === true) return;
-        stylesheetManager.registerNode(node, parent, imageRegistry, options);
+        stylesheetManager.registerNode(node, parent, imageRegistry, { ...options, isRoot });
         stylesheetManager.registerVariants(node, imageRegistry, options);
         if (isVectorContainer(node)) {
             return;
         }
         if (node.children) {
             for (const child of node.children) {
-                registerTree(child, node);
+                registerTree(child, node, false);
             }
         }
     }
     for (const root of rootNodes) {
-        registerTree(root, null);
+        registerTree(root, null, true);
     }
 
     // Generate CSS rules (classes + :root) or base resets if inlineStyles is requested

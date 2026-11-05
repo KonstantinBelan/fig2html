@@ -787,8 +787,10 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             styles['margin'] = '0 auto';
             styles['position'] = 'relative';
         } else {
-            if (node.size?.x) styles['width'] = `${Math.round(node.size.x)}px`;
+            styles['width'] = '100%';
+            if (node.size?.x) styles['max-width'] = `${Math.round(node.size.x)}px`;
             if (node.size?.y) styles['min-height'] = `${Math.round(node.size.y)}px`;
+            styles['box-sizing'] = 'border-box';
             styles['margin'] = '0 auto';
             if (node.children && node.children.length > 0) {
                 styles['position'] = 'relative';

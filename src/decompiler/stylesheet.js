@@ -264,7 +264,8 @@ class StylesheetManager {
         }
 
         const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-        const baseName = toBaseClassName(node.name, node.type);
+        const isRoot = Boolean(options.isRoot || node.isRoot);
+        const baseName = isRoot ? (options.rootClassName || 'main-container') : toBaseClassName(node.name, node.type);
         const sig = styleSignature(styles);
 
         if (!this.classRegistry.has(baseName)) {

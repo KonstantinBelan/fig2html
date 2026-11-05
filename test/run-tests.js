@@ -1936,12 +1936,14 @@ async function runAllTests() {
         assert(!html.includes('width: 317px'), 'Should not contain hardcoded width: 317px');
         assert(!html.includes('width: 175px'), 'btn-primary should not contain hardcoded width: 175px');
         assert(!html.includes('height: 45px'), 'Buttons should not contain hardcoded height: 45px');
-        assert(html.includes('.figma-bi-directional-engine-v1-2-0'), 'Root container present');
+        assert(html.includes('.main-container'), 'Root container present as .main-container');
 
-        // Ensure root container does NOT have artificial gap
-        const rootBlockMatch = html.match(/\.figma-bi-directional-engine-v1-2-0\s*\{([^}]+)\}/);
+        // Ensure root container does NOT have artificial gap and uses responsive max-width
+        const rootBlockMatch = html.match(/\.main-container\s*\{([^}]+)\}/);
         assert(rootBlockMatch, 'Root css block should exist');
         assert(!rootBlockMatch[1].includes('gap:'), 'Root block should not have artificial uniform gap');
+        assert(rootBlockMatch[1].includes('max-width: 1080px'), 'Root container should have max-width: 1080px');
+        assert(rootBlockMatch[1].includes('width: 100%'), 'Root container should have width: 100%');
 
         // Ensure precise margin-top rhythm is applied to sections
         assert(html.includes('margin-top: 20px'), 'Title should have margin-top: 20px');
