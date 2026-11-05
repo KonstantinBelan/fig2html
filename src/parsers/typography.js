@@ -1,6 +1,179 @@
 // src/parsers/typography.js
 
 /**
+ * Standard font metrics dictionary for accurate text measurement and line wrap estimation
+ */
+const FONT_METRICS_TABLE = {
+    'inter': { avgCharWidthRatio: 0.525, capHeightRatio: 0.727, xHeightRatio: 0.528, defaultLineHeight: 1.35 },
+    'roboto': { avgCharWidthRatio: 0.520, capHeightRatio: 0.710, xHeightRatio: 0.530, defaultLineHeight: 1.30 },
+    'open sans': { avgCharWidthRatio: 0.540, capHeightRatio: 0.714, xHeightRatio: 0.536, defaultLineHeight: 1.35 },
+    'lato': { avgCharWidthRatio: 0.510, capHeightRatio: 0.718, xHeightRatio: 0.505, defaultLineHeight: 1.35 },
+    'montserrat': { avgCharWidthRatio: 0.565, capHeightRatio: 0.700, xHeightRatio: 0.530, defaultLineHeight: 1.40 },
+    'poppins': { avgCharWidthRatio: 0.555, capHeightRatio: 0.698, xHeightRatio: 0.540, defaultLineHeight: 1.45 },
+    'plus jakarta sans': { avgCharWidthRatio: 0.535, capHeightRatio: 0.715, xHeightRatio: 0.525, defaultLineHeight: 1.35 },
+    'sf pro': { avgCharWidthRatio: 0.520, capHeightRatio: 0.720, xHeightRatio: 0.520, defaultLineHeight: 1.30 },
+    'sf pro display': { avgCharWidthRatio: 0.520, capHeightRatio: 0.720, xHeightRatio: 0.520, defaultLineHeight: 1.30 },
+    'sf pro text': { avgCharWidthRatio: 0.530, capHeightRatio: 0.720, xHeightRatio: 0.530, defaultLineHeight: 1.32 },
+    'arial': { avgCharWidthRatio: 0.518, capHeightRatio: 0.718, xHeightRatio: 0.518, defaultLineHeight: 1.25 },
+    'helvetica': { avgCharWidthRatio: 0.518, capHeightRatio: 0.718, xHeightRatio: 0.523, defaultLineHeight: 1.25 },
+    'georgia': { avgCharWidthRatio: 0.540, capHeightRatio: 0.693, xHeightRatio: 0.482, defaultLineHeight: 1.35 },
+    'times new roman': { avgCharWidthRatio: 0.450, capHeightRatio: 0.662, xHeightRatio: 0.450, defaultLineHeight: 1.25 },
+    'fira code': { avgCharWidthRatio: 0.600, capHeightRatio: 0.690, xHeightRatio: 0.485, defaultLineHeight: 1.40 },
+    'jetbrains mono': { avgCharWidthRatio: 0.600, capHeightRatio: 0.710, xHeightRatio: 0.530, defaultLineHeight: 1.40 },
+    'sf mono': { avgCharWidthRatio: 0.600, capHeightRatio: 0.700, xHeightRatio: 0.515, defaultLineHeight: 1.40 },
+    'monospace': { avgCharWidthRatio: 0.600, capHeightRatio: 0.700, xHeightRatio: 0.500, defaultLineHeight: 1.40 }
+};
+
+/**
+ * Returns font metrics for a given font family
+ * @param {string} family
+ * @returns {object}
+ */
+function getFontMetrics(family) {
+    if (!family) return FONT_METRICS_TABLE['inter'];
+    const clean = String(family).toLowerCase().replace(/['"]/g, '').trim();
+    if (FONT_METRICS_TABLE[clean]) {
+        return FONT_METRICS_TABLE[clean];
+    }
+    // Substring match (e.g. "Inter, sans-serif" or "SF Pro Display")
+    for (const [key, metrics] of Object.entries(FONT_METRICS_TABLE)) {
+        if (clean.includes(key)) {
+            return metrics;
+        }
+    }
+    return FONT_METRICS_TABLE['inter'];
+}
+
+/**
+ * Parses Google Fonts stylesheet URL and extracts requested font families, weights and styles
+ * Example: https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Open+Sans:ital,wght@1,600&display=swap
+ * @param {string} url
+ * @returns {Array<{ family: string, weights: number[], hasItalic: boolean }>}
+ */
+function parseGoogleFontsUrl(url) {
+    if (!url || typeof url !== 'string' || !url.includes('fonts.googleapis.com')) {
+        return [];
+    }
+
+    const results = [];
+    try {
+        const queryPart = url.includes('?') ? url.split('?')[1] : url;
+        const searchParams = new URLSearchParams(queryPart);
+        const families = searchParams.getAll('family');
+
+        for (const famStr of families) {
+            // Format 1: "Roboto:wght@400;700" or "Open+Sans:ital,wght@0,400;1,700"
+            // Format 2: "Roboto:400,700" (CSS v1 API)
+            const parts = famStr.split(':');
+            const familyName = parts[0].replace(/\+/g, ' ').trim();
+            const weights = new Set();
+            let hasItalic = false;
+
+            if (parts.length > 1) {
+                const spec = parts[1];
+                if (spec.includes('@')) {
+                    const [axes, values] = spec.split('@');
+                    const valList = values.split(';');
+                    for (const v of valList) {
+                        const vTokens = v.split(',');
+                        if (axes.includes('ital')) {
+                            const isItal = vTokens[0] === '1';
+                            if (isItal) hasItalic = true;
+                            const w = parseInt(vTokens[1] || vTokens[0], 10);
+                            if (w) weights.add(w);
+                        } else {
+                            const w = parseInt(vTokens[0], 10);
+                            if (w) weights.add(w);
+                        }
+                    }
+                } else {
+                    // v1 syntax: 400,700,700i
+                    const tokens = spec.split(',');
+                    for (const tok of tokens) {
+                        if (tok.includes('i')) hasItalic = true;
+                        const w = parseInt(tok, 10);
+                        if (w) weights.add(w);
+                    }
+                }
+            }
+
+            results.push({
+                family: familyName,
+                weights: weights.size > 0 ? Array.from(weights).sort((a, b) => a - b) : [400],
+                hasItalic
+            });
+        }
+    } catch (_) {}
+
+    return results;
+}
+
+/**
+ * Extracts all Google Fonts references from HTML Document (both <link> tags and @import rules)
+ * @param {Document} doc JSDOM document
+ * @returns {Map<string, { family: string, weights: number[], hasItalic: boolean, originalUrl: string }>}
+ */
+function extractWebFonts(doc) {
+    const fontMap = new Map();
+    if (!doc) return fontMap;
+
+    // 1. Check <link> tags
+    const links = doc.querySelectorAll('link[rel="stylesheet"], link[rel="preload"]');
+    for (const link of links) {
+        const href = link.getAttribute('href');
+        if (href && href.includes('fonts.googleapis.com')) {
+            const fonts = parseGoogleFontsUrl(href);
+            for (const f of fonts) {
+                fontMap.set(f.family.toLowerCase(), { ...f, originalUrl: href });
+            }
+        }
+    }
+
+    // 2. Check <style> tags with @import url(...)
+    const styles = doc.querySelectorAll('style');
+    for (const style of styles) {
+        const text = style.textContent || '';
+        const importRegex = /@import\s+(?:url\(['"]?([^'")]+)['"]?\)|['"]([^'"]+)['"])/g;
+        let match;
+        while ((match = importRegex.exec(text)) !== null) {
+            const importUrl = match[1] || match[2];
+            if (importUrl && importUrl.includes('fonts.googleapis.com')) {
+                const fonts = parseGoogleFontsUrl(importUrl);
+                for (const f of fonts) {
+                    fontMap.set(f.family.toLowerCase(), { ...f, originalUrl: importUrl });
+                }
+            }
+        }
+    }
+
+    return fontMap;
+}
+
+/**
+ * Generates Google Fonts <link> HTML tags for specified font families
+ * Used by decompiler when generating standalone HTML document
+ * @param {Iterable<string>} fontFamilies
+ * @returns {string}
+ */
+function generateGoogleFontsLink(fontFamilies) {
+    if (!fontFamilies) return '';
+    const uniqueFamilies = Array.from(new Set(
+        Array.from(fontFamilies)
+            .map(f => String(f).trim().replace(/['"]/g, ''))
+            .filter(f => f && !['inter', 'system-ui', 'sans-serif', 'serif', 'monospace', 'arial', 'helvetica', 'times new roman', 'georgia'].includes(f.toLowerCase()))
+    ));
+
+    if (uniqueFamilies.length === 0) return '';
+
+    const familyParams = uniqueFamilies.map(f => `family=${encodeURIComponent(f)}:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,700`).join('&');
+    const href = `https://fonts.googleapis.com/css2?${familyParams}&display=swap`;
+
+    return `<link rel="preconnect" href="https://fonts.googleapis.com">\n` +
+           `<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n` +
+           `<link href="${href}" rel="stylesheet">`;
+}
+
+/**
  * Parses font weight, style and family into Figma font representation
  */
 function parseFontStyle(weightStr, styleStr, family = 'Inter') {
@@ -175,11 +348,12 @@ function parseTextTransform(ttValue) {
 }
 
 /**
- * Estimates text dimensions based on character content and container constraints
+ * Estimates text dimensions based on character content, font metrics, and container constraints
  */
-function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, isParagraph = false) {
-    const charWidth = fontSize * 0.58;
-    const lineHeight = Math.round(fontSize * 1.35);
+function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, isParagraph = false, family = 'Inter') {
+    const metrics = getFontMetrics(family);
+    const charWidth = fontSize * (metrics.avgCharWidthRatio || 0.53);
+    const lineHeight = Math.round(fontSize * (metrics.defaultLineHeight || 1.35));
     const rawLines = String(text || '').split('\n');
 
     if (rawLines.length > 1) {
@@ -222,6 +396,11 @@ function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, isParagr
 }
 
 module.exports = {
+    FONT_METRICS_TABLE,
+    getFontMetrics,
+    parseGoogleFontsUrl,
+    extractWebFonts,
+    generateGoogleFontsLink,
     parseFontStyle,
     parseLineHeight,
     parseLetterSpacing,

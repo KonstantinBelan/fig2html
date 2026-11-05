@@ -14,10 +14,16 @@ const {
     parseLineHeight,
     parseLetterSpacing,
     parseTextDecoration,
-    parseTextTransform
+    parseTextTransform,
+    parseGoogleFontsUrl,
+    extractWebFonts,
+    generateGoogleFontsLink,
+    getFontMetrics,
+    estimateTextDimensions
 } = require('../src/parsers/typography');
 const { ImageRegistry, getImageDimensions } = require('../src/parsers/images');
 const { generateFigFile } = require('../src/generator');
+const { convertHtmlToNodes } = require('../src/converter');
 const { parseArgs } = require('../cli');
 const {
     convertFigToHtml,
@@ -1107,6 +1113,178 @@ async function runAllTests() {
 
         // Clean up
         fs.rmSync(outDir, { recursive: true, force: true });
+    });
+
+    // 9. Roadmap 2.1 Enhancements Tests (Figma Variables, CSS Grid, Variants, Google Fonts, Memory)
+    console.log('\n\x1b[1m9. Roadmap 2.1 Enhancements Tests\x1b[0m');
+
+    it('parses Google Fonts URL into font families, weights and styles', () => {
+        const url = 'https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Open+Sans:ital,wght@0,300;1,600&display=swap';
+        const parsed = parseGoogleFontsUrl(url);
+        assert.strictEqual(parsed.length, 2);
+        assert.strictEqual(parsed[0].family, 'Roboto');
+        assert.deepStrictEqual(parsed[0].weights, [400, 700]);
+        assert.strictEqual(parsed[1].family, 'Open Sans');
+        assert.strictEqual(parsed[1].hasItalic, true);
+    });
+
+    it('extracts Google Fonts references from HTML document <link> and @import', () => {
+        const { JSDOM } = require('jsdom');
+        const html = `<html><head>
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;800&display=swap">
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&display=swap');
+            </style>
+        </head><body></body></html>`;
+        const dom = new JSDOM(html);
+        const fonts = extractWebFonts(dom.window.document);
+        assert(fonts.has('montserrat'));
+        assert(fonts.has('fira code'));
+        assert.deepStrictEqual(fonts.get('montserrat').weights, [500, 800]);
+    });
+
+    it('returns standard font metrics from FONT_METRICS_TABLE', () => {
+        const interMetrics = getFontMetrics('Inter, sans-serif');
+        assert(interMetrics.avgCharWidthRatio > 0.5 && interMetrics.avgCharWidthRatio < 0.6);
+        const monoMetrics = getFontMetrics('Fira Code');
+        assert.strictEqual(monoMetrics.avgCharWidthRatio, 0.6);
+    });
+
+    await itAsync('translates CSS Grid with repeat(3, 1fr) into Auto Layout with wrapping columns', async () => {
+        const gridHtml = `<!DOCTYPE html><html><head><style>
+            .grid-container {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                gap: 16px;
+                width: 900px;
+            }
+            .grid-item {
+                background: #333333;
+                height: 100px;
+            }
+        </style></head><body>
+            <div class="grid-container">
+                <div class="grid-item">1</div>
+                <div class="grid-item">2</div>
+                <div class="grid-item">3</div>
+            </div>
+        </body></html>`;
+
+        const res = await convertHtmlToNodes(gridHtml, { sessionID: 0, localID: 2 });
+        const gridFrame = res.nodeChanges.find(n => n.name === 'grid-container');
+        assert(gridFrame, 'grid-container frame should exist');
+        assert.strictEqual(gridFrame.stackMode, 'HORIZONTAL');
+        assert.strictEqual(gridFrame.stackWrap, 'WRAP');
+        assert.strictEqual(gridFrame.stackSpacing, 16);
+
+        // Check child items get calculated grid width: (900 - 2 * 16) / 3 = 289px
+        const items = res.nodeChanges.filter(n => n.name === 'grid-item');
+        assert.strictEqual(items.length, 3);
+        assert.strictEqual(items[0].size.x, 289);
+        assert.strictEqual(items[1].size.x, 289);
+        assert.strictEqual(items[2].size.x, 289);
+    });
+
+    await itAsync('decompiles .fig with --layout grid to output CSS Grid rules', async () => {
+        const testFig = path.resolve('test/showcase.fig');
+        const testOutCss = path.resolve('test/grid-test-style.css');
+        const res = await convertFigToHtml(testFig, {
+            layoutMode: 'grid',
+            extractCss: true,
+            cssFile: testOutCss
+        });
+        assert(res.css.includes('display: grid') || res.html.includes('display: grid') || res.html.includes('display: flex'));
+        if (fs.existsSync(testOutCss)) fs.unlinkSync(testOutCss);
+    });
+
+    await itAsync('generates native Figma VARIABLE_SET and VARIABLE nodes from :root custom properties', async () => {
+        const varFig = path.resolve('test/test-vars-gen.fig');
+        const varHtml = `<!DOCTYPE html><html><head><style>
+            :root {
+                --accent-color: #3b82f6;
+                --spacing-lg: 24px;
+                --theme-title: "Dark Theme";
+            }
+            .card {
+                background: var(--accent-color);
+                padding: var(--spacing-lg);
+            }
+        </style></head><body><div class="card">Card</div></body></html>`;
+
+        const buildRes = await generateFigFile({
+            htmlContent: varHtml,
+            outputPath: varFig
+        });
+
+        assert(fs.existsSync(varFig));
+        assert(buildRes.stats.variables >= 3, `Expected at least 3 variable nodes, got ${buildRes.stats.variables}`);
+
+        // Read and decode the generated .fig to verify binary VARIABLE nodes
+        const figData = readFigFile(varFig);
+        const varSet = figData.nodeChanges.find(n => n.type === 'VARIABLE_SET');
+        assert(varSet, 'Should contain VARIABLE_SET node');
+        assert.strictEqual(varSet.name, 'Web Tokens');
+
+        const variables = figData.nodeChanges.filter(n => n.type === 'VARIABLE');
+        assert(variables.length >= 3, 'Should contain at least 3 VARIABLE nodes');
+        const accentVar = variables.find(v => v.name === 'accent/color');
+        assert(accentVar, 'Should contain accent/color variable');
+        assert.strictEqual(accentVar.variableResolvedType, 'COLOR');
+
+        const spacingVar = variables.find(v => v.name === 'spacing/lg');
+        assert(spacingVar, 'Should contain spacing/lg variable');
+        assert.strictEqual(spacingVar.variableResolvedType, 'FLOAT');
+
+        fs.unlinkSync(varFig);
+    });
+
+    await itAsync('decompiles native Figma variables and exports design tokens JSON via --tokens', async () => {
+        const tokensPath = path.resolve('test/test-extracted-tokens.json');
+        const res = await convertFigToHtml('fleader.fig', {
+            tokens: tokensPath,
+            extractTokens: true
+        });
+
+        assert(res.tokens, 'Result should include tokens object');
+        assert(Object.keys(res.tokens.colors).length > 5, 'Should extract colors');
+        assert(Object.keys(res.tokens.spacing).length > 5, 'Should extract spacing');
+        assert(Object.keys(res.tokens.radius).length > 3, 'Should extract radius');
+        assert(fs.existsSync(tokensPath), 'tokens.json file should be written to disk');
+
+        const json = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
+        assert(json.colors['bg-canvas'], 'Should contain bg-canvas token');
+        assert(json.spacing['space-12'], 'Should contain space-12 token');
+
+        fs.unlinkSync(tokensPath);
+    });
+
+    await itAsync('generates interactive prototypeInteractions from CSS :hover rules', async () => {
+        const hoverHtml = `<!DOCTYPE html><html><head><style>
+            .btn {
+                background: #3b82f6;
+                padding: 10px 20px;
+                color: #ffffff;
+            }
+            .btn:hover {
+                background: #1d4ed8;
+            }
+        </style></head><body><button class="btn">Click me</button></body></html>`;
+
+        const res = await convertHtmlToNodes(hoverHtml, { sessionID: 0, localID: 2 });
+        const btnNode = res.nodeChanges.find(n => n.name === 'btn');
+        assert(btnNode, 'btn frame should exist');
+        assert(btnNode.prototypeInteractions, 'btn should have prototypeInteractions');
+        assert.strictEqual(btnNode.prototypeInteractions[0].event.interactionType, 'WHILE_HOVERING');
+    });
+
+    it('provides lazy base64 evaluation in reader for memory efficiency', () => {
+        const figData = readFigFile('test/showcase.fig');
+        assert(figData.images instanceof Map);
+        for (const [hash, img] of figData.images.entries()) {
+            assert(Buffer.isBuffer(img.buffer), 'Image buffer should be intact');
+            assert(typeof img.mime === 'string', 'Image mime should be detected');
+            assert(img.base64.startsWith('data:image/'), 'Image base64 should be evaluated on access');
+        }
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);

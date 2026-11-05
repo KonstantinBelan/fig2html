@@ -3,9 +3,9 @@
 # 🎨 HTML to .fig & .fig to HTML
 ### Figma Bi-Directional Engine 2.0
 
-[![Version](https://img.shields.io/badge/version-1.0.0-6366f1.svg?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/version-1.1.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-[![Tests: 52 passed](https://img.shields.io/badge/tests-52%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 61 passed](https://img.shields.io/badge/tests-61%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -106,7 +106,21 @@ Open dist/index.html in any browser.
   - Независимые паддинги: 4 стороны (`padding-top/right/bottom/left`).
   - **Пре-компьютированный Layout Pass**: движок заранее рассчитывает физические размеры фреймов и координаты дочерних элементов (`transform.m02` / `transform.m12`), обеспечивая 100% совпадение позиционирования с браузером.
   - **Эмуляция отступов (margin) для текста**: поскольку текстовые слои в Figma не имеют собственных полей `margin`, элементы с внешними отступами автоматически оборачиваются в Auto Layout контейнеры с сохранением разметки.
-- **Типографика и CSS-переменные**:
+- **Поддержка CSS Grid**:
+  - `display: grid` и `inline-grid`: автоматический парсинг `grid-template-columns` (`repeat(N, 1fr)`, `repeat(N, 200px)`, `1fr 2fr` и др.).
+  - Интеллектуальная трансляция сетки в Auto Layout v4 с `stackWrap: WRAP` и точным вычислением ширины ячеек.
+  - Декомпиляция в семантический CSS Grid: флаг `--layout grid` / `--grid`.
+- **Нативные Figma Variables и Design Tokens**:
+  - **HTML ➔ .fig**: экспорт `:root` CSS-переменных в нативные бинарные коллекции Figma (`VARIABLE_SET` и `VARIABLE` узлы: `COLOR`, `FLOAT`, `STRING`).
+  - **.fig ➔ HTML**: чтение переменных Figma и генерация CSS-переменных `:root` с поддержкой мульти-режимов тем (`[data-theme="Dark"]`).
+  - Экспорт дизайн-токенов в JSON: флаг `--tokens [path]` / `--extract-tokens`.
+- **Интерактивные состояния и варианты компонентов**:
+  - Автоматическое распознавание псевдоклассов `:hover`, `:active`, `:focus` в CSS.
+  - Генерация нативных взаимодействий Figma: `prototypeInteractions` с триггером `WHILE_HOVERING` и переходом `SWAP_STATE`.
+  - Декомпиляция вариантов (`SYMBOL` со `State=Hover`, `State=Active`) в чистые CSS-псевдоклассы без дублирования HTML-разметки.
+- **Типографика, Google Fonts и точные метрики**:
+  - Автоматическое обнаружение Google Fonts из `<link>` и `@import url(...)` с формированием единого предзагрузочного тега.
+  - Встроенная таблица метрик популярных семейств шрифтов (`FONT_METRICS_TABLE`: Inter, Roboto, Montserrat, Poppins, Fira Code и др.) для расчета размеров текста с точностью до долей пикселя.
   - Полная поддержка CSS Custom Properties (`var(--font-display)`, `var(--text-color)`) с каскадным разрешением значений из `:root` и поддержкой fallbacks.
   - Семейства шрифтов: `font-family`, автоматическое сопоставление со стандартными библиотеками шрифтов Figma (Inter, Plus Jakarta Sans, SF Pro Display и др.).
   - Точное квантование весов `font-weight` (100–900, с поддержкой промежуточных значений вроде `510` -> `500 Medium`).

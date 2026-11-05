@@ -235,11 +235,24 @@ function buildSceneTree(nodeChanges, options = {}) {
     }
     walkAndResolve(targetCanvas.children);
 
+    // 7. Collect native Figma variables and variable sets
+    const variableSets = [];
+    const variables = [];
+    for (const node of allNodesMap.values()) {
+        if (node.type === 'VARIABLE_SET') {
+            variableSets.push(node);
+        } else if (node.type === 'VARIABLE') {
+            variables.push(node);
+        }
+    }
+
     return {
         document: documentNode,
         canvas: targetCanvas,
         rootNodes: targetCanvas.children || [],
-        allNodesMap
+        allNodesMap,
+        variableSets,
+        variables
     };
 }
 

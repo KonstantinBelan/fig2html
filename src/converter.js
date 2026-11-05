@@ -10,10 +10,31 @@ const {
     parseLetterSpacing,
     parseTextDecoration,
     parseTextTransform,
-    estimateTextDimensions
+    estimateTextDimensions,
+    extractWebFonts
 } = require('./parsers/typography');
 const { ImageRegistry } = require('./parsers/images');
 const { serializeSvgElement, getSvgDimensions, renderSvgToPng } = require('./parsers/svg');
+
+/**
+ * Parses CSS grid-template-columns into an array of column size definitions
+ * @param {string} gridCols
+ * @returns {string[]}
+ */
+function parseGridColumns(gridCols) {
+    if (!gridCols || gridCols === 'none') return ['1fr'];
+    const clean = String(gridCols).trim();
+
+    const repeatMatch = clean.match(/repeat\((\d+),\s*([^)]+)\)/i);
+    if (repeatMatch) {
+        const count = parseInt(repeatMatch[1], 10) || 1;
+        const val = repeatMatch[2].trim();
+        return Array(count).fill(val);
+    }
+
+    const tokens = clean.split(/\s+/).filter(Boolean);
+    return tokens.length > 0 ? tokens : ['1fr'];
+}
 
 const BLEND_MODE_MAP = {
     'normal': 'NORMAL',
@@ -310,13 +331,121 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         return resolved;
     }
 
+    // 2. Extract Web Fonts references (Google Fonts)
+    const webFonts = extractWebFonts(doc);
+
+    // 3. Collect interactive pseudo-class rules (:hover, :active, :focus)
+    const pseudoRules = { hover: [], active: [], focus: [] };
+    for (const styleEl of doc.querySelectorAll('style')) {
+        const css = styleEl.textContent || '';
+        const ruleRegex = /([^{]+)\{([^}]+)\}/g;
+        let match;
+        while ((match = ruleRegex.exec(css)) !== null) {
+            const selector = match[1].trim();
+            const body = match[2];
+            if (selector.includes(':hover')) {
+                const baseSel = selector.replace(/:hover/g, '').trim();
+                pseudoRules.hover.push({ selector: baseSel, body });
+            } else if (selector.includes(':active')) {
+                const baseSel = selector.replace(/:active/g, '').trim();
+                pseudoRules.active.push({ selector: baseSel, body });
+            } else if (selector.includes(':focus')) {
+                const baseSel = selector.replace(/:focus/g, '').trim();
+                pseudoRules.focus.push({ selector: baseSel, body });
+            }
+        }
+    }
+
+    // 4. Generate native Figma Variables and Variable Sets from :root CSS custom properties
+    const variableChanges = [];
+    const varKeys = Object.keys(rootVars);
+    if (options.createVariables !== false && varKeys.length > 0) {
+        const varSetGuid = guidGen.next();
+        const modeId = { sessionID: options.sessionId || 1, localID: 1 };
+        const docGuid = options.documentGuid || { sessionID: 0, localID: 2 };
+
+        const varSetNode = {
+            guid: varSetGuid,
+            phase: 'CREATED',
+            parentIndex: {
+                guid: docGuid,
+                position: '!'
+            },
+            type: 'VARIABLE_SET',
+            name: options.variableSetName || 'Web Tokens',
+            isPublishable: false,
+            visible: false,
+            locked: true,
+            variableSetModes: [
+                {
+                    id: modeId,
+                    name: 'Default',
+                    sortPosition: '!'
+                }
+            ],
+            isCollectionExtendable: true
+        };
+        variableChanges.push(varSetNode);
+
+        for (const varName of varKeys) {
+            const rawVal = rootVars[varName];
+            if (!rawVal) continue;
+
+            const cleanName = varName.replace(/^--/, '').replace(/-/g, '/');
+            let varType = 'STRING';
+            let anyValue = { textValue: String(rawVal) };
+
+            const parsedColor = parseColor(rawVal);
+            if (parsedColor && (rawVal.startsWith('#') || rawVal.startsWith('rgb') || rawVal.startsWith('hsl'))) {
+                varType = 'COLOR';
+                anyValue = { colorValue: parsedColor };
+            } else if (rawVal.endsWith('px') || (!isNaN(parseFloat(rawVal)) && !rawVal.includes(' '))) {
+                varType = 'FLOAT';
+                anyValue = { floatValue: parseFloat(rawVal) || 0 };
+            }
+
+            const varGuid = guidGen.next();
+            const varNode = {
+                guid: varGuid,
+                phase: 'CREATED',
+                parentIndex: {
+                    guid: docGuid,
+                    position: '!'
+                },
+                type: 'VARIABLE',
+                name: cleanName,
+                isPublishable: false,
+                visible: false,
+                locked: true,
+                variableSetID: {
+                    guid: varSetGuid
+                },
+                variableResolvedType: varType,
+                variableDataValues: {
+                    entries: [
+                        {
+                            modeID: modeId,
+                            variableData: {
+                                value: anyValue,
+                                dataType: varType,
+                                resolvedDataType: varType
+                            }
+                        }
+                    ]
+                }
+            };
+            variableChanges.push(varNode);
+        }
+    }
+
     const nodeChanges = [];
     const stats = {
         totalNodes: 0,
         frames: 0,
         textNodes: 0,
         images: 0,
-        shapes: 0
+        shapes: 0,
+        variables: variableChanges.length
     };
 
     async function processElement(element, parentGuid, orderPosition = '!', parentContext = null) {
@@ -835,7 +964,8 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 displayCharacters,
                 fontSize,
                 isMultiLine ? targetWidth : width,
-                isMultiLine
+                isMultiLine,
+                cleanFamily
             );
 
             stats.textNodes++;
@@ -1116,9 +1246,11 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const isGrid = display === 'grid' || display === 'inline-grid';
         const flexDirection = getProp('flex-direction', 'flexDirection');
         const gridCols = getProp('grid-template-columns', 'gridTemplateColumns');
+        const parsedCols = isGrid ? parseGridColumns(gridCols) : [];
+        const isMultiColGrid = isGrid && parsedCols.length > 1;
         const isColumn = isFlex
             ? (flexDirection === 'column' || flexDirection === 'column-reverse')
-            : (isGrid ? (!gridCols || gridCols === '1fr' || gridCols === 'none') : true);
+            : (isGrid ? !isMultiColGrid : true);
 
         const padOffsets = parseBoxOffsets(
             getProp('padding', 'padding'),
@@ -1131,11 +1263,16 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const paddingRight = padOffsets.right;
         const paddingBottom = padOffsets.bottom;
         const paddingLeft = padOffsets.left;
-        const gap = parseFloat(getProp('gap', 'gap')) || parseFloat(getProp('row-gap', 'rowGap')) || 0;
+        const rowGap = parseFloat(getProp('row-gap', 'rowGap')) || parseFloat(getProp('gap', 'gap')) || 0;
+        const colGap = parseFloat(getProp('column-gap', 'columnGap')) || parseFloat(getProp('gap', 'gap')) || 0;
+        const gap = isColumn ? rowGap : colGap;
 
         // Determine frame width
         let frameWidth = width;
-        if (tagName === 'body') {
+        if (parentContext && parentContext.isMultiColGrid && parentContext.gridChildWidth > 0 && !hasExplicitWidth) {
+            frameWidth = parentContext.gridChildWidth;
+            width = parentContext.gridChildWidth;
+        } else if (tagName === 'body') {
             frameWidth = width || 1440;
         } else if (!frameWidth || frameWidth === 0) {
             if (parentContext && parentContext.isColumn && alignSelf !== 'center' && alignSelf !== 'flex-start' && !isMarginAuto) {
@@ -1232,9 +1369,13 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 if (paddingBottom > 0) frameNode.stackPaddingBottom = paddingBottom;
 
                 const flexWrap = getProp('flex-wrap', 'flexWrap');
-                if (flexWrap === 'wrap' || (isGrid && gridCols && (gridCols.includes('repeat') || gridCols.split(/\s+/).length > 1))) {
+                if (isMultiColGrid) {
+                    frameNode.stackMode = 'HORIZONTAL';
                     frameNode.stackWrap = 'WRAP';
-                    const colGap = parseFloat(getProp('column-gap', 'columnGap'));
+                    frameNode.stackSpacing = colGap;
+                    frameNode.stackCounterSpacing = rowGap;
+                } else if (flexWrap === 'wrap' || (isGrid && gridCols && (gridCols.includes('repeat') || gridCols.split(/\s+/).length > 1))) {
+                    frameNode.stackWrap = 'WRAP';
                     if (colGap) frameNode.stackCounterSpacing = colGap;
                 }
 
@@ -1354,13 +1495,50 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
         }
 
+        let hasHoverRule = false;
+        for (const rule of pseudoRules.hover) {
+            try {
+                if (element.matches(rule.selector)) {
+                    hasHoverRule = true;
+                    break;
+                }
+            } catch (_) {}
+        }
+
+        if (hasHoverRule && options.createVariants !== false) {
+            frameNode.prototypeInteractions = [
+                {
+                    id: guidGen.next(),
+                    event: { interactionType: 'WHILE_HOVERING' },
+                    actions: [
+                        {
+                            navigationType: 'SWAP_STATE',
+                            transitionType: 'SMART_ANIMATE',
+                            transitionDuration: 0.18
+                        }
+                    ],
+                    isDeleted: false,
+                    stateManagementVersion: 1
+                }
+            ];
+        }
+
         nodeChanges.push(frameNode);
 
         // Recurse into children
         const innerContentWidth = Math.max(10, frameWidth - paddingLeft - paddingRight);
+        let gridChildWidth = 0;
+        if (isMultiColGrid) {
+            const numCols = parsedCols.length;
+            gridChildWidth = Math.max(20, Math.floor((innerContentWidth - (numCols - 1) * colGap) / numCols));
+        }
+
         const currentContext = {
             isFlex: isFlex || isGrid || element.children.length > 0 || tagName === 'body',
             isColumn,
+            isGrid,
+            isMultiColGrid,
+            gridChildWidth,
             containerWidth: frameWidth,
             containerHeight: frameHeight,
             width: innerContentWidth,
@@ -1392,7 +1570,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                         inheritedStyles.fontFamily
                     );
                     const textColor = parseColor(inheritedStyles.color) || { r: 1, g: 1, b: 1, a: 1 };
-                    const textGeom = estimateTextDimensions(rawText, fontSize, 0, false);
+                    const textGeom = estimateTextDimensions(rawText, fontSize, 0, false, cleanFamily);
                     const childTextNode = {
                         guid: textGuid,
                         phase: 'CREATED',
@@ -1570,6 +1748,10 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
     if (doc.body) {
         const rootPos = FractionalIndexer.getPosition(0);
         await processElement(doc.body, parentCanvasGuid, rootPos, null);
+    }
+
+    if (variableChanges.length > 0) {
+        nodeChanges.push(...variableChanges);
     }
 
     return {

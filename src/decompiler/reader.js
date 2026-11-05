@@ -82,11 +82,16 @@ function readFigFile(figInput) {
             if (sha1Hex) {
                 const imgBuf = entry.getData();
                 const mime = getImageMimeType(imgBuf);
-                const base64 = `data:${mime};base64,${imgBuf.toString('base64')}`;
                 images.set(sha1Hex, {
                     buffer: imgBuf,
                     mime: mime,
-                    base64: base64
+                    _base64: null,
+                    get base64() {
+                        if (!this._base64) {
+                            this._base64 = `data:${this.mime};base64,${this.buffer.toString('base64')}`;
+                        }
+                        return this._base64;
+                    }
                 });
             }
         }

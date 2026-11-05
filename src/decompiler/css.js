@@ -442,17 +442,36 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     // 7. Auto Layout (Container Properties)
     const isAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
     if (isAutoLayout) {
-        styles['display'] = 'flex';
-        styles['flex-direction'] = node.stackMode === 'HORIZONTAL' ? 'row' : 'column';
-
-        if (node.stackSpacing && node.stackSpacing > 0) {
-            styles['gap'] = fmtSpacing(node.stackSpacing);
-        }
-        if (node.stackWrap === 'WRAP') {
-            styles['flex-wrap'] = 'wrap';
+        if (layoutMode === 'grid' && Array.isArray(node.children) && node.children.length > 1) {
+            styles['display'] = 'grid';
+            if (node.stackMode === 'HORIZONTAL') {
+                const childW = node.children[0]?.size?.x || 200;
+                const containerW = node.size?.x || cw;
+                const approxCols = Math.max(1, Math.min(node.children.length, Math.floor(containerW / Math.max(50, childW))));
+                styles['grid-template-columns'] = `repeat(${approxCols}, 1fr)`;
+            } else {
+                styles['grid-template-columns'] = '1fr';
+            }
+            if (node.stackSpacing && node.stackSpacing > 0) {
+                styles['gap'] = fmtSpacing(node.stackSpacing);
+            }
             if (node.stackCounterSpacing && node.stackCounterSpacing > 0) {
-                if (node.stackMode === 'HORIZONTAL') styles['row-gap'] = fmtSpacing(node.stackCounterSpacing);
-                else styles['column-gap'] = fmtSpacing(node.stackCounterSpacing);
+                styles['row-gap'] = fmtSpacing(node.stackCounterSpacing);
+                styles['column-gap'] = fmtSpacing(node.stackSpacing || node.stackCounterSpacing);
+            }
+        } else {
+            styles['display'] = 'flex';
+            styles['flex-direction'] = node.stackMode === 'HORIZONTAL' ? 'row' : 'column';
+
+            if (node.stackSpacing && node.stackSpacing > 0) {
+                styles['gap'] = fmtSpacing(node.stackSpacing);
+            }
+            if (node.stackWrap === 'WRAP') {
+                styles['flex-wrap'] = 'wrap';
+                if (node.stackCounterSpacing && node.stackCounterSpacing > 0) {
+                    if (node.stackMode === 'HORIZONTAL') styles['row-gap'] = fmtSpacing(node.stackCounterSpacing);
+                    else styles['column-gap'] = fmtSpacing(node.stackCounterSpacing);
+                }
             }
         }
 

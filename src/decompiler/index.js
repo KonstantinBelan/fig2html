@@ -51,11 +51,14 @@ async function convertFigToHtml(figInput, options = {}) {
 
     // 2. Build hierarchical scene tree
     log(`Building scene tree from ${nodeChanges.length} nodes...`);
-    const { rootNodes, canvas } = buildSceneTree(nodeChanges, {
+    const { rootNodes, canvas, variableSets, variables } = buildSceneTree(nodeChanges, {
         pageName: options.pageName
     });
 
     log(`Target canvas "${canvas.name}" with ${rootNodes.length} top-level nodes.`);
+    if (variables && variables.length > 0) {
+        log(`Found ${variables.length} native Figma variables across ${variableSets?.length || 0} collections.`);
+    }
 
     // 3. Optimize images (2x CSS scaling, responsive srcset, lossless compression, modern formats)
     const assetsPrefix = options.assetUrlPrefix || (assetsRelDir ? `${assetsRelDir.replace(/\/+$/, '')}/` : 'img/');
@@ -122,10 +125,13 @@ async function convertFigToHtml(figInput, options = {}) {
         inlineImages: isInlineImages,
         inlineStyles: options.inlineStyles === true,
         extractCss: isExtractCss,
+        returnTokens: true,
         cssHref: cssRelPath,
         assetUrlPrefix: assetsPrefix,
         cssAssetUrlPrefix: cssPrefix,
         blobs: blobs,
+        variables,
+        variableSets,
         title: options.title || canvas.name || 'Exported Figma Design',
         nodeImageMap,
         responsiveImages: isResponsive,
@@ -136,6 +142,7 @@ async function convertFigToHtml(figInput, options = {}) {
 
     const html = typeof docResult === 'string' ? docResult : docResult.html;
     const css = typeof docResult === 'string' ? null : (docResult.css || null);
+    const tokens = typeof docResult === 'string' ? null : (docResult.tokens || null);
 
     // 7. Write external CSS file if requested
     let extractedCssPath = null;
@@ -147,6 +154,21 @@ async function convertFigToHtml(figInput, options = {}) {
         }
         fs.writeFileSync(extractedCssPath, css, 'utf8');
         log(`Saved external stylesheet to ${extractedCssPath} (${Buffer.byteLength(css, 'utf8')} bytes)`);
+    }
+
+    // 7.1 Write Design Tokens JSON if requested
+    let extractedTokensPath = null;
+    if ((options.extractTokens || options.tokens) && tokens) {
+        const tokensRelPath = typeof options.tokens === 'string' ? options.tokens : 'tokens.json';
+        extractedTokensPath = path.isAbsolute(tokensRelPath)
+            ? tokensRelPath
+            : (path.dirname(tokensRelPath) !== '.' ? path.resolve(process.cwd(), tokensRelPath) : path.resolve(baseDir, tokensRelPath));
+        const tokensDir = path.dirname(extractedTokensPath);
+        if (!fs.existsSync(tokensDir)) {
+            fs.mkdirSync(tokensDir, { recursive: true });
+        }
+        fs.writeFileSync(extractedTokensPath, JSON.stringify(tokens, null, 2), 'utf8');
+        log(`Saved design tokens to ${extractedTokensPath}`);
     }
 
     // 8. Write output HTML file if requested
@@ -163,7 +185,9 @@ async function convertFigToHtml(figInput, options = {}) {
 
     return {
         html,
-        css: isExtractCss ? css : null,
+        css: (isExtractCss || options.returnCss || options.extractCss) ? css : null,
+        tokens,
+        tokensPath: extractedTokensPath,
         outputPath,
         cssPath: extractedCssPath,
         assetsDir: isInlineImages === false ? outAssetsDir : null,
@@ -172,6 +196,8 @@ async function convertFigToHtml(figInput, options = {}) {
         durationMs,
         stats: {
             ...stats,
+            variablesCount: variables?.length || 0,
+            variableSetsCount: variableSets?.length || 0,
             imageOptimization: imgStats,
             exportedFilesCount: filesToWrite.length
         }

@@ -1,5 +1,5 @@
 // src/decompiler/stylesheet.js
-const { computeNodeStyles } = require('./css');
+const { computeNodeStyles, formatColor } = require('./css');
 
 // Cyrillic to Latin transliteration table
 const RU_MAP = {
@@ -75,6 +75,169 @@ class StylesheetManager {
         this.fontCounts = {};
         this.radiusCounts = {};
         this.dimCounts = {};
+
+        // Native Figma Variables & Design Tokens
+        this.nativeVariables = new Map(); // varName -> { name, rawName, type, value, modes }
+        this.themeModeRules = new Map();  // modeName -> Map<varName, value>
+        this.pseudoClassRules = new Map(); // `${className}:${pseudo}` -> styles
+    }
+
+    /**
+     * Registers native Figma variables and variable sets
+     * @param {Array<object>} variables
+     * @param {Array<object>} variableSets
+     */
+    registerFigmaVariables(variables = [], variableSets = []) {
+        if (!Array.isArray(variables) || variables.length === 0) return;
+
+        // Map modeID -> modeName from variable sets
+        const modeMap = new Map();
+        for (const vs of variableSets) {
+            if (Array.isArray(vs.variableSetModes)) {
+                for (const mode of vs.variableSetModes) {
+                    const mKey = mode.id ? `${mode.id.sessionID}:${mode.id.localID}` : mode.name;
+                    modeMap.set(mKey, mode.name);
+                }
+            }
+        }
+
+        for (const v of variables) {
+            if (!v.name || !v.variableDataValues?.entries?.length) continue;
+            const cleanName = v.name
+                .toLowerCase()
+                .replace(/[^a-z0-9_-]+/g, '-')
+                .replace(/^-+|-+$/g, '');
+            const varName = `--${cleanName}`;
+
+            const entries = v.variableDataValues.entries;
+            for (let i = 0; i < entries.length; i++) {
+                const entry = entries[i];
+                const vData = entry.variableData;
+                if (!vData || !vData.value) continue;
+
+                let val = null;
+                const rType = v.variableResolvedType || vData.resolvedDataType;
+                if (rType === 'COLOR' && vData.value.colorValue) {
+                    val = formatColor(vData.value.colorValue, vData.value.colorValue.a);
+                } else if (rType === 'FLOAT' && vData.value.floatValue !== undefined) {
+                    val = `${vData.value.floatValue}px`;
+                } else if (vData.value.textValue !== undefined) {
+                    val = vData.value.textValue;
+                } else if (vData.value.boolValue !== undefined) {
+                    val = vData.value.boolValue ? 'true' : 'false';
+                }
+
+                if (val !== null) {
+                    const modeIdKey = entry.modeID ? `${entry.modeID.sessionID}:${entry.modeID.localID}` : null;
+                    const modeName = (modeIdKey && modeMap.get(modeIdKey)) || `Mode ${i + 1}`;
+
+                    if (i === 0) {
+                        this.rootVariables.set(val, varName);
+                        this.nativeVariables.set(varName, {
+                            name: varName,
+                            rawName: v.name,
+                            type: rType,
+                            value: val,
+                            modes: { [modeName]: val }
+                        });
+                        if (rType === 'COLOR') {
+                            this.colorVariables.set(val, varName);
+                        } else if (rType === 'FLOAT') {
+                            if (cleanName.includes('radius')) {
+                                this.radiusVariables.set(val, varName);
+                            } else if (cleanName.includes('dim') || cleanName.includes('slide') || cleanName.includes('screen') || cleanName.includes('width') || cleanName.includes('height')) {
+                                this.dimVariables.set(val, varName);
+                            }
+                        }
+                    } else {
+                        if (!this.themeModeRules.has(modeName)) {
+                            this.themeModeRules.set(modeName, new Map());
+                        }
+                        this.themeModeRules.get(modeName).set(varName, val);
+                        if (this.nativeVariables.has(varName)) {
+                            this.nativeVariables.get(varName).modes[modeName] = val;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Exports design tokens dictionary (by category: colors, spacing, radius, typography, other)
+     * @returns {object} Tokens object
+     */
+    exportDesignTokens() {
+        const tokens = {
+            colors: {},
+            spacing: {},
+            radius: {},
+            typography: {},
+            other: {}
+        };
+
+        for (const [varName, info] of this.nativeVariables.entries()) {
+            const shortKey = varName.replace(/^--/, '');
+            if (info.type === 'COLOR') {
+                tokens.colors[shortKey] = { value: info.value, modes: info.modes };
+            } else if (shortKey.includes('space') || shortKey.includes('gap') || shortKey.includes('pad')) {
+                tokens.spacing[shortKey] = { value: info.value, modes: info.modes };
+            } else if (shortKey.includes('radius')) {
+                tokens.radius[shortKey] = { value: info.value, modes: info.modes };
+            } else if (shortKey.includes('font') || shortKey.includes('text') || shortKey.includes('line')) {
+                tokens.typography[shortKey] = { value: info.value, modes: info.modes };
+            } else {
+                tokens.other[shortKey] = { value: info.value, modes: info.modes };
+            }
+        }
+
+        return tokens;
+    }
+
+    /**
+     * Registers component variants and generates pseudo-class CSS rules (:hover, :active, :focus)
+     * @param {object} containerNode
+     * @param {Map<string, object>} imageRegistry
+     * @param {object} options
+     */
+    registerVariants(containerNode, imageRegistry, options = {}) {
+        if (!containerNode || !Array.isArray(containerNode.children) || containerNode.children.length < 2) return;
+
+        const variantChildren = containerNode.children.filter(c => {
+            const name = (c.name || '').toLowerCase();
+            return c.type === 'SYMBOL' || name.includes('=') || /hover|active|focus|disabled|pressed/i.test(name);
+        });
+
+        if (variantChildren.length < 2) return;
+
+        let defaultVariant = variantChildren.find(c => /state=default|status=default|default/i.test((c.name || '').toLowerCase())) || variantChildren[0];
+        const defaultStyles = computeNodeStyles(defaultVariant, containerNode, imageRegistry, options);
+        const baseClassName = this.classesByNode.get(defaultVariant) || this.classesByNode.get(containerNode) || toBaseClassName(containerNode.name);
+
+        for (const variant of variantChildren) {
+            if (variant === defaultVariant) continue;
+            const vName = (variant.name || '').toLowerCase();
+            let pseudo = null;
+            if (vName.includes('hover')) pseudo = 'hover';
+            else if (vName.includes('active') || vName.includes('pressed')) pseudo = 'active';
+            else if (vName.includes('focus')) pseudo = 'focus';
+            else if (vName.includes('disabled')) pseudo = 'disabled';
+
+            if (!pseudo) continue;
+
+            const variantStyles = computeNodeStyles(variant, containerNode, imageRegistry, options);
+            const diffStyles = {};
+            for (const [prop, val] of Object.entries(variantStyles)) {
+                if (defaultStyles[prop] !== val && !['position', 'left', 'top', 'right', 'bottom'].includes(prop)) {
+                    diffStyles[prop] = val;
+                }
+            }
+
+            if (Object.keys(diffStyles).length > 0) {
+                const pseudoKey = `${baseClassName}:${pseudo}`;
+                this.pseudoClassRules.set(pseudoKey, diffStyles);
+            }
+        }
     }
 
     /**
@@ -225,6 +388,20 @@ class StylesheetManager {
                 this.rootVariables.set(dim, varName);
             }
         }
+
+        // 5. Re-inject Native Figma Variables and Design Tokens
+        for (const [varName, info] of this.nativeVariables.entries()) {
+            this.rootVariables.set(info.value, varName);
+            if (info.type === 'COLOR') {
+                this.colorVariables.set(info.value, varName);
+            } else if (info.type === 'FLOAT') {
+                if (varName.includes('radius')) {
+                    this.radiusVariables.set(info.value, varName);
+                } else if (varName.includes('dim') || varName.includes('slide') || varName.includes('screen') || varName.includes('width') || varName.includes('height')) {
+                    this.dimVariables.set(info.value, varName);
+                }
+            }
+        }
     }
 
     /**
@@ -309,6 +486,21 @@ class StylesheetManager {
             lines.push('  }\n');
         }
 
+        // 1.1 Theme Mode Blocks (e.g. Dark theme / Mode overrides)
+        if (this.themeModeRules.size > 0) {
+            for (const [modeName, vars] of this.themeModeRules.entries()) {
+                const isDark = /dark/i.test(modeName);
+                const selector = isDark
+                    ? `[data-theme="${modeName}"], @media (prefers-color-scheme: dark)`
+                    : `[data-theme="${modeName}"]`;
+                lines.push(`  ${selector} {`);
+                for (const [varName, val] of vars.entries()) {
+                    lines.push(`    ${varName}: ${val};`);
+                }
+                lines.push('  }\n');
+            }
+        }
+
         // 2. Comprehensive Modern CSS Resets
         const primaryFont = Object.keys(this.fontCounts)[0] || "'Inter', sans-serif";
         const fontVal = this.substituteVar('font-family', primaryFont);
@@ -383,6 +575,16 @@ class StylesheetManager {
         // 3. Class rules
         for (const [className, styles] of this.uniqueRules.entries()) {
             lines.push(`  .${className} {`);
+            for (const [prop, val] of Object.entries(styles)) {
+                const finalVal = this.substituteVar(prop, String(val).replace(/"/g, "'"));
+                lines.push(`    ${prop}: ${finalVal};`);
+            }
+            lines.push('  }\n');
+        }
+
+        // 3.1 Pseudo-class variant rules (:hover, :active, :focus, etc.)
+        for (const [pseudoSelector, styles] of this.pseudoClassRules.entries()) {
+            lines.push(`  .${pseudoSelector} {`);
             for (const [prop, val] of Object.entries(styles)) {
                 const finalVal = this.substituteVar(prop, String(val).replace(/"/g, "'"));
                 lines.push(`    ${prop}: ${finalVal};`);

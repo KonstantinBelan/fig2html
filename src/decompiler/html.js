@@ -512,10 +512,16 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
 
     const stylesheetManager = new StylesheetManager(options);
 
+    // Register native Figma variables and Design Tokens if provided
+    if (options.variables && options.variables.length > 0) {
+        stylesheetManager.registerFigmaVariables(options.variables, options.variableSets || []);
+    }
+
     // Pass 1: Walk entire scene tree and register all nodes
     function registerTree(node, parent) {
         if (!node || node.visible === false || node.mask === true || node.isMask === true) return;
         stylesheetManager.registerNode(node, parent, imageRegistry, options);
+        stylesheetManager.registerVariants(node, imageRegistry, options);
         if (isVectorContainer(node)) {
             return;
         }
@@ -560,10 +566,13 @@ ${bodyContent}</body>
 </html>
 `;
 
-    if (options.extractCss || options.returnCss) {
+    const tokens = stylesheetManager.exportDesignTokens();
+
+    if (options.extractCss || options.returnCss || options.returnTokens) {
         return {
             html,
             css: cssContent,
+            tokens,
             toString() { return this.html; }
         };
     }

@@ -54,9 +54,11 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--format <fmt>${colors.reset}             Convert images to modern format: webp, avif, or original (default: original)
   ${colors.cyan}--webp${colors.reset}                     Shortcut for --format webp
   ${colors.cyan}--avif${colors.reset}                     Shortcut for --format avif
-  ${colors.cyan}--layout <mode>${colors.reset}           Layout mode: default (px), relative (rem/em/vw/vh), or fluid (clamp/min/max)
+  ${colors.cyan}--layout <mode>${colors.reset}           Layout mode: default (px), relative (rem/em/vw/vh), fluid (clamp/min/max), or grid
   ${colors.cyan}--fluid${colors.reset}                   Shortcut for --layout fluid (100vw/100dvh, clamp(), rem, vw/vh)
   ${colors.cyan}--relative, --rem${colors.reset}         Shortcut for --layout relative (rem, em, vw/vh instead of px)
+  ${colors.cyan}--grid${colors.reset}                    Shortcut for --layout grid (CSS Grid layout)
+  ${colors.cyan}--tokens [path]${colors.reset}           Extract Figma Variables into design tokens JSON (default: tokens.json)
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
   ${colors.cyan}-h, --help${colors.reset}                 Display this help message
   ${colors.cyan}-V, --version${colors.reset}              Display version number
@@ -154,6 +156,15 @@ function parseArgs(args) {
             options.layoutMode = 'fluid';
         } else if (arg === '--relative' || arg === '--rem') {
             options.layoutMode = 'relative';
+        } else if (arg === '--grid') {
+            options.layoutMode = 'grid';
+        } else if (arg === '--tokens' || arg === '--extract-tokens') {
+            options.extractTokens = true;
+            if (args[i + 1] && !args[i + 1].startsWith('-')) {
+                options.tokens = args[++i];
+            } else {
+                options.tokens = true;
+            }
         } else if (arg === '-v' || arg === '--verbose') {
             options.verbose = true;
         } else if (!arg.startsWith('-')) {
@@ -203,7 +214,9 @@ async function runConversion(options) {
         responsiveImages: options.responsiveImages,
         compress: options.compress,
         imageFormat: options.imageFormat,
-        layoutMode: options.layoutMode
+        layoutMode: options.layoutMode,
+        extractTokens: options.extractTokens,
+        tokens: options.tokens
     });
 
     const outStat = fs.statSync(outputPath);
@@ -213,13 +226,18 @@ async function runConversion(options) {
     console.log(`│ ${colors.bold}HTML:${colors.reset}       ${path.basename(outputPath).padEnd(27)} │`);
     console.log(`│ ${colors.bold}HTML Size:${colors.reset}  ${formatBytes(outStat.size).padEnd(27)} │`);
     if (options.layoutMode && options.layoutMode !== 'default') {
-        const layoutLabel = options.layoutMode === 'fluid' ? 'Fluid (100vw/100dvh)' : 'Relative (rem/vw)';
+        const layoutLabel = options.layoutMode === 'fluid' ? 'Fluid (100vw/100dvh)' : (options.layoutMode === 'grid' ? 'CSS Grid' : 'Relative (rem/vw)');
         console.log(`│ ${colors.bold}Layout:${colors.reset}     ${layoutLabel.padEnd(27)} │`);
     }
     if (result.cssPath && fs.existsSync(result.cssPath)) {
         const cssStat = fs.statSync(result.cssPath);
         const relCss = path.relative(path.dirname(outputPath), result.cssPath);
         console.log(`│ ${colors.bold}CSS:${colors.reset}        ${(relCss + ' (' + formatBytes(cssStat.size) + ')').padEnd(27)} │`);
+    }
+    if (result.tokensPath && fs.existsSync(result.tokensPath)) {
+        const tokensStat = fs.statSync(result.tokensPath);
+        const relTokens = path.relative(path.dirname(outputPath), result.tokensPath);
+        console.log(`│ ${colors.bold}Tokens:${colors.reset}     ${(relTokens + ' (' + formatBytes(tokensStat.size) + ')').padEnd(27)} │`);
     }
     if (result.assetsDir && fs.existsSync(result.assetsDir)) {
         const relAssets = path.relative(path.dirname(outputPath), result.assetsDir);
