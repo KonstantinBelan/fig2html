@@ -2,6 +2,7 @@
 const assert = require('assert');
 const path = require('path');
 const fs = require('fs');
+const sharp = require('sharp');
 const AdmZip = require('adm-zip');
 const { decodeFigKiwiCanvas } = require('@open-pencil/kiwi/fig/parse');
 
@@ -524,6 +525,17 @@ async function runAllTests() {
         assert.strictEqual(opts3.extractCss, true);
         assert.strictEqual(opts3.cssFile, 'styles/main.css');
         assert.strictEqual(opts3.assetsDir, 'assets');
+
+        const opts4 = parseReverseArgs(['input.fig', '--image-scale', '3', '--no-srcset', '-c', '--webp']);
+        assert.strictEqual(opts4.imageScale, 3);
+        assert.strictEqual(opts4.responsiveImages, false);
+        assert.strictEqual(opts4.compress, true);
+        assert.strictEqual(opts4.imageFormat, 'webp');
+
+        const opts5 = parseReverseArgs(['input.fig', '--lossless', '--avif', '--scale', '1.5']);
+        assert.strictEqual(opts5.compress, true);
+        assert.strictEqual(opts5.imageFormat, 'avif');
+        assert.strictEqual(opts5.imageScale, 1.5);
     });
 
     await itAsync('decompiles test/showcase.fig into valid standalone HTML', async () => {
@@ -615,6 +627,152 @@ async function runAllTests() {
         assert(imageFiles.some(f => f.endsWith('.png')));
 
         // Clean up
+        fs.rmSync(outDir, { recursive: true, force: true });
+    });
+
+    await itAsync('resizes images according to CSS dimensions with 2x multiplier for retina quality', async () => {
+        const outDir = path.resolve('test/resize-test');
+        const outHtml = path.resolve(outDir, 'index.html');
+        const expectedImgDir = path.resolve(outDir, 'img');
+
+        const res = await convertFigToHtml('test/showcase.fig', {
+            outputHtmlPath: outHtml,
+            separateFiles: true,
+            imageScale: 2
+        });
+
+        assert(fs.existsSync(expectedImgDir));
+        // Sample Image in showcase.fig has CSS dimensions: 282x140
+        const sampleImgPath = path.resolve(expectedImgDir, '11de1cb05575fa854209092779b6a4f2fbdac325.png');
+        assert(fs.existsSync(sampleImgPath), 'Sample Image file should exist on disk');
+
+        const meta = await sharp(sampleImgPath).metadata();
+        // 282 * 2 = 564, 140 * 2 = 280
+        assert.strictEqual(meta.width, 564, 'Sample image width should be scaled 2x to 564px');
+        assert.strictEqual(meta.height, 280, 'Sample image height should be scaled 2x to 280px');
+
+        fs.rmSync(outDir, { recursive: true, force: true });
+    });
+
+    await itAsync('generates responsive srcset and sizes for different devices and supports disabling via --no-srcset', async () => {
+        const outDir = path.resolve('test/responsive-test');
+        const outHtml = path.resolve(outDir, 'index.html');
+        const expectedImgDir = path.resolve(outDir, 'img');
+
+        // 1. With responsive images enabled (default)
+        const res = await convertFigToHtml('test/hard.fig', {
+            outputHtmlPath: outHtml,
+            separateFiles: true,
+            responsiveImages: true
+        });
+
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+        const files = fs.readdirSync(expectedImgDir);
+
+        // Verify HTML contains srcset with responsive device widths and sizes
+        assert(htmlContent.includes('srcset="img/'), 'HTML should contain responsive srcset');
+        assert(htmlContent.includes('sizes="'), 'HTML should contain sizes attribute');
+        assert(htmlContent.includes('480w') || htmlContent.includes('768w'), 'srcset should contain mobile/tablet breakpoints');
+        assert(htmlContent.includes('(max-width: 768px) 100vw'), 'sizes should adapt to mobile viewport');
+
+        // Verify responsive variant files were saved to disk
+        assert(files.some(f => f.includes('-480w.')), 'should contain 480w variant file');
+        assert(files.some(f => f.includes('-768w.')), 'should contain 768w variant file');
+        fs.rmSync(outDir, { recursive: true, force: true });
+
+        // 2. With responsive images disabled (--no-srcset)
+        const outNoSrcsetDir = path.resolve('test/no-srcset-test');
+        const outNoSrcsetHtml = path.resolve(outNoSrcsetDir, 'index.html');
+        const expectedNoSrcsetImgDir = path.resolve(outNoSrcsetDir, 'img');
+
+        await convertFigToHtml('test/hard.fig', {
+            outputHtmlPath: outNoSrcsetHtml,
+            separateFiles: true,
+            responsiveImages: false
+        });
+
+        const noSrcsetHtmlContent = fs.readFileSync(outNoSrcsetHtml, 'utf8');
+        const noSrcsetFiles = fs.readdirSync(expectedNoSrcsetImgDir);
+
+        // Verify HTML does NOT contain srcset or sizes
+        assert(!noSrcsetHtmlContent.includes('srcset='), 'HTML should NOT contain srcset when --no-srcset is specified');
+        assert(!noSrcsetHtmlContent.includes('sizes='), 'HTML should NOT contain sizes when --no-srcset is specified');
+        assert(noSrcsetHtmlContent.includes('src="img/'), 'HTML should still have src pointing to crisp 2x image');
+
+        // Verify no variant files like -480w were created
+        assert(!noSrcsetFiles.some(f => f.includes('-480w.')), 'Variant files should not be written when responsiveImages is false');
+
+        fs.rmSync(outNoSrcsetDir, { recursive: true, force: true });
+    });
+
+    await itAsync('compresses images losslessly when --compress / --lossless is enabled', async () => {
+        const outDir = path.resolve('test/compress-test');
+        const outHtml = path.resolve(outDir, 'index.html');
+
+        const res = await convertFigToHtml('test/showcase.fig', {
+            outputHtmlPath: outHtml,
+            compress: true,
+            imageFormat: 'webp',
+            separateFiles: true
+        });
+
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+        assert(htmlContent.includes('.webp'), 'Images should be processed with WebP format');
+        assert(res.stats.imageOptimization, 'Should produce image optimization stats');
+        assert(res.stats.imageOptimization.optimizedCount > 0, 'Should have optimized images');
+
+        fs.rmSync(outDir, { recursive: true, force: true });
+    });
+
+    await itAsync('converts images to modern WebP format via --webp and --format webp', async () => {
+        const outDir = path.resolve('test/webp-test');
+        const outHtml = path.resolve(outDir, 'index.html');
+        const expectedImgDir = path.resolve(outDir, 'img');
+
+        const res = await convertFigToHtml('test/hard.fig', {
+            outputHtmlPath: outHtml,
+            separateFiles: true,
+            imageFormat: 'webp'
+        });
+
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+        const files = fs.readdirSync(expectedImgDir);
+
+        assert(htmlContent.includes('.webp'), 'HTML should reference .webp images');
+        assert(!htmlContent.includes('.jpg'), 'HTML should not reference original .jpg when webp is requested');
+        assert(files.length > 5);
+        assert(files.every(f => f.endsWith('.webp')), 'All extracted files should have .webp extension');
+
+        const firstFile = path.resolve(expectedImgDir, files[0]);
+        const meta = await sharp(firstFile).metadata();
+        assert.strictEqual(meta.format, 'webp', 'Image format on disk should be valid WebP');
+
+        fs.rmSync(outDir, { recursive: true, force: true });
+    });
+
+    await itAsync('converts images to modern AVIF format via --avif and --format avif', async () => {
+        const outDir = path.resolve('test/avif-test');
+        const outHtml = path.resolve(outDir, 'index.html');
+        const expectedImgDir = path.resolve(outDir, 'img');
+
+        const res = await convertFigToHtml('test/hard.fig', {
+            outputHtmlPath: outHtml,
+            separateFiles: true,
+            imageFormat: 'avif'
+        });
+
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+        const files = fs.readdirSync(expectedImgDir);
+
+        assert(htmlContent.includes('.avif'), 'HTML should reference .avif images');
+        assert(!htmlContent.includes('.jpg'), 'HTML should not reference original .jpg when avif is requested');
+        assert(files.length > 5);
+        assert(files.every(f => f.endsWith('.avif')), 'All extracted files should have .avif extension');
+
+        const firstFile = path.resolve(expectedImgDir, files[0]);
+        const meta = await sharp(firstFile).metadata();
+        assert(meta.format === 'heif' || meta.format === 'avif', 'Image format on disk should be valid AVIF');
+
         fs.rmSync(outDir, { recursive: true, force: true });
     });
 

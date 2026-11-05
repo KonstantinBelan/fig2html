@@ -28,6 +28,10 @@ function getImageMimeType(buffer) {
     if (buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
         return 'image/webp';
     }
+    // AVIF: ....ftypavif or ....ftypavis
+    if (buffer.length >= 12 && buffer.toString('ascii', 4, 8) === 'ftyp' && (buffer.toString('ascii', 8, 12) === 'avif' || buffer.toString('ascii', 8, 12) === 'avis')) {
+        return 'image/avif';
+    }
     // SVG
     const snippet = buffer.slice(0, 100).toString('utf8').trim().toLowerCase();
     if (snippet.startsWith('<svg') || snippet.includes('<?xml') || snippet.includes('<svg')) {

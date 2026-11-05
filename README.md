@@ -182,9 +182,30 @@ OPTIONS:
   --no-inline-images       Извлекать изображения в отдельные файлы вместо Base64
   --assets-dir <dir>       Папка для извлеченных картинок (по умолчанию: "img")
   --inline-styles          Генерировать инлайн-атрибуты style="..." вместо классов
+  --image-scale <n>        Множитель размера картинок от размера в CSS (по умолчанию: 2 для Retina x2)
+  --no-srcset              Отключить адаптивный srcset / sizes для разных устройств
+  -c, --compress           Сжатие изображений без потери качества (lossless)
+  --format <fmt>           Конвертация в современный формат: webp, avif, original (по умолчанию: original)
+  --webp                   Шорткат для --format webp
+  --avif                   Шорткат для --format avif
   -v, --verbose            Подробные логи процесса
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
+```
+
+#### Примеры использования fig-to-html:
+```bash
+# 1. Автономный HTML файл с автоматическим 2x ресайзом под размер в CSS и адаптивным srcset:
+fig-to-html design.fig index.html
+
+# 2. Экспорт с отдельным CSS и картинками в современном формате WebP:
+fig-to-html design.fig index.html -s --webp
+
+# 3. Конвертация картинок в AVIF со сжатием без потери качества (lossless):
+fig-to-html design.fig index.html -s --avif --compress
+
+# 4. Отключение responsive srcset (генерирует единую 2x Retina картинку в src):
+fig-to-html design.fig index.html --no-srcset
 ```
 
 ---
@@ -226,10 +247,14 @@ async function decompile() {
         verbose: true
     });
 
-    // 2. Модульная структура с отдельным CSS (css/style.css) и картинками (img/*):
+    // 2. Модульная структура с отдельным CSS (css/style.css), картинками WebP и сжатием без потерь:
     const result2 = await convertFigToHtml('showcase.fig', {
         outputHtmlPath: 'dist/index.html',
         separateFiles: true, // создает dist/css/style.css и dist/img/*
+        imageScale: 2,       // масштабирование под CSS размер x2 для Retina качества
+        responsiveImages: true, // генерация srcset и sizes под разные устройства
+        compress: true,      // сжатие без потери качества (lossless)
+        imageFormat: 'webp', // современные форматы: 'webp', 'avif' или 'original'
         verbose: true
     });
 
@@ -244,7 +269,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (43 теста):
+Проект покрыт всесторонними автоматическими тестами (48 тестов):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -255,6 +280,11 @@ decompile();
 - Декомпиляция .fig в валидный адаптивный HTML с сохранением семантики, Flexbox и графики
 - Автоматическое формирование `:root` переменных и семантических классов слоев с транслитерацией
 - Определение форматов изображений по Magic Bytes и экспорт раздельных файлов (`css/style.css`, `img/*`)
+- Изменение размера изображений по размеру в CSS с множителем x2 для лучшего Retina-качества
+- Добавление адаптивных размеров под разные устройства (mobile, tablet, desktop) через `srcset` и `sizes`
+- Возможность отключения `srcset` / `sizes` через параметр CLI (`--no-srcset`)
+- Сжатие размера и качества картинок без потери качества (lossless, mozjpeg, webp/avif lossless)
+- Конвертация изображений в современные медиа-форматы (`WebP`, `AVIF`) через параметры CLI
 - Полный Round-Trip тест: HTML ➔ .fig ➔ HTML с проверкой целостности всех элементов
 - Декодирование бинарных `commandsBlob` и `VectorNetwork` в масштабируемые SVG пути
 - Сохранение фиксированных габаритов Auto Layout при растяжении по поперечной оси (`align-self: stretch`)

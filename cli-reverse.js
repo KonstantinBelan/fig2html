@@ -48,6 +48,12 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--no-inline-images${colors.reset}       Extract images to separate files instead of Base64
   ${colors.cyan}--assets-dir <dir>${colors.reset}        Directory for extracted images (default: "img")
   ${colors.cyan}--inline-styles${colors.reset}          Generate inline style attributes instead of <style> classes
+  ${colors.cyan}--image-scale <n>${colors.reset}         Image scaling multiplier based on CSS size (default: 2 for 2x retina)
+  ${colors.cyan}--no-srcset${colors.reset}               Disable responsive srcset/sizes for different devices
+  ${colors.cyan}-c, --compress, --lossless${colors.reset} Compress images losslessly without quality loss
+  ${colors.cyan}--format <fmt>${colors.reset}             Convert images to modern format: webp, avif, or original (default: original)
+  ${colors.cyan}--webp${colors.reset}                     Shortcut for --format webp
+  ${colors.cyan}--avif${colors.reset}                     Shortcut for --format avif
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
   ${colors.cyan}-h, --help${colors.reset}                 Display this help message
   ${colors.cyan}-V, --version${colors.reset}              Display version number
@@ -56,9 +62,14 @@ ${colors.bold}EXAMPLES:${colors.reset}
   ${colors.gray}# Simple reverse conversion (single self-contained HTML):${colors.reset}
   $ fig-to-html design.fig
 
-  ${colors.gray}# Extract separate CSS (css/style.css) and images (img/*):${colors.reset}
-  $ fig-to-html design.fig -s
-  $ fig-to-html design.fig index.html --separate-files
+  ${colors.gray}# Extract separate CSS (css/style.css) and images (img/*) with WebP format:${colors.reset}
+  $ fig-to-html design.fig -s --webp
+
+  ${colors.gray}# Lossless image compression with modern AVIF format:${colors.reset}
+  $ fig-to-html design.fig -s --avif --compress
+
+  ${colors.gray}# Disable responsive srcset (generate single 2x retina image):${colors.reset}
+  $ fig-to-html design.fig --no-srcset
 
   ${colors.gray}# Custom CSS file and assets directory:${colors.reset}
   $ fig-to-html test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir img
@@ -77,7 +88,11 @@ function parseArgs(args) {
         extractCss: false,
         cssFile: 'css/style.css',
         assetsDir: 'img',
-        verbose: false
+        verbose: false,
+        imageScale: 2,
+        responsiveImages: true,
+        compress: false,
+        imageFormat: 'original'
     };
 
     const positionals = [];
@@ -115,6 +130,20 @@ function parseArgs(args) {
         } else if (arg === '--assets-dir' || arg === '--img-dir') {
             options.assetsDir = args[++i];
             options.inlineImages = false;
+        } else if (arg === '--image-scale' || arg === '--scale') {
+            options.imageScale = parseFloat(args[++i]);
+        } else if (arg === '--no-srcset' || arg === '--no-responsive' || arg === '--no-responsive-images') {
+            options.responsiveImages = false;
+        } else if (arg === '--srcset' || arg === '--responsive' || arg === '--responsive-images') {
+            options.responsiveImages = true;
+        } else if (arg === '-c' || arg === '--compress' || arg === '--lossless' || arg === '--optimize' || arg === '--compress-images') {
+            options.compress = true;
+        } else if (arg === '--format' || arg === '--image-format') {
+            options.imageFormat = args[++i];
+        } else if (arg === '--webp') {
+            options.imageFormat = 'webp';
+        } else if (arg === '--avif') {
+            options.imageFormat = 'avif';
         } else if (arg === '-v' || arg === '--verbose') {
             options.verbose = true;
         } else if (!arg.startsWith('-')) {
@@ -159,7 +188,11 @@ async function runConversion(options) {
         extractCss: options.extractCss,
         cssFile: options.cssFile,
         assetsDir: options.assetsDir,
-        verbose: options.verbose
+        verbose: options.verbose,
+        imageScale: options.imageScale,
+        responsiveImages: options.responsiveImages,
+        compress: options.compress,
+        imageFormat: options.imageFormat
     });
 
     const outStat = fs.statSync(outputPath);
@@ -183,6 +216,15 @@ async function runConversion(options) {
     console.log(`│   ${colors.dim}Text:${colors.reset}     ${String(result.stats.textNodes).padEnd(27)} │`);
     console.log(`│   ${colors.dim}Images:${colors.reset}   ${String(result.stats.images).padEnd(27)} │`);
     console.log(`│   ${colors.dim}Shapes:${colors.reset}   ${String(result.stats.shapes).padEnd(27)} │`);
+    if (result.stats.imageOptimization && result.stats.imageOptimization.optimizedCount > 0) {
+        const opt = result.stats.imageOptimization;
+        const fmtStr = options.imageFormat !== 'original' ? options.imageFormat.toUpperCase() : 'Retina 2x';
+        const ratio = opt.totalBeforeBytes > 0
+            ? Math.round((1 - opt.totalAfterBytes / opt.totalBeforeBytes) * 100)
+            : 0;
+        const ratioStr = ratio > 0 ? `-${ratio}%` : `${formatBytes(opt.totalAfterBytes)}`;
+        console.log(`│ ${colors.bold}Img Opt:${colors.reset}    ${(`${fmtStr} (${ratioStr})`).padEnd(27)} │`);
+    }
     console.log(`${colors.bold}└─────────────────────────────────────────┘${colors.reset}`);
     console.log(`\n${colors.gray}Open ${colors.bold}${outputPath}${colors.reset}${colors.gray} in any browser.${colors.reset}\n`);
 

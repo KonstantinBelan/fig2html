@@ -5,6 +5,7 @@ const { readFigFile } = require('./reader');
 const { buildSceneTree } = require('./tree');
 const { generateFullHtmlDocument } = require('./html');
 const { getExtensionForMime } = require('./css');
+const { optimizeAllImages, optimizeBuffer } = require('./image-optimizer');
 
 /**
  * Converts a Figma .fig binary file into a clean, standalone HTML/CSS document
@@ -19,6 +20,10 @@ const { getExtensionForMime } = require('./css');
  * @param {string} [options.assetsDir='img'] Directory to write extracted image files (if inlineImages=false)
  * @param {string} [options.assetUrlPrefix] URL prefix for image sources in HTML
  * @param {string} [options.cssAssetUrlPrefix] URL prefix for image sources in CSS
+ * @param {number} [options.imageScale=2] Multiplier for CSS dimensions (default: 2 for 2x retina)
+ * @param {boolean} [options.responsiveImages=true] Generate srcset and sizes for different devices
+ * @param {boolean} [options.compress=false] Lossless image compression without quality loss
+ * @param {string} [options.imageFormat='original'] Modern format conversion: 'original' | 'webp' | 'avif'
  * @param {string} [options.title] Custom HTML document title
  * @param {boolean} [options.verbose=false] Print progress logs
  * @returns {Promise<{ html: string, css: string|null, outputPath: string|null, cssPath: string|null, assetsDir: string|null, totalNodes: number, imagesCount: number, durationMs: number, stats: object }>}
@@ -52,22 +57,37 @@ async function convertFigToHtml(figInput, options = {}) {
 
     log(`Target canvas "${canvas.name}" with ${rootNodes.length} top-level nodes.`);
 
-    // 3. Handle images export if inlineImages is false
+    // 3. Optimize images (2x CSS scaling, responsive srcset, lossless compression, modern formats)
+    const assetsPrefix = options.assetUrlPrefix || (assetsRelDir ? `${assetsRelDir.replace(/\/+$/, '')}/` : 'img/');
+    const cssPrefix = options.cssAssetUrlPrefix || (isExtractCss ? `../${assetsPrefix}` : assetsPrefix);
+    const isResponsive = options.responsiveImages !== false && options.srcset !== false;
+
+    log('Optimizing images and generating responsive device variants...');
+    const { processedImages, nodeImageMap, filesToWrite, stats: imgStats } = await optimizeAllImages(images, rootNodes, {
+        imageScale: options.imageScale !== undefined ? options.imageScale : 2,
+        responsiveImages: isResponsive,
+        compress: options.compress || options.lossless,
+        imageFormat: options.imageFormat || options.format || 'original',
+        inlineImages: isInlineImages,
+        assetUrlPrefix: assetsPrefix,
+        cssAssetUrlPrefix: cssPrefix
+    });
+
+    // 4. Handle images export if inlineImages is false
     let outAssetsDir = null;
     if (isInlineImages === false) {
         outAssetsDir = path.resolve(baseDir, assetsRelDir);
         if (!fs.existsSync(outAssetsDir)) {
             fs.mkdirSync(outAssetsDir, { recursive: true });
         }
-        for (const [hashHex, imgObj] of images.entries()) {
-            const ext = getExtensionForMime(imgObj.mime);
-            const filePath = path.join(outAssetsDir, `${hashHex}.${ext}`);
-            fs.writeFileSync(filePath, imgObj.buffer);
+        for (const file of filesToWrite) {
+            const filePath = path.join(outAssetsDir, file.fileName);
+            fs.writeFileSync(filePath, file.buffer);
         }
-        log(`Extracted ${images.size} image files to ${outAssetsDir}`);
+        log(`Extracted ${filesToWrite.length} image files to ${outAssetsDir}`);
     }
 
-    // 4. Calculate node statistics
+    // 5. Calculate node statistics
     const stats = {
         frames: 0,
         textNodes: 0,
@@ -91,12 +111,10 @@ async function convertFigToHtml(figInput, options = {}) {
         collectStats(r);
     }
 
-    // 5. Generate semantic HTML and CSS styles
+    // 6. Generate semantic HTML and CSS styles
     log('Generating semantic HTML5 and CSS styles...');
-    const assetsPrefix = options.assetUrlPrefix || (assetsRelDir ? `${assetsRelDir.replace(/\/+$/, '')}/` : 'img/');
-    const cssPrefix = options.cssAssetUrlPrefix || (isExtractCss ? `../${assetsPrefix}` : assetsPrefix);
 
-    const docResult = generateFullHtmlDocument(rootNodes, images, {
+    const docResult = generateFullHtmlDocument(rootNodes, processedImages, {
         inlineImages: isInlineImages,
         inlineStyles: options.inlineStyles === true,
         extractCss: isExtractCss,
@@ -104,13 +122,15 @@ async function convertFigToHtml(figInput, options = {}) {
         assetUrlPrefix: assetsPrefix,
         cssAssetUrlPrefix: cssPrefix,
         blobs: blobs,
-        title: options.title || canvas.name || 'Exported Figma Design'
+        title: options.title || canvas.name || 'Exported Figma Design',
+        nodeImageMap,
+        responsiveImages: isResponsive
     });
 
     const html = typeof docResult === 'string' ? docResult : docResult.html;
     const css = typeof docResult === 'string' ? null : (docResult.css || null);
 
-    // 6. Write external CSS file if requested
+    // 7. Write external CSS file if requested
     let extractedCssPath = null;
     if (isExtractCss && css) {
         extractedCssPath = path.resolve(baseDir, cssRelPath);
@@ -122,7 +142,7 @@ async function convertFigToHtml(figInput, options = {}) {
         log(`Saved external stylesheet to ${extractedCssPath} (${Buffer.byteLength(css, 'utf8')} bytes)`);
     }
 
-    // 7. Write output HTML file if requested
+    // 8. Write output HTML file if requested
     if (outputPath) {
         const outDir = path.dirname(outputPath);
         if (!fs.existsSync(outDir)) {
@@ -141,9 +161,13 @@ async function convertFigToHtml(figInput, options = {}) {
         cssPath: extractedCssPath,
         assetsDir: isInlineImages === false ? outAssetsDir : null,
         totalNodes: nodeChanges.length,
-        imagesCount: images.size,
+        imagesCount: processedImages.size,
         durationMs,
-        stats
+        stats: {
+            ...stats,
+            imageOptimization: imgStats,
+            exportedFilesCount: filesToWrite.length
+        }
     };
 }
 
@@ -151,5 +175,7 @@ module.exports = {
     convertFigToHtml,
     readFigFile,
     buildSceneTree,
-    generateFullHtmlDocument
+    generateFullHtmlDocument,
+    optimizeAllImages,
+    optimizeBuffer
 };

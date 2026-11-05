@@ -9,6 +9,7 @@ function getExtensionForMime(mime) {
     if (mime === 'image/jpeg') return 'jpg';
     if (mime === 'image/svg+xml') return 'svg';
     if (mime === 'image/webp') return 'webp';
+    if (mime === 'image/avif') return 'avif';
     if (mime === 'image/gif') return 'gif';
     return 'png';
 }
@@ -198,11 +199,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                         const hashHex = Buffer.from(fill.image.hash).toString('hex').toLowerCase();
                         const imgObj = imageRegistry.get(hashHex);
                         if (imgObj) {
-                            const ext = getExtensionForMime(imgObj.mime);
+                            const ext = imgObj.ext || getExtensionForMime(imgObj.mime);
                             const prefix = options.cssAssetUrlPrefix || options.assetUrlPrefix || (options.extractCss ? '../img/' : 'img/');
+                            const mainFile = imgObj.mainFileName || `${hashHex}.${ext}`;
                             const imgUrl = options.inlineImages !== false
-                                ? imgObj.base64
-                                : `${prefix}${hashHex}.${ext}`;
+                                ? (imgObj.mainBase64 || imgObj.base64)
+                                : `${prefix}${mainFile}`;
                             bgImages.push(`url('${imgUrl}')`);
 
                             if (fill.imageScaleMode === 'FIT') {

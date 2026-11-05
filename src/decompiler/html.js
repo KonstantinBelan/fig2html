@@ -257,13 +257,26 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
         const imgObj = hashHex ? imageRegistry.get(hashHex) : null;
 
         if (imgObj) {
-            const ext = getExtensionForMime(imgObj.mime);
+            const nodeImgInfo = options.nodeImageMap ? options.nodeImageMap.get(node) : null;
+            const imgInfo = nodeImgInfo || imgObj;
+            const ext = imgInfo.ext || imgObj.ext || getExtensionForMime(imgInfo.mime || imgObj.mime);
             const prefix = options.assetUrlPrefix || 'img/';
+            const mainFile = imgInfo.mainFileName || imgObj.mainFileName || `${hashHex}.${ext}`;
             const imgSrc = options.inlineImages !== false
-                ? imgObj.base64
-                : `${prefix}${hashHex}.${ext}`;
+                ? (imgInfo.mainBase64 || imgObj.base64)
+                : `${prefix}${mainFile}`;
 
-            return `${indent}<img src="${imgSrc}" alt="${escapeHtml(nodeName)}"${classAttr}${styleAttr}>\n`;
+            let srcsetAttr = '';
+            let sizesAttr = '';
+
+            if (options.responsiveImages !== false && imgInfo.srcset) {
+                srcsetAttr = ` srcset="${imgInfo.srcset}"`;
+                if (imgInfo.sizes) {
+                    sizesAttr = ` sizes="${imgInfo.sizes}"`;
+                }
+            }
+
+            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr} alt="${escapeHtml(nodeName)}"${classAttr}${styleAttr}>\n`;
         }
     }
 
