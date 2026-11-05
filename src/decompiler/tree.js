@@ -1,4 +1,5 @@
 // src/decompiler/tree.js
+const { synthesizeLayoutTree, applySmartLayout } = require('./synthesizer');
 
 /**
  * Creates a unique string identifier for a Figma GUID
@@ -246,6 +247,11 @@ function buildSceneTree(nodeChanges, options = {}) {
         }
     }
 
+    // 8. Optional smart layout synthesis if explicitly requested on tree build
+    if (options.smartLayout === true) {
+        applySmartLayout(targetCanvas.children, options);
+    }
+
     return {
         document: documentNode,
         canvas: targetCanvas,
@@ -260,5 +266,7 @@ module.exports = {
     guidKey,
     cloneNode,
     resolveInstanceNode,
-    buildSceneTree
+    buildSceneTree,
+    synthesizeLayoutTree,
+    applySmartLayout
 };

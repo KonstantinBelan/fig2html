@@ -5,7 +5,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.2.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-[![Tests: 61 passed](https://img.shields.io/badge/tests-61%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 77 passed](https://img.shields.io/badge/tests-77%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -167,6 +167,14 @@ Open dist/index.html in any browser.
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
+- **📐 Интеллектуальный синтез адаптивной верстки (Layout Synthesis Engine)**:
+  - **Полный отказ от `position: absolute`**: для макетов Figma, созданных дизайнерами **без единого Auto Layout**, движок автоматически группирует плоские абсолютные слои в гибкие Flexbox-контейнеры (`flex-direction: row | column`) и CSS Grid.
+  - **Фаза 1. Spatial Normalization & Indexing**: точное вычисление 2D-габаритов (`BoundingBox`), пространственное индексирование и разрешение порядка наложения z-index.
+  - **Фаза 2. Background & Container Induction**: автоматическое обнаружение прямоугольников-подложек (`RECTANGLE` с заливками, скруглениями или тенями), повышение их до семантических контейнеров и перенос стилей оформления на синтезированные `<div>` и `<button>` блоки.
+  - **Фаза 3. Recursive XY-Cut & Fuzzy Clustering**: метод рекурсивного ортогонального разрезания пространства по 1D-профилям проекций с допуском неточностей дизайнера $\epsilon = 3\text{px}$ (Fuzzy Tolerance Clustering) для выравнивания строк, колонок и элементов (`align-items: center | flex-start`, `justify-content: space-between`).
+  - **Фаза 4. Grid & Matrix Induction**: автоматическое распознавание регулярных матричных сеток карточек $N \times M$ и синтез нативного `display: grid; grid-template-columns: repeat(C, 1fr); column-gap: ...; row-gap: ...;`.
+  - **Фаза 5. Flexbox Property Synthesis**: вычисление внутренних отступов (`padding`), промежутков (`gap`), правил растяжения (`align-self: stretch`, `width: 100%`) и изоляция декоративных оверлеев (`DECORATIVE_OVERLAY`).
+  - **Управление через CLI**: флаг `--smart-layout` (включен по умолчанию) и `--no-smart-layout` для отката к абсолютному позиционированию при необходимости.
 - **Режимы вёрстки и адаптивность (Fluid & Relative)**:
   - **Fluid (резиновая вёрстка)**: главный контейнер страницы растягивается на всю ширину (`width: 100vw; min-height: 100dvh;`), для типографики и отступов генерируются гибкие выражения `clamp()`, `min()`, `max()`, подключается `<meta name="viewport" content="width=device-width, initial-scale=1">`, а вместо фиксированных пикселей используются `rem`, `em`, `vw`, `vh`.
   - **Relative (относительные единицы)**: замена всех фиксированных `px` на относительные единицы `rem`, `em`, `vw`, `vh` для гармоничного масштабирования шрифтов и отступов.
@@ -256,6 +264,12 @@ node cli-reverse.js design.fig index.html -s --avif --compress
 # Отключение адаптивного srcset (генерирует единую четкую 2x Retina картинку в src):
 node cli-reverse.js design.fig index.html --no-srcset
 
+# Декомпиляция макетов без Auto Layout в чистый Flexbox/Grid (включено по умолчанию):
+node cli-reverse.js unorganized.fig index.html
+
+# Принудительный откат к традиционному position: absolute:
+node cli-reverse.js unorganized.fig index.html --no-smart-layout
+
 # Указание имени выходного файла и страницы:
 node cli-reverse.js showcase.fig output.html --page "Page 1"
 
@@ -327,6 +341,8 @@ OPTIONS:
   --relative, --rem        Шорткат для --layout relative (rem, em, vw/vh вместо px)
   --grid                   Шорткат для --layout grid (CSS Grid разметка)
   --tokens [path]          Экспорт Figma Variables в файл дизайн-токенов JSON (по умолчанию: tokens.json)
+  --smart-layout           Синтез адаптивного Flexbox/Grid без position: absolute (по умолчанию: включен)
+  --no-smart-layout        Отключить синтез разметки и использовать абсолютное позиционирование
   -v, --verbose            Подробные логи процесса
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
@@ -402,7 +418,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (61 тест):
+Проект покрыт всесторонними автоматическими тестами (77 тестов):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -431,6 +447,16 @@ decompile();
 - Генерация интерактивных связей прототипа (`prototypeInteractions`) для состояний `:hover`
 - Автоматическое обнаружение Google Fonts и расчет размеров текста по таблице метрик `FONT_METRICS_TABLE`
 - Оптимизация памяти при чтении бинарных `.fig` (ленивое декодирование изображений в Base64)
+- **Layout Synthesis Engine**:
+  - Геометрические операции `BoundingBox`: вычисление пересечений, объединений, расстояний и частичных перекрытий границ
+  - 1D-проекции и нечеткая кластеризация интервалов (Fuzzy Interval Clustering, $\epsilon = 3\text{px}$)
+  - Детекция карточек-подложек и повышение прямоугольников до семантических контейнеров с переносом стилей
+  - Изоляция декоративных оверлеев (бейджи, кнопки закрытия) с сохранением локального `position: absolute`
+  - Распознавание $N \times M$ матричных сеток элементов с равномерным шагом и отступами
+  - Рекурсивный синтез разметки Recursive XY-Cut: построение колонок и строк Flexbox с автоматическим вычислением gap и padding
+  - Парсинг CLI-флагов `--smart-layout` и `--no-smart-layout`
+  - End-to-End декомпиляция макетов без единого Auto Layout фрейма в чистый Flexbox и CSS Grid без `position: absolute`
+  - Проверка сохранения традиционного абсолютного позиционирования при флаге `--no-smart-layout`
 
 Запуск тестов:
 ```bash
@@ -457,6 +483,9 @@ html-to-fig/
 │   ├── schema.js           # Компилятор и кэш Kiwi схемы
 │   ├── decompiler/         # ДВИЖОК ОБРАТНОЙ КОНВЕРТАЦИИ (FIG -> HTML)
 │   │   ├── index.js        # Главный оркестратор декомпиляции
+│   │   ├── geometry.js     # BoundingBox, 1D-проекции, Fuzzy Clustering и интервалы
+│   │   ├── container-detector.js # Обнаружение карточек-подложек и изолирование оверлеев
+│   │   ├── synthesizer.js  # Recursive XY-Cut, детекция сеток N x M и Auto Layout синтез
 │   │   ├── reader.js       # Чтение .fig ZIP, декомпрессия Kiwi и извлечение картинок
 │   │   ├── tree.js         # Восстановление иерархии сцены, инстансы компонентов и overrides
 │   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, дедупликация и транслитерация
@@ -474,7 +503,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (61 тест)
+    ├── run-tests.js        # Автоматический тестовый запуск (77 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)

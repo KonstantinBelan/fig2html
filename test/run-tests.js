@@ -57,6 +57,31 @@ const {
     isVectorNode
 } = require('../src/decompiler/vector');
 const { parseArgs: parseReverseArgs } = require('../cli-reverse');
+const {
+    BoundingBox,
+    Interval,
+    fuzzyEqual,
+    fuzzyCompare,
+    clusterValues,
+    mergeIntervals,
+    findGaps,
+    sliceAlongAxis,
+    computeMedian
+} = require('../src/decompiler/geometry');
+const {
+    hasContainerVisualStyles,
+    isUnderlayCandidate,
+    promoteToContainer,
+    detectAndExtractContainers
+} = require('../src/decompiler/container-detector');
+const {
+    detectGrid,
+    synthesizeContainerLayout,
+    synthesizeLayoutTree,
+    applySmartLayout
+} = require('../src/decompiler/synthesizer');
+const { getCompiledSchema } = require('../src/schema');
+const { ZstdCodec } = require('zstd-codec');
 
 let totalTests = 0;
 let passedTests = 0;
@@ -1285,6 +1310,584 @@ async function runAllTests() {
             assert(typeof img.mime === 'string', 'Image mime should be detected');
             assert(img.base64.startsWith('data:image/'), 'Image base64 should be evaluated on access');
         }
+    });
+
+    // 10. Layout Synthesis Engine Tests
+    console.log('\n\x1b[1m10. Layout Synthesis Engine Tests\x1b[0m');
+
+    it('verifies BoundingBox geometric operations, intersections, containment and boundaries', () => {
+        const boxA = new BoundingBox(10, 20, 110, 120);
+        assert.strictEqual(boxA.x, 10);
+        assert.strictEqual(boxA.y, 20);
+        assert.strictEqual(boxA.width, 100);
+        assert.strictEqual(boxA.height, 100);
+        assert.strictEqual(boxA.centerX, 60);
+        assert.strictEqual(boxA.centerY, 70);
+        assert.strictEqual(boxA.area, 10000);
+
+        // Containment
+        const boxB = new BoundingBox(30, 40, 80, 90);
+        assert(boxA.contains(boxB));
+        assert(!boxB.contains(boxA));
+        assert(boxA.containsPoint(60, 70));
+        assert(!boxA.containsPoint(5, 5));
+
+        // Intersection & Union
+        const boxC = new BoundingBox(90, 100, 150, 160);
+        assert(boxA.intersects(boxC));
+        const inter = boxA.intersection(boxC);
+        assert.strictEqual(inter.width, 20);
+        assert.strictEqual(inter.height, 20);
+
+        const boxD = new BoundingBox(200, 200, 300, 300);
+        assert(!boxA.intersects(boxD));
+        assert.strictEqual(boxA.distanceX(boxD), 90);
+        assert.strictEqual(boxA.distanceY(boxD), 80);
+
+        // Boundary overlap (e.g. badge protruding over top edge)
+        const boxBadge = new BoundingBox(80, 10, 120, 35);
+        assert(boxBadge.overlapsBoundary(boxA));
+
+        // Node bounds extraction & union computation
+        const mockNode = { transform: { m02: 50, m12: 60 }, size: { x: 140, y: 80 } };
+        const nodeBox = BoundingBox.fromNode(mockNode);
+        assert.strictEqual(nodeBox.xMin, 50);
+        assert.strictEqual(nodeBox.yMin, 60);
+        assert.strictEqual(nodeBox.width, 140);
+        assert.strictEqual(nodeBox.height, 80);
+
+        const unionBox = BoundingBox.computeUnion([boxA, boxD]);
+        assert.strictEqual(unionBox.xMin, 10);
+        assert.strictEqual(unionBox.yMin, 20);
+        assert.strictEqual(unionBox.xMax, 300);
+        assert.strictEqual(unionBox.yMax, 300);
+    });
+
+    it('handles negative coordinates, touching bounds, and zero-dimension boxes in BoundingBox', () => {
+        const negBox = new BoundingBox(-100, -50, -20, -10);
+        assert.strictEqual(negBox.xMin, -100);
+        assert.strictEqual(negBox.yMin, -50);
+        assert.strictEqual(negBox.width, 80);
+        assert.strictEqual(negBox.height, 40);
+
+        // Touching boxes
+        const touch1 = new BoundingBox(0, 0, 50, 50);
+        const touch2 = new BoundingBox(50, 0, 100, 50);
+        assert.strictEqual(touch1.distanceX(touch2), 0);
+        assert(!touch1.intersects(touch2, 0)); // touching at edge without overlap
+        assert(touch1.intersects(touch2, -1)); // with negative epsilon (touches)
+
+        // Empty items list
+        const emptyUnion = BoundingBox.computeUnion([]);
+        assert.strictEqual(emptyUnion.area, 0);
+    });
+
+    it('clusters 1D intervals and values with fuzzy tolerance epsilon = 3px', () => {
+        // Numeric clustering
+        const clusters = clusterValues([10, 11, 13, 50, 52, 100], 3);
+        assert.strictEqual(clusters.length, 3);
+        assert.deepStrictEqual(clusters[0].values, [10, 11, 13]);
+        assert.strictEqual(clusters[0].median, 11);
+        assert.deepStrictEqual(clusters[1].values, [50, 52]);
+        assert.deepStrictEqual(clusters[2].values, [100]);
+
+        // Fuzzy equality & comparison
+        assert(fuzzyEqual(10, 12, 3));
+        assert(fuzzyEqual(10, 13, 3));
+        assert(!fuzzyEqual(10, 14, 3));
+        assert.strictEqual(fuzzyCompare(10, 12, 3), 0);
+        assert.strictEqual(fuzzyCompare(10, 15, 3), -1);
+        assert.strictEqual(fuzzyCompare(20, 10, 3), 1);
+
+        // 1D Intervals and gap finding
+        const i1 = new Interval(0, 100, 'item1');
+        const i2 = new Interval(98, 150, 'item2'); // overlaps i1 with epsilon
+        const i3 = new Interval(180, 250, 'item3');
+
+        assert(i1.overlaps(i2, 3));
+        assert(!i1.overlaps(i3, 3));
+        assert.strictEqual(i2.distanceTo(i3), 30);
+
+        const merged = mergeIntervals([i1, i2, i3], 3);
+        assert.strictEqual(merged.length, 2);
+        assert.strictEqual(merged[0].interval.start, 0);
+        assert.strictEqual(merged[0].interval.end, 150);
+        assert.deepStrictEqual(merged[0].items, ['item1', 'item2']);
+
+        const gaps = findGaps(merged);
+        assert.strictEqual(gaps.length, 1);
+        assert.strictEqual(gaps[0].start, 150);
+        assert.strictEqual(gaps[0].end, 180);
+        assert.strictEqual(gaps[0].size, 30);
+    });
+
+    it('slices nodes along X and Y axes into clean projection bands', () => {
+        // 3 vertically stacked blocks
+        const vertNodes = [
+            { transform: { m02: 0, m12: 0 }, size: { x: 200, y: 40 } },
+            { transform: { m02: 0, m12: 60 }, size: { x: 200, y: 40 } },
+            { transform: { m02: 0, m12: 120 }, size: { x: 200, y: 40 } }
+        ];
+
+        const yBands = sliceAlongAxis(vertNodes, 'y', 3);
+        assert.strictEqual(yBands.length, 3, 'Should produce 3 distinct vertical bands');
+        assert.strictEqual(yBands[0].nodes.length, 1);
+        assert.strictEqual(yBands[1].nodes.length, 1);
+        assert.strictEqual(yBands[2].nodes.length, 1);
+
+        const xBands = sliceAlongAxis(vertNodes, 'x', 3);
+        assert.strictEqual(xBands.length, 1, 'Should produce 1 horizontal band because all share same X interval');
+
+        // 3 horizontally adjacent items (navbar)
+        const horizNodes = [
+            { transform: { m02: 0, m12: 10 }, size: { x: 100, y: 40 } },
+            { transform: { m02: 150, m12: 10 }, size: { x: 200, y: 40 } },
+            { transform: { m02: 400, m12: 10 }, size: { x: 120, y: 40 } }
+        ];
+
+        const h_xBands = sliceAlongAxis(horizNodes, 'x', 3);
+        assert.strictEqual(h_xBands.length, 3, 'Should produce 3 horizontal bands');
+
+        const h_yBands = sliceAlongAxis(horizNodes, 'y', 3);
+        assert.strictEqual(h_yBands.length, 1, 'Should produce 1 vertical band');
+    });
+
+    it('detects visual styles and underlay card candidates', () => {
+        // Fill paint
+        assert(hasContainerVisualStyles({ fillPaints: [{ type: 'SOLID', visible: true }] }));
+        // Stroke paint
+        assert(hasContainerVisualStyles({ strokePaints: [{ type: 'SOLID', visible: true }], strokeWeight: 1 }));
+        // Corner radius
+        assert(hasContainerVisualStyles({ cornerRadius: 8 }));
+        // Shadow effect
+        assert(hasContainerVisualStyles({ effects: [{ type: 'DROP_SHADOW', visible: true }] }));
+        // Empty styling
+        assert(!hasContainerVisualStyles({}));
+        assert(!hasContainerVisualStyles({ fillPaints: [] }));
+
+        // Underlay candidate check
+        assert(isUnderlayCandidate({ type: 'RECTANGLE', fillPaints: [{ type: 'SOLID', visible: true }] }));
+        assert(!isUnderlayCandidate({ type: 'TEXT', fillPaints: [{ type: 'SOLID', visible: true }] }));
+        assert(!isUnderlayCandidate({ type: 'RECTANGLE', children: [{ name: 'child' }], fillPaints: [{ type: 'SOLID' }] }));
+    });
+
+    it('promotes underlay rectangles to semantic containers and nests enclosed children', () => {
+        const cardBg = {
+            guid: { sessionID: 0, localID: 1 },
+            type: 'RECTANGLE',
+            name: 'CardBackground',
+            transform: { m00: 1, m01: 0, m02: 50, m10: 0, m11: 1, m12: 100 },
+            size: { x: 400, y: 300 },
+            fillPaints: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, visible: true }],
+            cornerRadius: 16,
+            effects: [{ type: 'DROP_SHADOW', visible: true, radius: 10 }]
+        };
+        const titleText = {
+            guid: { sessionID: 0, localID: 2 },
+            type: 'TEXT',
+            name: 'Title',
+            transform: { m00: 1, m01: 0, m02: 70, m10: 0, m11: 1, m12: 120 },
+            size: { x: 200, y: 24 }
+        };
+        const descText = {
+            guid: { sessionID: 0, localID: 3 },
+            type: 'TEXT',
+            name: 'Description',
+            transform: { m00: 1, m01: 0, m02: 70, m10: 0, m11: 1, m12: 160 },
+            size: { x: 360, y: 60 }
+        };
+
+        const result = detectAndExtractContainers([cardBg, titleText, descText]);
+        assert.strictEqual(result.length, 1, 'Should collapse underlay and contents into 1 container');
+
+        const container = result[0];
+        assert.strictEqual(container.type, 'FRAME');
+        assert.strictEqual(container.isSynthesizedContainer, true);
+        assert.strictEqual(container.cornerRadius, 16);
+        assert.strictEqual(container.children.length, 2);
+
+        // Child coordinates adjusted relative to container
+        assert.strictEqual(titleText.transform.m02, 20);
+        assert.strictEqual(titleText.transform.m12, 20);
+        assert.strictEqual(descText.transform.m02, 20);
+        assert.strictEqual(descText.transform.m12, 60);
+    });
+
+    it('handles multi-level nested underlay containers (card containing button)', () => {
+        const outerCard = {
+            guid: { sessionID: 0, localID: 10 },
+            type: 'RECTANGLE',
+            name: 'OuterCard',
+            transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 },
+            size: { x: 500, y: 400 },
+            fillPaints: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, visible: true }]
+        };
+        const cardTitle = {
+            guid: { sessionID: 0, localID: 11 },
+            type: 'TEXT',
+            name: 'CardTitle',
+            transform: { m00: 1, m01: 0, m02: 30, m10: 0, m11: 1, m12: 30 },
+            size: { x: 300, y: 30 }
+        };
+        const btnUnderlay = {
+            guid: { sessionID: 0, localID: 12 },
+            type: 'RECTANGLE',
+            name: 'BtnBg',
+            transform: { m00: 1, m01: 0, m02: 30, m10: 0, m11: 1, m12: 300 },
+            size: { x: 140, y: 44 },
+            fillPaints: [{ type: 'SOLID', color: { r: 0, g: 0.5, b: 1, a: 1 }, visible: true }],
+            cornerRadius: 8
+        };
+        const btnText = {
+            guid: { sessionID: 0, localID: 13 },
+            type: 'TEXT',
+            name: 'BtnText',
+            transform: { m00: 1, m01: 0, m02: 50, m10: 0, m11: 1, m12: 312 },
+            size: { x: 100, y: 20 }
+        };
+
+        const result = detectAndExtractContainers([outerCard, cardTitle, btnUnderlay, btnText]);
+        assert.strictEqual(result.length, 1);
+
+        const card = result[0];
+        assert.strictEqual(card.type, 'FRAME');
+        assert.strictEqual(card.children.length, 2);
+
+        const btn = card.children.find(c => c.name === 'BtnBg');
+        assert(btn);
+        assert.strictEqual(btn.type, 'FRAME');
+        assert.strictEqual(btn.children.length, 1);
+        assert.strictEqual(btn.children[0].name, 'BtnText');
+
+        // Relative coordinates: btn relative to card, text relative to btn
+        assert.strictEqual(btn.transform.m02, 30);
+        assert.strictEqual(btn.transform.m12, 300);
+        assert.strictEqual(btn.children[0].transform.m02, 20);
+        assert.strictEqual(btn.children[0].transform.m12, 12);
+    });
+
+    it('isolates floating decorative badges and close buttons across container boundaries', () => {
+        const cardBg = {
+            guid: { sessionID: 0, localID: 20 },
+            type: 'RECTANGLE',
+            name: 'Card',
+            transform: { m00: 1, m01: 0, m02: 100, m10: 0, m11: 1, m12: 100 },
+            size: { x: 400, y: 300 },
+            fillPaints: [{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 }, visible: true }],
+            cornerRadius: 16
+        };
+        const titleText = {
+            guid: { sessionID: 0, localID: 21 },
+            type: 'TEXT',
+            name: 'Title',
+            transform: { m00: 1, m01: 0, m02: 120, m10: 0, m11: 1, m12: 120 },
+            size: { x: 200, y: 24 }
+        };
+        const badge = {
+            guid: { sessionID: 0, localID: 22 },
+            type: 'RECTANGLE',
+            name: 'SaleBadge',
+            transform: { m00: 1, m01: 0, m02: 460, m10: 0, m11: 1, m12: 88 }, // overlaps top-right corner
+            size: { x: 60, y: 24 },
+            fillPaints: [{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+            cornerRadius: 12
+        };
+
+        const result = detectAndExtractContainers([cardBg, titleText, badge]);
+        assert.strictEqual(result.length, 1);
+
+        const card = result[0];
+        assert.strictEqual(card.children.length, 2);
+
+        const badgeChild = card.children.find(c => c.name === 'SaleBadge');
+        assert(badgeChild);
+        assert.strictEqual(badgeChild.stackPositioning, 'ABSOLUTE');
+        assert.strictEqual(badgeChild.isDecorativeOverlay, true);
+        assert.strictEqual(badgeChild.transform.m02, 360);
+        assert.strictEqual(badgeChild.transform.m12, -12);
+    });
+
+    it('induces N x M matrix grids with uniform stride and gaps', () => {
+        // 6 cards arranged in 2 rows of 3 columns
+        const cards = [
+            { name: 'C1', transform: { m02: 0, m12: 0 }, size: { x: 300, y: 200 } },
+            { name: 'C2', transform: { m02: 320, m12: 0 }, size: { x: 300, y: 200 } },
+            { name: 'C3', transform: { m02: 640, m12: 0 }, size: { x: 300, y: 200 } },
+            { name: 'C4', transform: { m02: 0, m12: 240 }, size: { x: 300, y: 200 } },
+            { name: 'C5', transform: { m02: 320, m12: 240 }, size: { x: 300, y: 200 } },
+            { name: 'C6', transform: { m02: 640, m12: 240 }, size: { x: 300, y: 200 } }
+        ];
+
+        const gridInfo = detectGrid(cards);
+        assert(gridInfo.isGrid);
+        assert.strictEqual(gridInfo.rows, 2);
+        assert.strictEqual(gridInfo.columns, 3);
+        assert.strictEqual(gridInfo.columnGap, 20);
+        assert.strictEqual(gridInfo.rowGap, 40);
+        assert.strictEqual(gridInfo.orderedNodes.length, 6);
+
+        const container = {
+            type: 'FRAME',
+            size: { x: 1000, y: 600 },
+            children: [...cards]
+        };
+        synthesizeContainerLayout(container);
+        assert.strictEqual(container.isGrid, true);
+        assert.strictEqual(container.gridColumns, 3);
+        assert.strictEqual(container.gridRows, 2);
+        assert.strictEqual(container.gridColumnGap, 20);
+        assert.strictEqual(container.gridRowGap, 40);
+        assert.strictEqual(container.stackMode, 'HORIZONTAL');
+        assert.strictEqual(container.stackWrap, 'WRAP');
+    });
+
+    it('rejects irregular card layouts in detectGrid when spacing or counts differ', () => {
+        // Only 3 cards (not a full multi-row matrix)
+        const fewCards = [
+            { name: 'C1', transform: { m02: 0, m12: 0 }, size: { x: 300, y: 200 } },
+            { name: 'C2', transform: { m02: 320, m12: 0 }, size: { x: 300, y: 200 } }
+        ];
+        assert.strictEqual(detectGrid(fewCards).isGrid, false);
+
+        // Unequal column gaps (gap 1 is 20px, gap 2 is 80px)
+        const irregularGapCards = [
+            { name: 'C1', transform: { m02: 0, m12: 0 }, size: { x: 100, y: 100 } },
+            { name: 'C2', transform: { m02: 120, m12: 0 }, size: { x: 100, y: 100 } },
+            { name: 'C3', transform: { m02: 300, m12: 0 }, size: { x: 100, y: 100 } },
+            { name: 'C4', transform: { m02: 0, m12: 120 }, size: { x: 100, y: 100 } },
+            { name: 'C5', transform: { m02: 120, m12: 120 }, size: { x: 100, y: 100 } },
+            { name: 'C6', transform: { m02: 300, m12: 120 }, size: { x: 100, y: 100 } }
+        ];
+        assert.strictEqual(detectGrid(irregularGapCards).isGrid, false);
+    });
+
+    it('synthesizes container layout for single child with 4-sided asymmetric padding', () => {
+        const container = {
+            type: 'FRAME',
+            size: { x: 500, y: 300 },
+            stackMode: 'NONE',
+            children: [
+                {
+                    type: 'FRAME',
+                    name: 'Hero',
+                    transform: { m00: 1, m01: 0, m02: 20, m10: 0, m11: 1, m12: 30 },
+                    size: { x: 400, y: 200 },
+                    stackMode: 'NONE',
+                    children: []
+                }
+            ]
+        };
+
+        synthesizeContainerLayout(container);
+        assert.strictEqual(container.stackMode, 'VERTICAL');
+        assert.strictEqual(container.stackHorizontalPadding, 20); // pl
+        assert.strictEqual(container.stackVerticalPadding, 30);   // pt
+        assert.strictEqual(container.stackPaddingRight, 80);      // pr: 500 - (20 + 400) = 80
+        assert.strictEqual(container.stackPaddingBottom, 70);     // pb: 300 - (30 + 200) = 70
+    });
+
+    it('applies smart layout via buildSceneTree options', () => {
+        const nodeChanges = [
+            { guid: { sessionID: 0, localID: 1 }, type: 'DOCUMENT' },
+            { guid: { sessionID: 0, localID: 2 }, type: 'CANVAS', name: 'Page 1' },
+            {
+                guid: { sessionID: 0, localID: 3 },
+                type: 'FRAME',
+                name: 'FlatFrame',
+                parentIndex: { guid: { sessionID: 0, localID: 2 }, position: 'a' },
+                size: { x: 800, y: 400 },
+                stackMode: 'NONE'
+            },
+            {
+                guid: { sessionID: 0, localID: 4 },
+                type: 'TEXT',
+                name: 'Title',
+                parentIndex: { guid: { sessionID: 0, localID: 3 }, position: 'a' },
+                transform: { m00: 1, m01: 0, m02: 40, m10: 0, m11: 1, m12: 40 },
+                size: { x: 300, y: 30 }
+            },
+            {
+                guid: { sessionID: 0, localID: 5 },
+                type: 'TEXT',
+                name: 'Subtitle',
+                parentIndex: { guid: { sessionID: 0, localID: 3 }, position: 'b' },
+                transform: { m00: 1, m01: 0, m02: 40, m10: 0, m11: 1, m12: 90 },
+                size: { x: 400, y: 24 }
+            }
+        ];
+
+        const tree = buildSceneTree(nodeChanges, { smartLayout: true });
+        const frame = tree.rootNodes[0];
+        assert.strictEqual(frame.stackMode, 'VERTICAL');
+        assert.strictEqual(frame.stackVerticalPadding, 40);
+        assert.strictEqual(frame.stackHorizontalPadding, 40);
+        assert.strictEqual(frame.stackSpacing, 20); // 90 - (40 + 30) = 20
+    });
+
+    it('synthesizes recursive XY-Cut flex columns and rows with gap, padding and alignment', () => {
+        const root = {
+            type: 'FRAME',
+            name: 'Page',
+            size: { x: 1000, y: 800 },
+            stackMode: 'NONE',
+            children: [
+                // Navbar: Logo + CTA button side by side
+                { name: 'Logo', type: 'TEXT', transform: { m00: 1, m01: 0, m02: 40, m10: 0, m11: 1, m12: 30 }, size: { x: 100, y: 30 } },
+                { name: 'CTA', type: 'RECTANGLE', transform: { m00: 1, m01: 0, m02: 860, m10: 0, m11: 1, m12: 25 }, size: { x: 100, y: 40 }, fillPaints: [{ type: 'SOLID', visible: true }] },
+                // Hero title
+                { name: 'Title', type: 'TEXT', transform: { m00: 1, m01: 0, m02: 40, m10: 0, m11: 1, m12: 120 }, size: { x: 600, y: 40 } },
+                // Footer
+                { name: 'Footer', type: 'TEXT', transform: { m00: 1, m01: 0, m02: 40, m10: 0, m11: 1, m12: 740 }, size: { x: 400, y: 20 } }
+            ]
+        };
+
+        synthesizeLayoutTree(root);
+        assert.strictEqual(root.stackMode, 'VERTICAL', 'Page should be a vertical stack');
+        assert.strictEqual(root.children.length, 3, 'Page should have 3 rows (Navbar, Title, Footer)');
+
+        const navbar = root.children[0];
+        assert.strictEqual(navbar.type, 'FRAME');
+        assert.strictEqual(navbar.stackMode, 'HORIZONTAL', 'Navbar should be a horizontal flex row');
+        assert.strictEqual(navbar.stackPrimaryAlignItems, 'SPACE_BETWEEN', 'Navbar should be space-between');
+        assert.strictEqual(navbar.stackCounterAlignItems, 'CENTER', 'Navbar items should be vertically center aligned');
+    });
+
+    it('parses reverse CLI arguments for --smart-layout and --no-smart-layout', () => {
+        const optDefault = parseReverseArgs(['input.fig']);
+        assert.strictEqual(optDefault.smartLayout, true, 'Default should enable smartLayout');
+
+        const optNoSmart = parseReverseArgs(['input.fig', '--no-smart-layout']);
+        assert.strictEqual(optNoSmart.smartLayout, false, '--no-smart-layout should disable smartLayout');
+
+        const optNoSmartAlias = parseReverseArgs(['input.fig', '--no-smart']);
+        assert.strictEqual(optNoSmartAlias.smartLayout, false, '--no-smart should disable smartLayout');
+
+        const optSmartExplicit = parseReverseArgs(['input.fig', '--smart-layout']);
+        assert.strictEqual(optSmartExplicit.smartLayout, true, '--smart-layout should enable smartLayout');
+    });
+
+    await itAsync('decompiles non-Auto Layout Figma scene into clean Flexbox & Grid without position: absolute', async () => {
+        const { nodeChanges, blobs } = readFigFile('test/showcase.fig');
+        // Strip all Auto Layout properties from all nodes
+        const strippedNodes = nodeChanges.map(n => {
+            const copy = { ...n };
+            copy.stackMode = 'NONE';
+            delete copy.stackSpacing;
+            delete copy.stackVerticalPadding;
+            delete copy.stackHorizontalPadding;
+            delete copy.stackPrimaryAlignItems;
+            delete copy.stackCounterAlignItems;
+            delete copy.stackWrap;
+            return copy;
+        });
+
+        const templateZip = new AdmZip('templates/template.fig');
+        const canvasFig = templateZip.getEntry('canvas.fig').getData();
+        const schemaLen = canvasFig.readUInt32LE(12);
+        const schemaDeflated = canvasFig.slice(16, 16 + schemaLen);
+
+        const schema = getCompiledSchema(schemaDeflated);
+        const encoded = schema.encodeMessage({ nodeChanges: strippedNodes, blobs: blobs || [] });
+
+        const zstd = await new Promise(resolve => ZstdCodec.run(resolve));
+        const simple = new zstd.Simple();
+        const compressed = simple.compress(encoded);
+
+        const totalLen = 16 + schemaDeflated.length + 4 + compressed.length;
+        const newCanvas = Buffer.alloc(totalLen);
+        newCanvas.write('fig-kiwi', 0, 8, 'ascii');
+        newCanvas.writeUInt32LE(101, 8);
+        newCanvas.writeUInt32LE(schemaDeflated.length, 12);
+        schemaDeflated.copy(newCanvas, 16);
+
+        const chunk1Offset = 16 + schemaDeflated.length;
+        newCanvas.writeUInt32LE(compressed.length, chunk1Offset);
+        Buffer.from(compressed).copy(newCanvas, chunk1Offset + 4);
+
+        const outZip = new AdmZip('test/showcase.fig');
+        outZip.deleteFile('canvas.fig');
+        outZip.addFile('canvas.fig', newCanvas);
+        const outFigPath = path.resolve('test/e2e-no-autolayout.fig');
+        outZip.writeZip(outFigPath);
+
+        const outHtmlPath = path.resolve('test/e2e-smart-layout.html');
+        const res = await convertFigToHtml(outFigPath, {
+            outputHtmlPath: outHtmlPath,
+            smartLayout: true,
+            inlineImages: true
+        });
+
+        assert(fs.existsSync(outHtmlPath));
+        const html = fs.readFileSync(outHtmlPath, 'utf8');
+
+        // Check that layout synthesis reconstructed flexbox
+        assert(html.includes('display: flex'), 'Synthesized layout should use display: flex');
+        const absMatches = html.match(/position:\s*absolute/g) || [];
+        assert(absMatches.length <= 5, `Expected <= 5 absolute elements (overlays only), got ${absMatches.length}`);
+
+        fs.unlinkSync(outHtmlPath);
+        fs.unlinkSync(outFigPath);
+    });
+
+    await itAsync('falls back to position: absolute when --no-smart-layout is specified', async () => {
+        const { nodeChanges, blobs } = readFigFile('test/showcase.fig');
+        const strippedNodes = nodeChanges.map(n => {
+            const copy = { ...n };
+            copy.stackMode = 'NONE';
+            delete copy.stackSpacing;
+            delete copy.stackVerticalPadding;
+            delete copy.stackHorizontalPadding;
+            delete copy.stackPrimaryAlignItems;
+            delete copy.stackCounterAlignItems;
+            delete copy.stackWrap;
+            return copy;
+        });
+
+        const templateZip = new AdmZip('templates/template.fig');
+        const canvasFig = templateZip.getEntry('canvas.fig').getData();
+        const schemaLen = canvasFig.readUInt32LE(12);
+        const schemaDeflated = canvasFig.slice(16, 16 + schemaLen);
+
+        const schema = getCompiledSchema(schemaDeflated);
+        const encoded = schema.encodeMessage({ nodeChanges: strippedNodes, blobs: blobs || [] });
+
+        const zstd = await new Promise(resolve => ZstdCodec.run(resolve));
+        const simple = new zstd.Simple();
+        const compressed = simple.compress(encoded);
+
+        const totalLen = 16 + schemaDeflated.length + 4 + compressed.length;
+        const newCanvas = Buffer.alloc(totalLen);
+        newCanvas.write('fig-kiwi', 0, 8, 'ascii');
+        newCanvas.writeUInt32LE(101, 8);
+        newCanvas.writeUInt32LE(schemaDeflated.length, 12);
+        schemaDeflated.copy(newCanvas, 16);
+
+        const chunk1Offset = 16 + schemaDeflated.length;
+        newCanvas.writeUInt32LE(compressed.length, chunk1Offset);
+        Buffer.from(compressed).copy(newCanvas, chunk1Offset + 4);
+
+        const outZip = new AdmZip('test/showcase.fig');
+        outZip.deleteFile('canvas.fig');
+        outZip.addFile('canvas.fig', newCanvas);
+        const outFigPath = path.resolve('test/e2e-no-autolayout-fallback.fig');
+        outZip.writeZip(outFigPath);
+
+        const outHtmlPath = path.resolve('test/e2e-fallback.html');
+        const res = await convertFigToHtml(outFigPath, {
+            outputHtmlPath: outHtmlPath,
+            smartLayout: false,
+            inlineImages: true
+        });
+
+        assert(fs.existsSync(outHtmlPath));
+        const html = fs.readFileSync(outHtmlPath, 'utf8');
+
+        // Check fallback to position: absolute
+        const absMatches = html.match(/position:\s*absolute/g) || [];
+        assert(absMatches.length >= 40, `Expected >= 40 absolute elements in fallback mode, got ${absMatches.length}`);
+
+        fs.unlinkSync(outHtmlPath);
+        fs.unlinkSync(outFigPath);
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);

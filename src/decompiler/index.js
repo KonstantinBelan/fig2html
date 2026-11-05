@@ -6,6 +6,9 @@ const { buildSceneTree } = require('./tree');
 const { generateFullHtmlDocument } = require('./html');
 const { getExtensionForMime } = require('./css');
 const { optimizeAllImages, optimizeBuffer } = require('./image-optimizer');
+const { applySmartLayout, synthesizeLayoutTree, detectGrid } = require('./synthesizer');
+const { detectAndExtractContainers } = require('./container-detector');
+const { BoundingBox } = require('./geometry');
 
 /**
  * Converts a Figma .fig binary file into a clean, standalone HTML/CSS document
@@ -58,6 +61,13 @@ async function convertFigToHtml(figInput, options = {}) {
     log(`Target canvas "${canvas.name}" with ${rootNodes.length} top-level nodes.`);
     if (variables && variables.length > 0) {
         log(`Found ${variables.length} native Figma variables across ${variableSets?.length || 0} collections.`);
+    }
+
+    // 2.1 Smart Layout Synthesis (Phase 1-5: XY-Cut & Container Induction)
+    const isSmartLayout = options.smartLayout !== false && options.noSmartLayout !== true;
+    if (isSmartLayout) {
+        log('Running Smart Layout Synthesis (XY-Cut & Container Induction)...');
+        applySmartLayout(rootNodes, options);
     }
 
     // 3. Optimize images (2x CSS scaling, responsive srcset, lossless compression, modern formats)
@@ -210,5 +220,10 @@ module.exports = {
     buildSceneTree,
     generateFullHtmlDocument,
     optimizeAllImages,
-    optimizeBuffer
+    optimizeBuffer,
+    applySmartLayout,
+    synthesizeLayoutTree,
+    detectGrid,
+    detectAndExtractContainers,
+    BoundingBox
 };

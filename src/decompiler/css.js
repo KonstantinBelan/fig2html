@@ -442,16 +442,19 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     // 7. Auto Layout (Container Properties)
     const isAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
     if (isAutoLayout) {
-        const isGridContainer = layoutMode === 'grid' && Array.isArray(node.children) && node.children.length > 1 && (
+        const isGridContainer = (layoutMode === 'grid' || node.isGrid || node.layoutType === 'GRID' || Boolean(node.gridColumns)) && Array.isArray(node.children) && node.children.length > 1 && (
             node.stackWrap === 'WRAP' ||
             /grid/i.test(node.name || '') ||
             Boolean(node.gridColumns || node.gridRows) ||
-            Boolean(node.stackCounterSpacing && node.stackCounterSpacing > 0 && node.stackWrap === 'WRAP')
+            Boolean(node.stackCounterSpacing && node.stackCounterSpacing > 0 && node.stackWrap === 'WRAP') ||
+            Boolean(node.isGrid || node.layoutType === 'GRID')
         );
 
         if (isGridContainer) {
             styles['display'] = 'grid';
-            if (node.stackMode === 'HORIZONTAL') {
+            if (node.gridColumns) {
+                styles['grid-template-columns'] = `repeat(${node.gridColumns}, 1fr)`;
+            } else if (node.stackMode === 'HORIZONTAL') {
                 const childW = node.children[0]?.size?.x || 200;
                 const containerW = node.size?.x || cw;
                 const approxCols = Math.max(1, Math.min(node.children.length, Math.round(containerW / Math.max(50, childW))));
@@ -459,12 +462,20 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             } else {
                 styles['grid-template-columns'] = '1fr';
             }
-            if (node.stackSpacing && node.stackSpacing > 0) {
-                styles['gap'] = fmtSpacing(node.stackSpacing);
-            }
-            if (node.stackCounterSpacing && node.stackCounterSpacing > 0) {
-                styles['row-gap'] = fmtSpacing(node.stackCounterSpacing);
-                styles['column-gap'] = fmtSpacing(node.stackSpacing || node.stackCounterSpacing);
+            if (node.gridColumnGap !== undefined || node.gridRowGap !== undefined) {
+                if (node.gridColumnGap) styles['column-gap'] = fmtSpacing(node.gridColumnGap);
+                if (node.gridRowGap) styles['row-gap'] = fmtSpacing(node.gridRowGap);
+                if (!styles['column-gap'] && !styles['row-gap'] && node.stackSpacing) {
+                    styles['gap'] = fmtSpacing(node.stackSpacing);
+                }
+            } else {
+                if (node.stackSpacing && node.stackSpacing > 0) {
+                    styles['gap'] = fmtSpacing(node.stackSpacing);
+                }
+                if (node.stackCounterSpacing && node.stackCounterSpacing > 0) {
+                    styles['row-gap'] = fmtSpacing(node.stackCounterSpacing);
+                    styles['column-gap'] = fmtSpacing(node.stackSpacing || node.stackCounterSpacing);
+                }
             }
         } else {
             styles['display'] = 'flex';
@@ -591,10 +602,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         else if (alignSelfVal === 'MIN') styles['align-self'] = 'flex-start';
         else if (alignSelfVal === 'MAX') styles['align-self'] = 'flex-end';
 
-        const parentIsGrid = layoutMode === 'grid' && parentNode && (
+        const parentIsGrid = (layoutMode === 'grid' || parentNode?.isGrid || parentNode?.layoutType === 'GRID' || Boolean(parentNode?.gridColumns)) && parentNode && (
             parentNode.stackWrap === 'WRAP' ||
             /grid/i.test(parentNode.name || '') ||
-            Boolean(parentNode.gridColumns || parentNode.gridRows)
+            Boolean(parentNode.gridColumns || parentNode.gridRows) ||
+            Boolean(parentNode.isGrid || parentNode.layoutType === 'GRID')
         );
         if (parentIsGrid) {
             if (alignSelfVal === 'MIN') {
@@ -662,7 +674,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
 
         // Primary & counter axis sizing
-        if (isRow) {
+        if (parentIsGrid) {
+            styles['width'] = '100%';
+            if (isFixedY && node.size?.y) {
+                styles['height'] = fmtH(node.size.y);
+            }
+        } else if (isRow) {
             // Primary axis: Width
             if (!styles['flex'] && !styles['flex-grow']) {
                 if (isFixedX && node.size?.x) {

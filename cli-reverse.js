@@ -59,6 +59,8 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--relative, --rem${colors.reset}         Shortcut for --layout relative (rem, em, vw/vh instead of px)
   ${colors.cyan}--grid${colors.reset}                    Shortcut for --layout grid (CSS Grid layout)
   ${colors.cyan}--tokens [path]${colors.reset}           Extract Figma Variables into design tokens JSON (default: tokens.json)
+  ${colors.cyan}--smart-layout${colors.reset}           Synthesize clean Flexbox & Grid without absolute positioning (default: enabled)
+  ${colors.cyan}--no-smart-layout${colors.reset}        Disable Smart Layout Synthesis and fallback to absolute positioning
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
   ${colors.cyan}-h, --help${colors.reset}                 Display this help message
   ${colors.cyan}-V, --version${colors.reset}              Display version number
@@ -98,7 +100,8 @@ function parseArgs(args) {
         responsiveImages: true,
         compress: false,
         imageFormat: 'original',
-        layoutMode: 'default'
+        layoutMode: 'default',
+        smartLayout: true
     };
 
     const positionals = [];
@@ -165,6 +168,10 @@ function parseArgs(args) {
             } else {
                 options.tokens = true;
             }
+        } else if (arg === '--smart-layout' || arg === '--smart') {
+            options.smartLayout = true;
+        } else if (arg === '--no-smart-layout' || arg === '--no-smart') {
+            options.smartLayout = false;
         } else if (arg === '-v' || arg === '--verbose') {
             options.verbose = true;
         } else if (!arg.startsWith('-')) {
@@ -215,6 +222,7 @@ async function runConversion(options) {
         compress: options.compress,
         imageFormat: options.imageFormat,
         layoutMode: options.layoutMode,
+        smartLayout: options.smartLayout,
         extractTokens: options.extractTokens,
         tokens: options.tokens
     });
