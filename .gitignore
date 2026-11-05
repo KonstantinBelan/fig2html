@@ -18,6 +18,7 @@ test/*.fig
 !test/showcase.fig
 !test/hard.fig
 fleader/
+test/demo/*
 hard-reverse.html
 unorganized.html
 demo-absolute.html

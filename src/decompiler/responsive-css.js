@@ -135,17 +135,7 @@ function getBreakpointMediaQuery(bp, allBreakpoints = [], mobileFirst = false) {
     if (mobileFirst) {
         return `@media (min-width: ${bp.width}px)`;
     }
-
-    // Desktop-first: max-width
-    const hasTablet = allBreakpoints.some(b => b.name === 'tablet' || (b.width >= 650 && b.width < 1200));
-    let queryWidth = bp.width;
-    if (bp.name === 'mobile' && !hasTablet) {
-        queryWidth = Math.max(768, bp.width);
-    } else if (bp.name === 'tablet') {
-        queryWidth = Math.max(768, bp.width);
-    }
-
-    return `@media (max-width: ${queryWidth}px)`;
+    return `@media (max-width: ${bp.width}px)`;
 }
 
 /**
@@ -227,6 +217,20 @@ function synthesizeResponsiveStyles({
     }
 
     /**
+     * Resolves the corresponding variant parent node for accurate contextual style computation
+     * @param {object|null} p
+     * @param {string} bpName
+     * @returns {object|null}
+     */
+    function getVariantParent(p, bpName) {
+        if (!p) return null;
+        if (p.responsiveMetadata && p.responsiveMetadata.alignedVariants && p.responsiveMetadata.alignedVariants[bpName]) {
+            return p.responsiveMetadata.alignedVariants[bpName];
+        }
+        return p;
+    }
+
+    /**
      * Recursively walks canonical tree to synthesize styles
      * @param {object} node
      * @param {object|null} parent
@@ -259,7 +263,8 @@ function synthesizeResponsiveStyles({
                         for (const vBp of variantBps) {
                             if (visibility[vBp.name]) {
                                 const vNode = alignedVariants[vBp.name] || node;
-                                const vStyles = computeNodeStyles(vNode, parent, imageRegistry, options);
+                                const vParent = getVariantParent(parent, vBp.name);
+                                const vStyles = computeNodeStyles(vNode, vParent, imageRegistry, options);
                                 const vDisplay = vStyles['display'] || (['FRAME', 'GROUP', 'COMPONENT', 'INSTANCE'].includes(vNode.type) ? 'flex' : 'block');
                                 const mq = getBreakpointMediaQuery(vBp, pageBreakpoints, false);
                                 stylesheetManager.addMediaRule(mq, `.${primaryClass}`, { 'display': vDisplay });
@@ -285,7 +290,8 @@ function synthesizeResponsiveStyles({
                         for (const vBp of variantBps) {
                             if (visibility[vBp.name]) {
                                 const vNode = alignedVariants[vBp.name] || node;
-                                const vStyles = computeNodeStyles(vNode, parent, imageRegistry, options);
+                                const vParent = getVariantParent(parent, vBp.name);
+                                const vStyles = computeNodeStyles(vNode, vParent, imageRegistry, options);
                                 const vDisplay = vStyles['display'] || (['FRAME', 'GROUP', 'COMPONENT', 'INSTANCE'].includes(vNode.type) ? 'flex' : 'block');
                                 const mq = getBreakpointMediaQuery(vBp, pageBreakpoints, true);
                                 stylesheetManager.addMediaRule(mq, `.${primaryClass}`, { 'display': vDisplay });
@@ -317,8 +323,10 @@ function synthesizeResponsiveStyles({
                     const wideNode = alignedVariants[wideBp.name] || baseNode;
 
                     if (narrowNode && wideNode && narrowBp !== wideBp) {
-                        const narrowStyles = computeNodeStyles(narrowNode, parent, imageRegistry, options);
-                        const wideStyles = computeNodeStyles(wideNode, parent, imageRegistry, options);
+                        const narrowParent = getVariantParent(parent, narrowBp.name);
+                        const wideParent = getVariantParent(parent, wideBp.name);
+                        const narrowStyles = computeNodeStyles(narrowNode, narrowParent, imageRegistry, options);
+                        const wideStyles = computeNodeStyles(wideNode, wideParent, imageRegistry, options);
 
                         for (const prop of CONTINUOUS_PROPERTIES) {
                             const wideVal = wideStyles[prop] || baseStyles[prop];
@@ -361,7 +369,8 @@ function synthesizeResponsiveStyles({
                     const vNode = alignedVariants[vBp.name];
                     if (!vNode) continue;
 
-                    const vStyles = computeNodeStyles(vNode, parent, imageRegistry, options);
+                    const vParent = getVariantParent(parent, vBp.name);
+                    const vStyles = computeNodeStyles(vNode, vParent, imageRegistry, options);
                     const mq = getBreakpointMediaQuery(vBp, pageBreakpoints, isMobileFirst);
                     const diffStyles = {};
 
@@ -384,6 +393,17 @@ function synthesizeResponsiveStyles({
                         }
 
                         diffStyles[prop] = vVal;
+                    }
+
+                    // Reset flex / width if base had it but variant does not (e.g. switching from flex-row grow to column fill)
+                    if (baseStyles['flex'] && !vStyles['flex']) {
+                        diffStyles['flex'] = 'none';
+                    }
+                    if (baseStyles['min-width'] && !vStyles['min-width']) {
+                        diffStyles['min-width'] = 'auto';
+                    }
+                    if (baseStyles['width'] && !vStyles['width'] && vStyles['align-self'] === 'stretch') {
+                        diffStyles['width'] = '100%';
                     }
 
                     if (Object.keys(diffStyles).length > 0) {

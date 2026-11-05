@@ -587,7 +587,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         // Align items (cross axis)
         if (node.stackCounterAlignItems === 'CENTER') styles['align-items'] = 'center';
         else if (node.stackCounterAlignItems === 'MAX') styles['align-items'] = 'flex-end';
-        else if (node.stackCounterAlignItems === 'MIN' && node.stackMode === 'HORIZONTAL') styles['align-items'] = 'flex-start';
+        else if (node.stackCounterAlignItems === 'MIN') styles['align-items'] = 'flex-start';
         else if (node.stackCounterAlignItems === 'BASELINE') styles['align-items'] = 'baseline';
     }
 
@@ -772,6 +772,27 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         if (isButton) {
             isFixedX = false;
             isFixedY = false;
+        }
+
+        // Cross-axis Hug contents: prevent flexbox default stretch when child hugs content in Figma
+        if (!styles['align-self'] && rawAlignSelf !== 'STRETCH') {
+            if (!isRow) {
+                // In vertical container, cross-axis is horizontal (width)
+                const isCrossHugX = nodeHorizontalSizing === 'RESIZE_TO_FIT' || (node.type === 'TEXT' && node.textAutoResize === 'WIDTH_AND_HEIGHT') || isButton;
+                if (isCrossHugX) {
+                    styles['align-self'] = parentNode.stackCounterAlignItems === 'CENTER'
+                        ? 'center'
+                        : (parentNode.stackCounterAlignItems === 'MAX' ? 'flex-end' : 'flex-start');
+                }
+            } else {
+                // In horizontal container, cross-axis is vertical (height)
+                const isCrossHugY = nodeVerticalSizing === 'RESIZE_TO_FIT' || (node.type === 'TEXT' && (node.textAutoResize === 'WIDTH_AND_HEIGHT' || node.textAutoResize === 'HEIGHT'));
+                if (isCrossHugY && parentNode.stackCounterAlignItems) {
+                    styles['align-self'] = parentNode.stackCounterAlignItems === 'CENTER'
+                        ? 'center'
+                        : (parentNode.stackCounterAlignItems === 'MAX' ? 'flex-end' : 'flex-start');
+                }
+            }
         }
 
         if (node.isSynthesized) {

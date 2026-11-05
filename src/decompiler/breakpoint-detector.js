@@ -86,7 +86,7 @@ function parseBreakpointTag(rawName) {
             isBreakpointTagged: true,
             baseName: 'Page',
             breakpoint: directBp,
-            targetWidth: !isNaN(num) ? num : (DEFAULT_BREAKPOINTS[directBp] || null),
+            targetWidth: !isNaN(num) ? num : null,
             rawTag: trimmed
         };
     }
@@ -97,7 +97,8 @@ function parseBreakpointTag(rawName) {
         const base = bracketMatch[1].trim();
         const tagContent = bracketMatch[2].trim().toLowerCase().replace(/px$/, '');
         const bp = resolveBreakpointName(tagContent);
-        const width = !isNaN(parseInt(tagContent, 10)) ? parseInt(tagContent, 10) : (DEFAULT_BREAKPOINTS[bp] || null);
+        const parsedNum = parseInt(tagContent, 10);
+        const width = !isNaN(parsedNum) ? parsedNum : null;
         if (bp || width) {
             return {
                 isBreakpointTagged: true,
@@ -115,7 +116,8 @@ function parseBreakpointTag(rawName) {
         const base = atMatch[1].trim();
         const tagContent = atMatch[2].trim().toLowerCase().replace(/px$/, '');
         const bp = resolveBreakpointName(tagContent);
-        const width = !isNaN(parseInt(tagContent, 10)) ? parseInt(tagContent, 10) : (DEFAULT_BREAKPOINTS[bp] || null);
+        const parsedNum = parseInt(tagContent, 10);
+        const width = !isNaN(parsedNum) ? parsedNum : null;
         if (bp || width) {
             return {
                 isBreakpointTagged: true,
@@ -133,13 +135,14 @@ function parseBreakpointTag(rawName) {
         const base = delimMatch[1].trim();
         const tagContent = delimMatch[2].trim().toLowerCase().replace(/px$/, '');
         const bp = resolveBreakpointName(tagContent);
-        const width = !isNaN(parseInt(tagContent, 10)) ? parseInt(tagContent, 10) : (DEFAULT_BREAKPOINTS[bp] || null);
+        const parsedNum = parseInt(tagContent, 10);
+        const width = !isNaN(parsedNum) ? parsedNum : null;
         if (bp) {
             return {
                 isBreakpointTagged: true,
                 baseName: base || 'Page',
                 breakpoint: bp,
-                targetWidth: width || DEFAULT_BREAKPOINTS[bp] || null,
+                targetWidth: width,
                 rawTag: delimMatch[0]
             };
         }
@@ -151,13 +154,14 @@ function parseBreakpointTag(rawName) {
         const base = spaceMatch[1].trim();
         const tagContent = spaceMatch[2].trim().toLowerCase().replace(/px$/, '');
         const bp = resolveBreakpointName(tagContent);
-        const width = !isNaN(parseInt(tagContent, 10)) ? parseInt(tagContent, 10) : (DEFAULT_BREAKPOINTS[bp] || null);
+        const parsedNum = parseInt(tagContent, 10);
+        const width = !isNaN(parsedNum) ? parsedNum : null;
         if (bp) {
             return {
                 isBreakpointTagged: true,
                 baseName: base || 'Page',
                 breakpoint: bp,
-                targetWidth: width || DEFAULT_BREAKPOINTS[bp] || null,
+                targetWidth: width,
                 rawTag: spaceMatch[2]
             };
         }
@@ -253,11 +257,24 @@ function groupFramesIntoResponsivePages(frames, options = {}) {
         const nameWithoutPageTag = pageTagInfo.cleanName || rawName;
 
         const bpInfo = parseBreakpointTag(nameWithoutPageTag);
-        const frameW = Math.round(frame.size?.x || 1440);
+        const frameW = Math.round(frame.size?.x || (bpInfo.breakpoint ? DEFAULT_BREAKPOINTS[bpInfo.breakpoint] : 1440));
         const frameH = Math.round(frame.size?.y || 900);
 
         const bpName = bpInfo.breakpoint || categorizeWidth(frameW);
-        const bpWidth = bpInfo.targetWidth || frameW;
+        let bpWidth = bpInfo.targetWidth || frameW;
+
+        if (customBreakpoints && customBreakpoints.length > 0) {
+            let closest = customBreakpoints[0];
+            let minDiff = Math.abs(bpWidth - closest);
+            for (const cb of customBreakpoints) {
+                const diff = Math.abs(bpWidth - cb);
+                if (diff < minDiff) {
+                    minDiff = diff;
+                    closest = cb;
+                }
+            }
+            bpWidth = closest;
+        }
 
         // Determine base page key
         const baseName = bpInfo.baseName || nameWithoutPageTag;

@@ -2667,6 +2667,14 @@ async function runAllTests() {
         assert(aboutPage, 'About page must exist');
         assert.strictEqual(aboutPage.isResponsive, true);
         assert.strictEqual(aboutPage.breakpoints.length, 2);
+
+        // Dynamic breakpoint width extracted directly from frame size (e.g. 440px for mobile artboard)
+        const customFrames = [
+            { name: 'Landing [desktop]', size: { x: 1080, y: 800 }, visible: true },
+            { name: 'Landing [mobile]', size: { x: 440, y: 900 }, visible: true }
+        ];
+        const landingPages = groupFramesIntoResponsivePages(customFrames);
+        assert.strictEqual(landingPages[0].breakpoints[1].width, 440, 'Mobile breakpoint width must match actual frame width 440px, not hardcoded 375');
     });
 
     it('computes AST node similarity and matches corresponding elements across viewports', () => {
@@ -2777,7 +2785,7 @@ async function runAllTests() {
 
         // getBreakpointMediaQuery
         const mqDesktopFirst = getBreakpointMediaQuery({ name: 'mobile', width: 375 }, [{ width: 1440 }, { width: 375 }], false);
-        assert.strictEqual(mqDesktopFirst, '@media (max-width: 768px)', 'Mobile with no tablet defaults to standard 768px threshold');
+        assert.strictEqual(mqDesktopFirst, '@media (max-width: 375px)', 'Mobile media query matches mobile frame width');
 
         const mqMobileFirst = getBreakpointMediaQuery({ name: 'desktop', width: 1440 }, [], true);
         assert.strictEqual(mqMobileFirst, '@media (min-width: 1440px)');
@@ -2869,7 +2877,7 @@ async function runAllTests() {
         assert(fullCss.includes('font-size: clamp('), 'Title must have fluid font-size clamp');
 
         // 2. Hero should have flex-direction: column in media query
-        assert(fullCss.includes('@media (max-width: 768px) {'), 'Must contain media query');
+        assert(fullCss.includes('@media (max-width: 375px) {'), 'Must contain media query');
         assert(fullCss.includes('flex-direction: column;'), 'Media query must contain flex-direction column override');
 
         // 3. DesktopNav should be hidden in media query
