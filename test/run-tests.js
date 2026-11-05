@@ -48,6 +48,9 @@ const {
 const {
     transliterate,
     stripPageTag,
+    hasExcludeTag,
+    filterScreenOutliers,
+    DEFAULT_EXCLUDE_TAGS,
     slugifyPageName,
     sanitizeFileName,
     assignUniqueFileNames,
@@ -2210,6 +2213,72 @@ async function runAllTests() {
         const single = detectPages({ canvases }, { allCanvases: true, singlePage: true });
         assert.strictEqual(single.length, 1);
         assert.strictEqual(single[0].strategy, 'single');
+    });
+
+    it('recognizes exclude tags and excludes marked frames from page export', () => {
+        assert.strictEqual(hasExcludeTag('[exclude] Modal'), true);
+        assert.strictEqual(hasExcludeTag('[исключить] Корзина'), true);
+        assert.strictEqual(hasExcludeTag('[исключение] Диалог'), true);
+        assert.strictEqual(hasExcludeTag('[ignore] Old Header'), true);
+        assert.strictEqual(hasExcludeTag('#exclude Popup'), true);
+        assert.strictEqual(hasExcludeTag('Regular Frame'), false);
+        assert.strictEqual(hasExcludeTag('Frame with [custom-skip]', '[custom-skip]'), true);
+
+        // Priority 1 with exclude tag:
+        const taggedNodes = [
+            { name: '[page] Home', type: 'FRAME', transform: { m02: 0, m12: 0 }, size: { x: 1440, y: 900 } },
+            { name: '[page] [exclude] Draft Checkout', type: 'FRAME', transform: { m02: 1600, m12: 0 }, size: { x: 1440, y: 900 } },
+            { name: '[page] About', type: 'FRAME', transform: { m02: 3200, m12: 0 }, size: { x: 1440, y: 900 } }
+        ];
+        const taggedPages = detectPages({ rootNodes: taggedNodes });
+        assert.strictEqual(taggedPages.length, 2);
+        assert.strictEqual(taggedPages[0].cleanName, 'Home');
+        assert.strictEqual(taggedPages[1].cleanName, 'About');
+
+        // Priority 2 with exclude tag:
+        const screenNodes = [
+            { name: 'Home Screen', type: 'FRAME', transform: { m02: 0, m12: 0 }, size: { x: 1440, y: 900 } },
+            { name: '[исключить] Modal Window', type: 'FRAME', transform: { m02: 1600, m12: 0 }, size: { x: 1440, y: 900 } },
+            { name: 'Contact Screen', type: 'FRAME', transform: { m02: 3200, m12: 0 }, size: { x: 1440, y: 900 } }
+        ];
+        const screenPages = detectPages({ rootNodes: screenNodes });
+        assert.strictEqual(screenPages.length, 2);
+        assert.strictEqual(screenPages[0].cleanName, 'Home Screen');
+        assert.strictEqual(screenPages[1].cleanName, 'Contact Screen');
+    });
+
+    it('filters out popup/modal outliers using median size clustering (Outlier Detection)', () => {
+        // Two desktop pages (1440x900) + one popup modal (450x500)
+        const candidateFrames = [
+            { name: 'Home Page', type: 'FRAME', transform: { m02: 0, m12: 0 }, size: { x: 1440, y: 900 } },
+            { name: 'Cookie Popup Modal', type: 'FRAME', transform: { m02: 0, m12: 1000 }, size: { x: 450, y: 500 } },
+            { name: 'About Page', type: 'FRAME', transform: { m02: 1600, m12: 0 }, size: { x: 1440, y: 900 } }
+        ];
+
+        const filtered = filterScreenOutliers(candidateFrames);
+        assert.strictEqual(filtered.length, 2, 'Should filter out the 450px popup');
+        assert.strictEqual(filtered[0].name, 'Home Page');
+        assert.strictEqual(filtered[1].name, 'About Page');
+
+        const pages = detectPages({ rootNodes: candidateFrames });
+        assert.strictEqual(pages.length, 2);
+        assert.strictEqual(pages[0].fileName, 'index.html');
+        assert.strictEqual(pages[1].fileName, 'about-page.html');
+
+        // Case with only 1 desktop page and 1 modal: falls back to single-page export
+        const singlePlusModal = [
+            { name: 'Landing Desktop', type: 'FRAME', transform: { m02: 0, m12: 0 }, size: { x: 1440, y: 900 } },
+            { name: 'Auth Modal Dialog', type: 'FRAME', transform: { m02: 0, m12: 1000 }, size: { x: 400, y: 480 } }
+        ];
+        const singlePages = detectPages({ rootNodes: singlePlusModal });
+        assert.strictEqual(singlePages.length, 1);
+        assert.strictEqual(singlePages[0].strategy, 'single', 'Should fallback to single-page export when modal is excluded');
+    });
+
+    it('parses --exclude-tag and --no-outlier-detection in CLI reverse args', () => {
+        const parsed = parseReverseArgs(['input.fig', '--exclude-tag', '[draft],[temp]', '--no-outlier-detection']);
+        assert.strictEqual(parsed.excludeTag, '[draft],[temp]');
+        assert.strictEqual(parsed.outlierDetection, false);
     });
 
     it('merges identical styles across multiple pages into single DRY CSS rule (Smart DRY CSS)', () => {

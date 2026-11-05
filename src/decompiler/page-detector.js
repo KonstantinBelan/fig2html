@@ -9,6 +9,7 @@ const RU_MAP = {
 };
 
 const DEFAULT_PAGE_TAGS = ['[page]', '[страница]', '[p]', '#page', '/page'];
+const DEFAULT_EXCLUDE_TAGS = ['[exclude]', '[исключить]', '[исключение]', '[ignore]', '#exclude', '/exclude', '!page'];
 const DEFAULT_MIN_PAGE_WIDTH = 320;
 const DEFAULT_MIN_PAGE_HEIGHT = 400;
 
@@ -143,6 +144,59 @@ function stripPageTag(rawName, customTags) {
 }
 
 /**
+ * Checks if a layer name has an exclude tag
+ * @param {string} rawName
+ * @param {Array<string>|string} [customExcludeTags]
+ * @returns {boolean}
+ */
+function hasExcludeTag(rawName, customExcludeTags) {
+    if (!rawName || typeof rawName !== 'string') return false;
+    let tags = DEFAULT_EXCLUDE_TAGS;
+    if (customExcludeTags) {
+        if (Array.isArray(customExcludeTags)) {
+            tags = customExcludeTags.filter(Boolean);
+        } else if (typeof customExcludeTags === 'string') {
+            tags = customExcludeTags.split(',').map(t => t.trim()).filter(Boolean);
+        }
+    }
+    const lower = rawName.trim().toLowerCase();
+    return tags.some(tag => lower.includes(tag.toLowerCase()));
+}
+
+/**
+ * Clusters frames by median width to eliminate outliers such as modals, popups, and small dialogs.
+ * @param {Array<object>} frames Top-level candidate screen frames
+ * @returns {Array<object>} Filtered frames belonging to the dominant screen cluster
+ */
+function filterScreenOutliers(frames) {
+    if (!Array.isArray(frames) || frames.length <= 1) {
+        return frames || [];
+    }
+
+    const widths = frames.map(f => f.size?.x || 0);
+    const sortedW = [...widths].sort((a, b) => a - b);
+    const mid = Math.floor(sortedW.length / 2);
+    const medianW = sortedW.length % 2 !== 0
+        ? sortedW[mid]
+        : (sortedW[mid - 1] + sortedW[mid]) / 2;
+    const maxW = sortedW[sortedW.length - 1];
+
+    // Reference width: combines dominant cluster median and maximum
+    // For small sets (e.g. 2 frames: 1440 and 450), maxW anchors the screen width
+    const referenceW = Math.max(medianW, maxW * 0.75);
+
+    // If dominant screens are desktop/tablet (referenceW >= 768px):
+    // frames significantly narrower than typical screens (< 55% of reference or < 550px) are popups/modals
+    // If dominant screens are mobile (< 768px):
+    // frames narrower than 65% of reference are dialogs/widgets
+    const minThreshold = referenceW >= 768
+        ? Math.max(550, referenceW * 0.55)
+        : (referenceW * 0.65);
+
+    return frames.filter(f => (f.size?.x || 0) >= minThreshold);
+}
+
+/**
  * Converts a page name into a clean, URL-safe slug
  * @param {string} name Page title
  * @param {object} [options={}]
@@ -256,6 +310,7 @@ function detectPages(treeContext = {}, options = {}) {
     const minPageWidth = options.minPageWidth !== undefined ? Number(options.minPageWidth) : DEFAULT_MIN_PAGE_WIDTH;
     const minPageHeight = options.minPageHeight !== undefined ? Number(options.minPageHeight) : DEFAULT_MIN_PAGE_HEIGHT;
     const customTags = options.pageTag || options.tags || null;
+    const customExcludeTags = options.excludeTag || options.excludeTags || null;
     const pageFilter = options.pages ? String(options.pages).split(',').map(s => s.trim().toLowerCase()).filter(Boolean) : null;
 
     const targetCanvas = treeContext.canvas || (treeContext.canvases && treeContext.canvases[0]);
@@ -312,9 +367,9 @@ function detectPages(treeContext = {}, options = {}) {
     // and its children contain tagged frames or screen artboards, unwrap to children
     if (!options.allCanvases && candidateNodes.length === 1 && Array.isArray(candidateNodes[0].children) && candidateNodes[0].children.length >= 2) {
         const topTag = stripPageTag(candidateNodes[0].name, customTags);
-        if (!topTag.isTagged) {
-            const hasTaggedChildren = candidateNodes[0].children.some(c => stripPageTag(c.name, customTags).isTagged);
-            const hasScreenChildren = candidateNodes[0].children.filter(c => (c.type === 'FRAME' || c.type === 'COMPONENT') && (c.size?.x || 0) >= minPageWidth && (c.size?.y || 0) >= minPageHeight).length >= 2;
+        if (!topTag.isTagged && !hasExcludeTag(candidateNodes[0].name, customExcludeTags)) {
+            const hasTaggedChildren = candidateNodes[0].children.some(c => stripPageTag(c.name, customTags).isTagged && !hasExcludeTag(c.name, customExcludeTags));
+            const hasScreenChildren = candidateNodes[0].children.filter(c => (c.type === 'FRAME' || c.type === 'COMPONENT') && (c.size?.x || 0) >= minPageWidth && (c.size?.y || 0) >= minPageHeight && !hasExcludeTag(c.name, customExcludeTags)).length >= 2;
             if (hasTaggedChildren || hasScreenChildren) {
                 candidateNodes = candidateNodes[0].children;
             }
@@ -324,6 +379,7 @@ function detectPages(treeContext = {}, options = {}) {
     const taggedFrames = [];
     for (const node of candidateNodes) {
         if (!node || node.visible === false) continue;
+        if (hasExcludeTag(node.name, customExcludeTags)) continue;
         const tagInfo = stripPageTag(node.name, customTags);
         if (tagInfo.isTagged) {
             taggedFrames.push({
@@ -379,6 +435,7 @@ function detectPages(treeContext = {}, options = {}) {
     const screenFrames = [];
     for (const node of candidateNodes) {
         if (!node || node.visible === false) continue;
+        if (hasExcludeTag(node.name, customExcludeTags)) continue;
         const isFrameLike = node.type === 'FRAME' || node.type === 'COMPONENT' || node.type === 'INSTANCE' || node.type === 'GROUP';
         if (!isFrameLike) continue;
 
@@ -389,9 +446,13 @@ function detectPages(treeContext = {}, options = {}) {
         }
     }
 
-    if (screenFrames.length >= 2) {
+    const candidateScreens = options.outlierDetection !== false
+        ? filterScreenOutliers(screenFrames)
+        : screenFrames;
+
+    if (candidateScreens.length >= 2) {
         // Sort screen frames: Left to Right (X), then Top to Bottom (Y)
-        screenFrames.sort((a, b) => {
+        candidateScreens.sort((a, b) => {
             const xA = a.transform?.m02 !== undefined ? a.transform.m02 : 0;
             const xB = b.transform?.m02 !== undefined ? b.transform.m02 : 0;
             const diffX = xA - xB;
@@ -401,7 +462,7 @@ function detectPages(treeContext = {}, options = {}) {
             return yA - yB;
         });
 
-        const pages = screenFrames.map((node, idx) => {
+        const pages = candidateScreens.map((node, idx) => {
             const isFirst = idx === 0;
             const cleanName = node.name || `Screen ${idx + 1}`;
             const slug = slugifyPageName(cleanName, { isFirst });
@@ -430,7 +491,11 @@ function detectPages(treeContext = {}, options = {}) {
     // =========================================================================
     // Priority 3: Native Figma Canvas Tabs (CANVAS nodes)
     // =========================================================================
-    const nonEmptyCanvases = allCanvases.filter(c => Array.isArray(c.children) && c.children.length > 0);
+    const nonEmptyCanvases = allCanvases.filter(c => 
+        Array.isArray(c.children) && 
+        c.children.length > 0 && 
+        !hasExcludeTag(c.name, customExcludeTags)
+    );
     const shouldExportAllCanvases = options.allCanvases || options.allPages || (nonEmptyCanvases.length >= 2 && !options.singlePage);
 
     if (shouldExportAllCanvases && nonEmptyCanvases.length >= 2) {
@@ -470,11 +535,14 @@ function detectPages(treeContext = {}, options = {}) {
 module.exports = {
     RU_MAP,
     DEFAULT_PAGE_TAGS,
+    DEFAULT_EXCLUDE_TAGS,
     DEFAULT_MIN_PAGE_WIDTH,
     DEFAULT_MIN_PAGE_HEIGHT,
     COMMON_PAGE_SLUGS,
     transliterate,
     stripPageTag,
+    hasExcludeTag,
+    filterScreenOutliers,
     slugifyPageName,
     sanitizeFileName,
     assignUniqueFileNames,

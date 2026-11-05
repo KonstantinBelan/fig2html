@@ -14,9 +14,12 @@ const { BoundingBox } = require('./geometry');
 const {
     detectPages,
     stripPageTag,
+    hasExcludeTag,
+    filterScreenOutliers,
     slugifyPageName,
     sanitizeFileName,
     DEFAULT_PAGE_TAGS,
+    DEFAULT_EXCLUDE_TAGS,
     DEFAULT_MIN_PAGE_WIDTH,
     DEFAULT_MIN_PAGE_HEIGHT
 } = require('./page-detector');
@@ -101,6 +104,8 @@ async function convertFigToHtml(figInput, options = {}) {
         multiPage: options.multiPage !== false && options.singlePage !== true,
         singlePage: options.singlePage === true,
         pageTag: options.pageTag,
+        excludeTag: options.excludeTag || options.excludeTags,
+        outlierDetection: options.outlierDetection,
         pages: options.pages,
         allCanvases: Boolean(options.allCanvases || options.allPages),
         minPageWidth: options.minPageWidth,
@@ -533,9 +538,12 @@ module.exports = {
     BoundingBox,
     detectPages,
     stripPageTag,
+    hasExcludeTag,
+    filterScreenOutliers,
     slugifyPageName,
     sanitizeFileName,
     DEFAULT_PAGE_TAGS,
+    DEFAULT_EXCLUDE_TAGS,
     DEFAULT_MIN_PAGE_WIDTH,
     DEFAULT_MIN_PAGE_HEIGHT
 };

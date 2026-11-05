@@ -45,6 +45,8 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--multi-page${colors.reset}              Enable multi-page export mode (default: auto/enabled)
   ${colors.cyan}--single-page${colors.reset}             Force single-page export only
   ${colors.cyan}--page-tag <tag>${colors.reset}          Custom page tag or comma-separated list of tags
+  ${colors.cyan}--exclude-tag <tag>${colors.reset}       Exclude frames containing tag(s) (e.g. "[exclude]", "[исключить]")
+  ${colors.cyan}--no-outlier-detection${colors.reset}    Disable automatic screen artboard outlier filtering
   ${colors.cyan}--pages <names>${colors.reset}           Filter specific pages/frames to export comma-separated
   ${colors.cyan}--all-canvases${colors.reset}            Export all document canvas tabs as separate HTML pages
   ${colors.cyan}--min-page-width <px>${colors.reset}     Minimum frame width to recognize as screen artboard (default: 320)
@@ -146,6 +148,10 @@ function parseArgs(args) {
             options.multiPage = false;
         } else if (arg === '--page-tag' || arg === '--tag') {
             options.pageTag = args[++i];
+        } else if (arg === '--exclude-tag' || arg === '--exclude') {
+            options.excludeTag = args[++i];
+        } else if (arg === '--no-outlier-detection') {
+            options.outlierDetection = false;
         } else if (arg === '--pages') {
             options.pages = args[++i];
         } else if (arg === '--all-canvases' || arg === '--all-pages') {
@@ -251,6 +257,8 @@ async function runConversion(options) {
             multiPage: options.multiPage,
             singlePage: options.singlePage,
             pageTag: options.pageTag,
+            excludeTag: options.excludeTag,
+            outlierDetection: options.outlierDetection,
             pages: options.pages,
             allCanvases: options.allCanvases,
             minPageWidth: options.minPageWidth,

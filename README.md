@@ -5,7 +5,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.3.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 95 passed](https://img.shields.io/badge/tests-95%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 98 passed](https://img.shields.io/badge/tests-98%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -178,8 +178,8 @@ Open dist/index.html in any browser.
 - **🌐 Figma Multi-Page Import Engine (v1.3.0)**:
   - **Многостраничный экспорт за одну команду**: декомпиляция проектов Figma с множеством экранов или вкладок в готовую модульную файловую структуру (`index.html`, `about.html`, `catalog.html`, `contacts.html`) с **единым оптимизированным файлом `css/style.css`**.
   - **Трёхуровневая детекция страниц**:
-    - **Приоритет 1 (Явные теги)**: поиск маркированных фреймов (`[page]`, `[страница]`, `[p]`, `#page`, `/page` или кастомных через `--page-tag`). Имя страницы очищается и транслитерируется (`[page] Home` ➔ `index.html`, `[страница] О нас` ➔ `about.html`). Неразмеченные черновики и палитры игнорируются.
-    - **Приоритет 2 (Экранные артборды)**: автоматическое распознавание верхнеуровневых фреймов экрана (по умолчанию `width >= 320px`, `height >= 400px`) при отсутствии тегов. Первый экран становится `index.html`, остальные — `<slug>.html`.
+    - **Приоритет 1 (Явные теги и теги исключения)**: поиск маркированных фреймов (`[page]`, `[страница]`, `[p]`, `#page`, `/page` или кастомных через `--page-tag`). Имя страницы очищается и транслитерируется (`[page] Home` ➔ `index.html`, `[страница] О нас` ➔ `about.html`). Поддержка **тегов исключения** (`[exclude]`, `[исключить]`, `[исключение]`, `[ignore]`, `#exclude`, кастомных `--exclude-tag`), позволяющих исключить черновики, диалоги и модалки прямо в Figma.
+    - **Приоритет 2 (Экранные артборды и Outlier Detection)**: автоматическое распознавание верхнеуровневых фреймов экрана (по умолчанию `width >= 320px`, `height >= 400px`) при отсутствии тегов. Первый экран становится `index.html`, остальные — `<slug>.html`. **Кластеризация по медианному размеру (Outlier Detection)** автоматически отсекает мелкие всплывающие окна и попапы от основного экрана.
     - **Приоритет 3 (Canvas вкладки)**: поддержка декомпиляции нативных страниц Figma (`CANVAS` узлы в Kiwi AST) по флагу `--all-canvases`.
   - **Smart DRY CSS**: слои на разных страницах с одинаковыми именами и полностью совпадающими стилями объединяются в единое правило (например, общий `.btn` или `.header`).
   - **Изоляция коллизий стилей (100% Conflict-Free)**: слои с одинаковыми именами, но разными параметрами автоматически изолируются страничными модификаторами (`.btn--cart`), предотвращая перезапись стилей.
@@ -353,6 +353,8 @@ OPTIONS:
   --multi-page             Включить многостраничный режим (по умолчанию: включен при наличии страниц)
   --single-page            Принудительный экспорт только одной (первой/указанной) страницы
   --page-tag <tag>         Кастомный тег или список тегов в названии фреймов ([page],[страница])
+  --exclude-tag <tag>      Тег или список тегов для исключения фреймов из экспорта ([exclude],[исключить])
+  --no-outlier-detection   Отключить фильтрацию модалок и диалогов по медианному размеру
   --pages <names>          Список конкретных страниц/фреймов для экспорта через запятую
   --all-canvases           Экспортировать все Canvas-вкладки документа Figma как отдельные страницы
   --min-page-width <px>    Минимальная ширина фрейма для признания отдельной страницей (по умолчанию: 320)
@@ -515,7 +517,9 @@ decompile();
 - **Figma Multi-Page Import Engine (v1.3.0)**:
   - Транслитерация кириллических названий страниц в URL-совместимые латинские имена файлов (`RU_MAP`)
   - Распознавание явных тегов страниц (`[page]`, `[страница]`, `[p]`, `#page`, `/page`) и кастомных тегов (`--page-tag`)
+  - Поддержка тегов исключения (`[exclude]`, `[исключить]`, `[исключение]`, `[ignore]`, `#exclude`, `--exclude-tag`)
   - Автоматическое определение страниц по экранным артбордам (`width >= 320px`, `height >= 400px`)
+  - Кластеризация по медианному размеру (Outlier Detection) для отсечения модальных окон и диалогов
   - Экспорт нативных Canvas-вкладок Figma документа (`--all-canvases`, `--pages`, `--single-page`)
   - Интеллектуальная дедупликация идентичных стилей между страницами в единый CSS-класс (Smart DRY CSS)
   - Автоматическое разрешение коллизий стилей при одинаковых именах слоев через страничный модификатор (`.btn--cart`)
@@ -568,7 +572,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (85 тестов)
+    ├── run-tests.js        # Автоматический тестовый запуск (98 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
