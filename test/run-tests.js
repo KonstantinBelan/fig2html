@@ -37,6 +37,7 @@ const {
     formatEffects,
     formatPaintFilter,
     parseFontWeightAndStyle,
+    computeNodeStyles,
     getExtensionForMime
 } = require('../src/decompiler/css');
 const {
@@ -509,6 +510,20 @@ async function runAllTests() {
         assert.deepStrictEqual(parseFontWeightAndStyle('Semi Bold Italic'), { fontWeight: 600, fontStyle: 'italic' });
         assert.deepStrictEqual(parseFontWeightAndStyle('Light'), { fontWeight: 300, fontStyle: 'normal' });
         assert.deepStrictEqual(parseFontWeightAndStyle('Medium'), { fontWeight: 500, fontStyle: 'normal' });
+    });
+
+    it('translates Figma Auto line-height (100% or AUTO) into line-height: normal', () => {
+        const textAutoPercent = { type: 'TEXT', name: 'Heading', fontSize: 16, lineHeight: { value: 100, units: 'PERCENT' } };
+        const s1 = computeNodeStyles(textAutoPercent);
+        assert.strictEqual(s1['line-height'], 'normal');
+
+        const textAutoUnits = { type: 'TEXT', name: 'Heading', fontSize: 16, lineHeight: { units: 'AUTO' } };
+        const s2 = computeNodeStyles(textAutoUnits);
+        assert.strictEqual(s2['line-height'], 'normal');
+
+        const textCustomPercent = { type: 'TEXT', name: 'Body', fontSize: 16, lineHeight: { value: 150, units: 'PERCENT' } };
+        const s3 = computeNodeStyles(textCustomPercent);
+        assert.strictEqual(s3['line-height'], '1.5');
     });
 
     it('reads .fig file and extracts nodes and images', () => {
@@ -1979,11 +1994,18 @@ async function runAllTests() {
         const res = await convertFigToHtml('demo-absolute.fig', { smartLayout: true });
         const html = res.html;
 
-        // 1. Row container should NOT have static height
+        // 1. Row container should NOT have static height and should align to flex-start
         const rowMatch = html.match(/\.row\s*\{([^}]+)\}/);
         assert(rowMatch, '.row rule should exist');
         assert(!rowMatch[1].includes('height:'), '.row should not have hardcoded height');
         assert(!rowMatch[1].includes('flex-shrink: 0'), '.row should not have flex-shrink: 0');
+        assert(rowMatch[1].includes('align-items: flex-start'), '.row should have align-items: flex-start');
+
+        // Check text with Auto line-height in Figma is converted to normal, not 1
+        const titleMatch = html.match(/\.card-title\s*\{([^}]+)\}/);
+        assert(titleMatch, '.card-title rule should exist');
+        assert(titleMatch[1].includes('line-height: normal'), '.card-title should have line-height: normal');
+        assert(!titleMatch[1].includes('line-height: 1;'), '.card-title should not have line-height: 1');
 
         // 2. Main container should be responsive max-width with symmetric padding
         const mainMatch = html.match(/\.main-container\s*\{([^}]+)\}/);

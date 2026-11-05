@@ -432,6 +432,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             if (typeof node.lineHeight === 'number') {
                 const lh = Math.round(node.lineHeight * 10) / 10;
                 styles['line-height'] = useRelativeUnits ? toRem(lh) : `${lh}px`;
+            } else if (node.lineHeight.units === 'AUTO' || (node.lineHeight.units === 'PERCENT' && Math.round(node.lineHeight.value) === 100)) {
+                styles['line-height'] = 'normal';
             } else if (node.lineHeight.units === 'RAW' && typeof node.lineHeight.value === 'number') {
                 styles['line-height'] = String(Math.round(node.lineHeight.value * 100) / 100);
             } else if (node.lineHeight.units === 'PERCENT' && typeof node.lineHeight.value === 'number') {
@@ -585,6 +587,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         // Align items (cross axis)
         if (node.stackCounterAlignItems === 'CENTER') styles['align-items'] = 'center';
         else if (node.stackCounterAlignItems === 'MAX') styles['align-items'] = 'flex-end';
+        else if (node.stackCounterAlignItems === 'MIN' && node.stackMode === 'HORIZONTAL') styles['align-items'] = 'flex-start';
         else if (node.stackCounterAlignItems === 'BASELINE') styles['align-items'] = 'baseline';
     }
 

@@ -651,14 +651,14 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         const allTopsAligned = yTops.every(t => fuzzyEqual(t, yTops[0], epsilon));
         const allBottomsAligned = yBottoms.every(b => fuzzyEqual(b, yBottoms[0], epsilon));
 
-        if (allCentersAligned) {
-            containerNode.stackCounterAlignItems = 'CENTER';
-        } else if (allTopsAligned) {
+        if (allTopsAligned) {
             containerNode.stackCounterAlignItems = 'MIN';
+        } else if (allCentersAligned) {
+            containerNode.stackCounterAlignItems = 'CENTER';
         } else if (allBottomsAligned) {
             containerNode.stackCounterAlignItems = 'MAX';
         } else {
-            containerNode.stackCounterAlignItems = 'CENTER';
+            containerNode.stackCounterAlignItems = 'MIN';
         }
 
         const newChildren = [];

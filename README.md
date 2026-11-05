@@ -5,7 +5,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.2.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-[![Tests: 83 passed](https://img.shields.io/badge/tests-83%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 84 passed](https://img.shields.io/badge/tests-84%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -418,7 +418,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (83 теста):
+Проект покрыт всесторонними автоматическими тестами (84 теста):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -445,6 +445,7 @@ decompile();
 - Поддержка нативных переменных Figma (`VARIABLE_SET`, `VARIABLE`) и экспорт дизайн-токенов в JSON (`--tokens`)
 - Трансляция CSS Grid (`repeat(N, 1fr)`) в Auto Layout Wrap и обратная декомпиляция (`--layout grid`, `--grid`)
 - Генерация интерактивных связей прототипа (`prototypeInteractions`) для состояний `:hover`
+- Трансляция Figma Auto line-height (100% или AUTO) в нативный CSS `line-height: normal` (вместо жесткого `1`)
 - Автоматическое обнаружение Google Fonts и расчет размеров текста по таблице метрик `FONT_METRICS_TABLE`
 - Оптимизация памяти при чтении бинарных `.fig` (ленивое декодирование изображений в Base64)
 - **Layout Synthesis Engine**:
@@ -455,6 +456,7 @@ decompile();
   - Распознавание $N \times M$ матричных сеток элементов с равномерным шагом и отступами
   - Рекурсивный синтез разметки Recursive XY-Cut: построение колонок и строк Flexbox с автоматическим вычислением gap и padding
   - Равномерное адаптивное распределение `flex: 1` для карточек и элементов равной ширины с поддержкой смешанных строк (outlier items сохраняют фиксированную ширину)
+  - Приоритет верхнего выравнивания (`align-items: flex-start`) для строк карточек и блоков при совпадении верхних границ (`allTopsAligned`) для аккуратной адаптивности при разной высоте контента
   - Снятие избыточных `width` и `height` с кнопок (`.btn-*`, `button`) и синтезированных строк/контейнеров
   - Корректная иерархия наложения абсолютных оверлеев с назначением `z-index` (>= 10) над контентом карточек и предотвращением обрезки через `overflow: hidden`
   - Предварительная изоляция выступающих за границы холста или перекрывающих элементы оверлеев, предотвращающая искажение внутренних отступов (`padding`) контейнеров
@@ -510,7 +512,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (83 теста)
+    ├── run-tests.js        # Автоматический тестовый запуск (84 теста)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
