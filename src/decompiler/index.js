@@ -36,6 +36,11 @@ async function convertFigToHtml(figInput, options = {}) {
     const log = (msg) => {
         if (options.verbose) console.log(`[DECOMPILE] ${msg}`);
     };
+    const reportProgress = (percent, msg) => {
+        if (typeof options.onProgress === 'function') {
+            options.onProgress(percent, msg);
+        }
+    };
 
     const isSeparateFiles = Boolean(options.separateFiles);
     const isExtractCss = isSeparateFiles || Boolean(options.extractCss);
@@ -49,10 +54,12 @@ async function convertFigToHtml(figInput, options = {}) {
     const baseDir = outputPath ? path.dirname(outputPath) : process.cwd();
 
     // 1. Read .fig file and extract Kiwi AST and images
+    reportProgress(5, 'Reading .fig archive & decompressing...');
     log('Reading .fig archive and decoding Kiwi stream...');
     const { nodeChanges, blobs, images } = readFigFile(figInput);
 
     // 2. Build hierarchical scene tree
+    reportProgress(20, `Decoding Kiwi stream (${nodeChanges.length} nodes)...`);
     log(`Building scene tree from ${nodeChanges.length} nodes...`);
     const { rootNodes, canvas, variableSets, variables } = buildSceneTree(nodeChanges, {
         pageName: options.pageName
@@ -66,6 +73,7 @@ async function convertFigToHtml(figInput, options = {}) {
     // 2.1 Smart Layout Synthesis (Phase 1-5: XY-Cut & Container Induction)
     const isSmartLayout = options.smartLayout !== false && options.noSmartLayout !== true;
     if (isSmartLayout) {
+        reportProgress(38, 'Synthesizing adaptive layout (Flexbox & Grid)...');
         log('Running Smart Layout Synthesis (XY-Cut & Container Induction)...');
         applySmartLayout(rootNodes, options);
     }
@@ -75,7 +83,9 @@ async function convertFigToHtml(figInput, options = {}) {
     const cssPrefix = options.cssAssetUrlPrefix || (isExtractCss ? `../${assetsPrefix}` : assetsPrefix);
     const isResponsive = options.responsiveImages !== false && options.srcset !== false;
 
+    reportProgress(50, `Optimizing images (${images.size} items)...`);
     log('Optimizing images and generating responsive device variants...');
+    const totalImgCount = images.size;
     const { processedImages, nodeImageMap, filesToWrite, stats: imgStats } = await optimizeAllImages(images, rootNodes, {
         imageScale: options.imageScale !== undefined ? options.imageScale : 2,
         responsiveImages: isResponsive,
@@ -83,12 +93,17 @@ async function convertFigToHtml(figInput, options = {}) {
         imageFormat: options.imageFormat || options.format || 'original',
         inlineImages: isInlineImages,
         assetUrlPrefix: assetsPrefix,
-        cssAssetUrlPrefix: cssPrefix
+        cssAssetUrlPrefix: cssPrefix,
+        onProgress: (current, total) => {
+            const pct = 50 + Math.round((current / Math.max(1, total)) * 30);
+            reportProgress(pct, `Optimizing images (${current}/${total})...`);
+        }
     });
 
     // 4. Handle images export if inlineImages is false
     let outAssetsDir = null;
     if (isInlineImages === false) {
+        reportProgress(82, 'Writing extracted image files...');
         outAssetsDir = path.resolve(baseDir, assetsRelDir);
         if (!fs.existsSync(outAssetsDir)) {
             fs.mkdirSync(outAssetsDir, { recursive: true });
@@ -125,6 +140,7 @@ async function convertFigToHtml(figInput, options = {}) {
     }
 
     // 6. Generate semantic HTML and CSS styles
+    reportProgress(86, 'Generating semantic HTML5 and CSS styles...');
     log('Generating semantic HTML5 and CSS styles...');
 
     const canvasWidth = Math.round(canvas.size?.x || rootNodes[0]?.size?.x || 1440);
@@ -157,6 +173,7 @@ async function convertFigToHtml(figInput, options = {}) {
     // 7. Write external CSS file if requested
     let extractedCssPath = null;
     if (isExtractCss && css) {
+        reportProgress(94, 'Writing external CSS stylesheet...');
         extractedCssPath = path.resolve(baseDir, cssRelPath);
         const cssDir = path.dirname(extractedCssPath);
         if (!fs.existsSync(cssDir)) {
@@ -169,6 +186,7 @@ async function convertFigToHtml(figInput, options = {}) {
     // 7.1 Write Design Tokens JSON if requested
     let extractedTokensPath = null;
     if ((options.extractTokens || options.tokens) && tokens) {
+        reportProgress(96, 'Exporting design tokens JSON...');
         const tokensRelPath = typeof options.tokens === 'string' ? options.tokens : 'tokens.json';
         extractedTokensPath = path.isAbsolute(tokensRelPath)
             ? tokensRelPath
@@ -183,6 +201,7 @@ async function convertFigToHtml(figInput, options = {}) {
 
     // 8. Write output HTML file if requested
     if (outputPath) {
+        reportProgress(98, 'Writing standalone HTML file...');
         const outDir = path.dirname(outputPath);
         if (!fs.existsSync(outDir)) {
             fs.mkdirSync(outDir, { recursive: true });
@@ -191,6 +210,7 @@ async function convertFigToHtml(figInput, options = {}) {
         log(`Saved HTML to ${outputPath} (${Buffer.byteLength(html, 'utf8')} bytes)`);
     }
 
+    reportProgress(100, 'Complete');
     const durationMs = Date.now() - startTime;
 
     return {

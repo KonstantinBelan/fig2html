@@ -33,11 +33,21 @@ async function getZstd() {
  */
 async function generateFigFile(options = {}) {
     const startTime = Date.now();
-    const progress = (step, msg) => {
+    const progress = (stepOrPct, msg, maybeStep) => {
+        let pct = 0;
+        let step = 'STEP';
+        let text = msg || '';
+        if (typeof stepOrPct === 'number') {
+            pct = stepOrPct;
+            step = maybeStep || '';
+        } else {
+            step = stepOrPct;
+        }
+
         if (typeof options.onProgress === 'function') {
-            options.onProgress(step, msg);
+            options.onProgress(pct, text, step);
         } else if (options.verbose) {
-            console.log(`[${step}] ${msg}`);
+            console.log(`[${step}] ${text}`);
         }
     };
 
@@ -82,7 +92,7 @@ async function generateFigFile(options = {}) {
         throw new Error('No HTML content or htmlPath provided.');
     }
 
-    progress('TEMPLATE', `Loading template from ${path.basename(templatePath)}...`);
+    progress(10, `Loading template from ${path.basename(templatePath)}...`, 'TEMPLATE');
     const templateZip = new AdmZip(templatePath);
     const canvasEntry = templateZip.getEntry('canvas.fig');
     if (!canvasEntry) {
@@ -98,11 +108,11 @@ async function generateFigFile(options = {}) {
     const schemaDeflated = chunks[0];
 
     // 2. Compile Kiwi schema (cached)
-    progress('SCHEMA', 'Compiling Figma Kiwi binary schema...');
+    progress(22, 'Compiling Figma Kiwi binary schema...', 'SCHEMA');
     const compiledSchema = getCompiledSchema(schemaDeflated);
 
     // 3. Decode template canvas tree
-    progress('CANVAS', 'Decoding template canvas tree...');
+    progress(35, 'Decoding template canvas tree...', 'CANVAS');
     const templateTree = decodeFigKiwiCanvas(templateCanvas);
 
     // Find target page (Page 1 or first CANVAS)
@@ -116,7 +126,7 @@ async function generateFigFile(options = {}) {
     }
 
     // 4. Initialize image registry & convert HTML to nodes
-    progress('CONVERT', 'Converting HTML and CSS into Figma node hierarchy...');
+    progress(48, 'Converting HTML and CSS into Figma node hierarchy...', 'CONVERT');
     const imageRegistry = new ImageRegistry({
         baseDir: baseDir,
         allowRemote: options.allowRemoteImages !== false
@@ -141,11 +151,11 @@ async function generateFigFile(options = {}) {
     };
 
     // 6. Encode message with compiled schema
-    progress('ENCODE', `Encoding ${allNodeChanges.length} nodes to Kiwi binary...`);
+    progress(70, `Encoding ${allNodeChanges.length} nodes to Kiwi binary...`, 'ENCODE');
     const encodedBytes = compiledSchema.encodeMessage(messageToEncode);
 
     // 7. Compress with Zstandard
-    progress('COMPRESS', 'Compressing binary stream with Zstandard...');
+    progress(85, 'Compressing binary stream with Zstandard...', 'COMPRESS');
     const zstd = await getZstd();
     const simpleZstd = new zstd.Simple();
     const dataCompressed = simpleZstd.compress(encodedBytes);
@@ -169,7 +179,7 @@ async function generateFigFile(options = {}) {
     Buffer.from(dataCompressed).copy(canvasFig, chunk1Offset + 4);
 
     // 9. Assemble output .fig ZIP container with embedded images
-    progress('PACKAGE', `Packaging into ${outputPath} with embedded images...`);
+    progress(95, `Packaging into ${outputPath} with embedded images...`, 'PACKAGE');
     const outputZip = new AdmZip(templatePath);
     outputZip.deleteFile('canvas.fig');
     outputZip.addFile('canvas.fig', canvasFig);
@@ -193,7 +203,7 @@ async function generateFigFile(options = {}) {
     const durationMs = Date.now() - startTime;
     const outStat = fs.statSync(outputPath);
 
-    progress('DONE', `Successfully generated ${outputPath} in ${durationMs}ms`);
+    progress(100, `Successfully generated ${outputPath}`, 'DONE');
 
     return {
         outputPath: outputPath,

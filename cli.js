@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { generateFigFile } = require('./src/generator');
 const { convertFigToHtml } = require('./src/decompiler');
+const { ProgressBar } = require('./src/utils/progress-bar');
 const pkg = require('./package.json');
 
 // Terminal ANSI styling
@@ -133,12 +134,19 @@ async function runConversion(options) {
     if (isReverse) {
         console.log(`${colors.magenta}⚡ Decompiling:${colors.reset} ${path.basename(inputPath)} -> ${path.basename(outputPath)}...`);
 
-        const result = await convertFigToHtml(inputPath, {
-            outputHtmlPath: outputPath,
-            pageName: options.page,
-            inlineImages: true,
-            verbose: options.verbose
-        });
+        const bar = options.verbose ? null : new ProgressBar();
+        let result;
+        try {
+            result = await convertFigToHtml(inputPath, {
+                outputHtmlPath: outputPath,
+                pageName: options.page,
+                inlineImages: true,
+                verbose: options.verbose,
+                onProgress: (pct, msg) => bar && bar.update(pct, msg)
+            });
+        } finally {
+            if (bar) bar.stop();
+        }
 
         const outStat = fs.statSync(outputPath);
 
@@ -160,14 +168,21 @@ async function runConversion(options) {
 
     console.log(`${colors.cyan}⚡ Compiling:${colors.reset} ${path.basename(inputPath)} -> ${path.basename(outputPath)}...`);
 
-    const result = await generateFigFile({
-        htmlPath: inputPath,
-        outputPath: outputPath,
-        templatePath: path.resolve(options.template),
-        pageName: options.page,
-        allowRemoteImages: options.remoteImages,
-        verbose: options.verbose
-    });
+    const bar = options.verbose ? null : new ProgressBar();
+    let result;
+    try {
+        result = await generateFigFile({
+            htmlPath: inputPath,
+            outputPath: outputPath,
+            templatePath: path.resolve(options.template),
+            pageName: options.page,
+            allowRemoteImages: options.remoteImages,
+            verbose: options.verbose,
+            onProgress: (pct, msg) => bar && bar.update(pct, msg)
+        });
+    } finally {
+        if (bar) bar.stop();
+    }
 
     console.log(`\n${colors.green}${colors.bold}✔ Build complete in ${result.durationMs}ms!${colors.reset}`);
     console.log(`${colors.bold}┌─────────────────────────────────────────┐${colors.reset}`);

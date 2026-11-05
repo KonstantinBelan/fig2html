@@ -255,8 +255,14 @@ async function optimizeAllImages(rawImages, rootNodes, options = {}) {
     let totalBeforeBytes = 0;
     let totalAfterBytes = 0;
     let optimizedCount = 0;
+    let imgIdx = 0;
+    const totalImgs = rawImages.size;
 
     for (const [hashHex, rawImg] of rawImages.entries()) {
+        imgIdx++;
+        if (typeof options.onProgress === 'function') {
+            options.onProgress(imgIdx, totalImgs, hashHex);
+        }
         totalBeforeBytes += rawImg.buffer.length;
 
         const imgUsages = usagesByHash.get(hashHex) || [];

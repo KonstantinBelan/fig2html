@@ -3,6 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { convertFigToHtml } = require('./src/decompiler');
+const { ProgressBar } = require('./src/utils/progress-bar');
 const pkg = require('./package.json');
 
 const colors = {
@@ -207,25 +208,32 @@ async function runConversion(options) {
 
     console.log(`${colors.magenta}⚡ Decompiling:${colors.reset} ${path.basename(inputPath)} -> ${path.basename(outputPath)}...`);
 
-    const result = await convertFigToHtml(inputPath, {
-        outputHtmlPath: outputPath,
-        pageName: options.page,
-        inlineImages: options.inlineImages,
-        inlineStyles: options.inlineStyles,
-        separateFiles: options.separateFiles,
-        extractCss: options.extractCss,
-        cssFile: options.cssFile,
-        assetsDir: options.assetsDir,
-        verbose: options.verbose,
-        imageScale: options.imageScale,
-        responsiveImages: options.responsiveImages,
-        compress: options.compress,
-        imageFormat: options.imageFormat,
-        layoutMode: options.layoutMode,
-        smartLayout: options.smartLayout,
-        extractTokens: options.extractTokens,
-        tokens: options.tokens
-    });
+    const bar = options.verbose ? null : new ProgressBar();
+    let result;
+    try {
+        result = await convertFigToHtml(inputPath, {
+            outputHtmlPath: outputPath,
+            pageName: options.page,
+            inlineImages: options.inlineImages,
+            inlineStyles: options.inlineStyles,
+            separateFiles: options.separateFiles,
+            extractCss: options.extractCss,
+            cssFile: options.cssFile,
+            assetsDir: options.assetsDir,
+            verbose: options.verbose,
+            imageScale: options.imageScale,
+            responsiveImages: options.responsiveImages,
+            compress: options.compress,
+            imageFormat: options.imageFormat,
+            layoutMode: options.layoutMode,
+            smartLayout: options.smartLayout,
+            extractTokens: options.extractTokens,
+            tokens: options.tokens,
+            onProgress: (pct, msg) => bar && bar.update(pct, msg)
+        });
+    } finally {
+        if (bar) bar.stop();
+    }
 
     const outStat = fs.statSync(outputPath);
 
