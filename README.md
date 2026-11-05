@@ -1,6 +1,91 @@
-# 🎨 HTML to .fig & .fig to HTML (Figma Bi-Directional Engine)
+<div align="center">
 
-Высокопроизводительный генератор и декомпилятор нативных бинарных файлов Figma (`.fig`) напрямую из/в HTML и CSS. Проект производит чистый бинарный поток по спецификации **Kiwi Schema v101**, упакованный в сжатый архив Zstandard (.fig контейнер), а также выполняет **обратную трансляцию .fig файлов в семантический адаптивный HTML5/CSS** со всеми стилями, Flexbox/Auto Layout параметрами и встроенными изображениями.
+# 🎨 HTML to .fig & .fig to HTML
+### Figma Bi-Directional Engine 2.0
+
+[![Version](https://img.shields.io/badge/version-1.0.0-6366f1.svg?style=for-the-badge)](package.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![Tests: 52 passed](https://img.shields.io/badge/tests-52%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
+
+<p align="center">
+  Высокопроизводительный двусторонний компилятор и декомпилятор нативных бинарных файлов Figma (<code>.fig</code>).<br>
+  <b>HTML/CSS ➔ .fig</b> по спецификации <b>Kiwi Schema v101</b> и <b>.fig ➔ семантический адаптивный HTML5</b> с поддержкой Flexbox Auto Layout v4, Retina 2x, WebP/AVIF и Fluid-вёрстки.
+</p>
+
+<p align="center">
+  <a href="#-демонстрация-cli">📺 Демонстрация CLI</a> •
+  <a href="#-установка-и-быстрый-старт">🚀 Быстрый старт</a> •
+  <a href="#-особенности-и-возможности">⚡ Возможности</a> •
+  <a href="#-cli-справка">💻 CLI Справка</a> •
+  <a href="#-программный-api-nodejs">🛠 API</a> •
+  <a href="#-тестирование">🧪 Тесты</a>
+</p>
+
+</div>
+
+---
+
+## 📺 Демонстрация CLI
+
+<p align="center">
+  <img src="docs/cli-demo.svg" alt="Figma Bi-Directional CLI Demo" width="100%">
+</p>
+
+<details>
+<summary><b>Показать текстовый лог работы терминала</b></summary>
+
+#### 1. Прямая конвертация: `html-to-fig`
+```bash
+$ html-to-fig showcase.html showcase.fig
+
+┌──────────────────────────────────────────┐
+│             HTML to Figma CLI            │
+│               v1.0.0                     │
+└──────────────────────────────────────────┘
+⚡ Compiling: showcase.html -> showcase.fig...
+
+✔ Build complete in 684ms!
+┌─────────────────────────────────────────┐
+│ File:       showcase.fig                │
+│ Size:       54.1 KB                     │
+│ Nodes:      49 generated                │
+│   Frames:   23                          │
+│   Text:     21                          │
+│   Images:   2                           │
+│   Shapes:   3                           │
+│ Embedded:   2 image blobs               │
+│ Zstd ratio: 3.14x                       │
+└─────────────────────────────────────────┘
+
+Drag and drop showcase.fig into Figma to open.
+```
+
+#### 2. Обратная конвертация с резиновой вёрсткой: `fig-to-html`
+```bash
+$ fig-to-html showcase.fig -s --fluid --webp
+
+┌──────────────────────────────────────────┐
+│             Figma to HTML CLI            │
+│               v1.0.0                     │
+└──────────────────────────────────────────┘
+⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
+
+✔ Decompilation complete in 66ms!
+┌─────────────────────────────────────────┐
+│ HTML:       dist/index.html (4.9 KB)    │
+│ CSS:        dist/css/style.css (11.5 KB)│
+│ Assets:     dist/img/ (7 WebP images)   │
+│ Layout:     Fluid (100vw / 100dvh)      │
+│ Nodes:      52 total in fig             │
+│ Img Opt:    WEBP Lossless (-87%)        │
+└─────────────────────────────────────────┘
+
+Open dist/index.html in any browser.
+```
+</details>
 
 ---
 
@@ -333,6 +418,8 @@ html-to-fig/
 ├── cli-reverse.js          # CLI интерфейс декомпилятора (FIG -> HTML)
 ├── index.js                # Главная точка входа программного API (двусторонний)
 ├── package.json            # Зависимости и метаданные проекта
+├── docs/
+│   └── cli-demo.svg        # Векторная демонстрация работы терминала (SVG)
 ├── templates/
 │   └── template.fig        # Эталонный бинарный шаблон Figma контейнера
 ├── src/

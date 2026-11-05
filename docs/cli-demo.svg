@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0f19"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="termBorder" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="50%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <style>
+    .win-bar { fill: #0f172a; }
+    .win-title { fill: #94a3b8; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 13px; font-weight: 500; text-anchor: middle; }
+    .prompt { fill: #38bdf8; font-weight: 600; }
+    .cmd { fill: #f8fafc; font-weight: 600; }
+    .banner { fill: #c084fc; font-weight: 600; }
+    .banner-rev { fill: #f472b6; font-weight: 600; }
+    .zap { fill: #facc15; }
+    .check { fill: #4ade80; font-weight: 700; }
+    .box { fill: #64748b; }
+    .label { fill: #94a3b8; }
+    .val { fill: #e2e8f0; font-weight: 600; }
+    .val-accent { fill: #38bdf8; font-weight: 600; }
+    .val-green { fill: #4ade80; font-weight: 600; }
+    .sub { fill: #64748b; font-size: 11px; }
+    .divider { stroke: #1e293b; stroke-width: 1; stroke-dasharray: 4 4; }
+    text { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; }
+  </style>
+
+  <!-- Terminal Window Background with Shadow -->
+  <rect x="20" y="16" width="920" height="488" rx="12" fill="url(#bgGrad)" stroke="url(#termBorder)" stroke-width="1.5" filter="url(#shadow)"/>
+
+  <!-- Window Header -->
+  <path d="M 20 28 Q 20 16 32 16 L 928 16 Q 940 16 940 28 L 940 54 L 20 54 Z" fill="#0f172a"/>
+  <line x1="20" y1="54" x2="940" y2="54" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- macOS Window Controls (Traffic Lights) -->
+  <circle cx="44" cy="35" r="6" fill="#ef4444"/>
+  <circle cx="64" cy="35" r="6" fill="#f59e0b"/>
+  <circle cx="84" cy="35" r="6" fill="#10b981"/>
+
+  <!-- Window Title -->
+  <text x="480" y="39" class="win-title">html-to-fig ⇄ fig-to-html — bi-directional engine</text>
+
+  <!-- Vertical Divider Between Two CLI Flows -->
+  <line x1="479" y1="66" x2="479" y2="480" class="divider"/>
+
+  <!-- ================= LEFT COLUMN: HTML -> FIG ================= -->
+  <!-- Prompt & Command -->
+  <text x="44" y="85">
+    <tspan class="prompt">$ </tspan>
+    <tspan class="cmd">html-to-fig showcase.html showcase.fig</tspan>
+  </text>
+
+  <!-- Banner Box -->
+  <text x="44" y="112" class="banner">┌──────────────────────────────────────────┐</text>
+  <text x="44" y="128" class="banner">│             HTML to Figma CLI            │</text>
+  <text x="44" y="144" class="banner">│               v1.0.0                     │</text>
+  <text x="44" y="160" class="banner">└──────────────────────────────────────────┘</text>
+
+  <!-- Step Status -->
+  <text x="44" y="188">
+    <tspan class="zap">⚡</tspan>
+    <tspan fill="#cbd5e1"> Compiling: </tspan>
+    <tspan fill="#38bdf8">showcase.html</tspan>
+    <tspan fill="#cbd5e1"> ➔ </tspan>
+    <tspan fill="#c084fc">showcase.fig</tspan>
+    <tspan fill="#64748b">...</tspan>
+  </text>
+
+  <!-- Success Indicator -->
+  <text x="44" y="214">
+    <tspan class="check">✔</tspan>
+    <tspan fill="#f1f5f9" font-weight="600"> Build complete in </tspan>
+    <tspan class="val-green">684ms</tspan>
+    <tspan fill="#f1f5f9">!</tspan>
+  </text>
+
+  <!-- Result Summary Box -->
+  <text x="44" y="240" class="box">┌─────────────────────────────────────────┐</text>
+  <text x="44" y="258">
+    <tspan class="box">│ </tspan><tspan class="label">File:       </tspan><tspan class="val">showcase.fig                </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="276">
+    <tspan class="box">│ </tspan><tspan class="label">Size:       </tspan><tspan class="val-accent">54.1 KB                     </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="294">
+    <tspan class="box">│ </tspan><tspan class="label">Nodes:      </tspan><tspan class="val-green">49 generated                </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="312">
+    <tspan class="box">│ </tspan><tspan class="sub">  Frames:   23                          </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="330">
+    <tspan class="box">│ </tspan><tspan class="sub">  Text:     21                          </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="348">
+    <tspan class="box">│ </tspan><tspan class="sub">  Images:   2                           </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="366">
+    <tspan class="box">│ </tspan><tspan class="sub">  Shapes:   3                           </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="384">
+    <tspan class="box">│ </tspan><tspan class="label">Embedded:   </tspan><tspan class="val">2 image blobs (SHA-1)       </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="402">
+    <tspan class="box">│ </tspan><tspan class="label">Zstd ratio: </tspan><tspan class="val-accent">3.14x (Kiwi Schema v101)    </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="44" y="420" class="box">└─────────────────────────────────────────┘</text>
+
+  <!-- Bottom Hint -->
+  <text x="44" y="450" fill="#94a3b8">
+    <tspan fill="#38bdf8">➔ </tspan>
+    <tspan>Drag &amp; drop </tspan>
+    <tspan fill="#f1f5f9" font-weight="600">showcase.fig</tspan>
+    <tspan> into Figma to open</tspan>
+  </text>
+
+  <!-- ================= RIGHT COLUMN: FIG -> HTML (FLUID) ================= -->
+  <!-- Prompt & Command -->
+  <text x="504" y="85">
+    <tspan class="prompt">$ </tspan>
+    <tspan class="cmd">fig-to-html showcase.fig -s --fluid --webp</tspan>
+  </text>
+
+  <!-- Banner Box -->
+  <text x="504" y="112" class="banner-rev">┌──────────────────────────────────────────┐</text>
+  <text x="504" y="128" class="banner-rev">│             Figma to HTML CLI            │</text>
+  <text x="504" y="144" class="banner-rev">│               v1.0.0                     │</text>
+  <text x="504" y="160" class="banner-rev">└──────────────────────────────────────────┘</text>
+
+  <!-- Step Status -->
+  <text x="504" y="188">
+    <tspan class="zap">⚡</tspan>
+    <tspan fill="#cbd5e1"> Decompiling: </tspan>
+    <tspan fill="#c084fc">showcase.fig</tspan>
+    <tspan fill="#cbd5e1"> ➔ </tspan>
+    <tspan fill="#38bdf8">dist/index.html</tspan>
+  </text>
+
+  <!-- Success Indicator -->
+  <text x="504" y="214">
+    <tspan class="check">✔</tspan>
+    <tspan fill="#f1f5f9" font-weight="600"> Decompilation complete in </tspan>
+    <tspan class="val-green">66ms</tspan>
+    <tspan fill="#f1f5f9">!</tspan>
+  </text>
+
+  <!-- Result Summary Box -->
+  <text x="504" y="240" class="box">┌─────────────────────────────────────────┐</text>
+  <text x="504" y="258">
+    <tspan class="box">│ </tspan><tspan class="label">HTML:       </tspan><tspan class="val">dist/index.html (4.9 KB)    </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="276">
+    <tspan class="box">│ </tspan><tspan class="label">CSS:        </tspan><tspan class="val">dist/css/style.css (11.5 KB)</tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="294">
+    <tspan class="box">│ </tspan><tspan class="label">Assets:     </tspan><tspan class="val-accent">dist/img/ (7 WebP images)   </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="312">
+    <tspan class="box">│ </tspan><tspan class="label">Layout:     </tspan><tspan class="val-green">Fluid (100vw / 100dvh)      </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="330">
+    <tspan class="box">│ </tspan><tspan class="label">Typography: </tspan><tspan class="val">clamp(), rem, vw / vh       </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="348">
+    <tspan class="box">│ </tspan><tspan class="label">Viewport:   </tspan><tspan class="val">width=device-width, scale=1 </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="366">
+    <tspan class="box">│ </tspan><tspan class="label">Nodes:      </tspan><tspan class="val">52 total in scene tree      </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="384">
+    <tspan class="box">│ </tspan><tspan class="label">Img Opt:    </tspan><tspan class="val-green">WEBP Lossless (-87%)        </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="402">
+    <tspan class="box">│ </tspan><tspan class="label">Srcset:     </tspan><tspan class="val-accent">480w, 768w, 1080w, 1440w    </tspan><tspan class="box">│</tspan>
+  </text>
+  <text x="504" y="420" class="box">└─────────────────────────────────────────┘</text>
+
+  <!-- Bottom Hint -->
+  <text x="504" y="450" fill="#94a3b8">
+    <tspan fill="#10b981">✨ </tspan>
+    <tspan>Open </tspan>
+    <tspan fill="#f1f5f9" font-weight="600">dist/index.html</tspan>
+    <tspan> in browser (fully responsive)</tspan>
+  </text>
+
+  <!-- Bottom Status Bar -->
+  <line x1="20" y1="472" x2="940" y2="472" stroke="#1e293b" stroke-width="1"/>
+  <text x="44" y="491" fill="#475569" font-size="11px">● 52/52 tests passed</text>
+  <text x="480" y="491" fill="#475569" font-size="11px" text-anchor="middle">Kiwi Schema v101 • Zstandard • Flexbox Auto Layout v4 • Sharp Retina 2x</text>
+  <text x="916" y="491" fill="#475569" font-size="11px" text-anchor="end">v1.0.0</text>
+</svg>
