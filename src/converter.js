@@ -1313,7 +1313,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
         const frameType = (isCircle && element.children.length === 0) ? 'ELLIPSE' : 'FRAME';
 
-        let frameName = element.id || (element.className && typeof element.className === 'string' ? element.className.trim() : '') || tagName;
+        let frameName = element.getAttribute('data-name') || element.getAttribute('name') || element.getAttribute('title') || element.id || (element.className && typeof element.className === 'string' ? element.className.trim() : '') || tagName;
         if (tagName === 'body') {
             frameName = (doc.title && doc.title.trim()) || 'Page';
         }

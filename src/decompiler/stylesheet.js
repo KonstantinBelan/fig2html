@@ -56,7 +56,11 @@ function styleSignature(styles) {
 class StylesheetManager {
     constructor(options = {}) {
         this.options = options;
-        this.classRegistry = new Map(); // baseName -> Array<{ signature, className, styles, count }>
+        this.isMultiPage = Boolean(options.isMultiPage);
+        this.currentPageSlug = options.pageSlug || 'index';
+        this.currentPageName = options.pageName || '';
+        this.classScope = options.classScope || 'modifier'; // 'modifier' | 'scoped' | 'numbered'
+        this.classRegistry = new Map(); // baseName -> Array<{ signature, className, styles, count, pageSlug }>
         this.classesByNode = new Map(); // node reference -> className
         this.stylesByNode = new Map();  // node reference -> styles
         this.classesByNodeGuid = new Map(); // guidKey -> className
@@ -212,7 +216,8 @@ class StylesheetManager {
 
         let defaultVariant = variantChildren.find(c => /state=default|status=default|default/i.test((c.name || '').toLowerCase())) || variantChildren[0];
         const defaultStyles = computeNodeStyles(defaultVariant, containerNode, imageRegistry, options);
-        const baseClassName = toBaseClassName(containerNode.name);
+        const assignedClass = this.getNodeClass(containerNode);
+        const baseClassName = assignedClass ? assignedClass.split(/\s+/)[0] : toBaseClassName(containerNode.name);
 
         for (const variant of variantChildren) {
             if (variant === defaultVariant) continue;
@@ -251,47 +256,22 @@ class StylesheetManager {
     }
 
     /**
-     * Registers a Figma node, computes its CSS styles, and assigns a deduplicated class name
-     * @param {object} node
-     * @param {object} parentNode
-     * @param {Map<string, object>} imageRegistry
-     * @param {object} options
-     * @returns {string} Assigned CSS class name
+     * Updates current page context for multi-page export
+     * @param {string} slug Page slug (e.g. "index", "about", "cart")
+     * @param {string} [name=''] Page title/name
      */
-    registerNode(node, parentNode, imageRegistry, options = {}) {
-        if (!node || node.visible === false || node.mask === true || node.isMask === true || node.isStateGroup || parentNode?.isStateGroup) {
-            return '';
-        }
+    setPageContext(slug, name = '') {
+        this.currentPageSlug = slug || 'index';
+        this.currentPageName = name;
+    }
 
-        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
-        const isRoot = Boolean(options.isRoot || node.isRoot);
-        const baseName = isRoot ? (options.rootClassName || 'main-container') : toBaseClassName(node.name, node.type);
-        const sig = styleSignature(styles);
-
-        if (!this.classRegistry.has(baseName)) {
-            this.classRegistry.set(baseName, []);
-        }
-
-        const variants = this.classRegistry.get(baseName);
-        let matched = variants.find(v => v.signature === sig);
-
-        if (!matched) {
-            // First variant takes the baseName; subsequent variants with different styles get -2, -3, etc.
-            const className = variants.length === 0 ? baseName : `${baseName}-${variants.length + 1}`;
-            matched = { signature: sig, className, styles, count: 1 };
-            variants.push(matched);
-            this.uniqueRules.set(className, styles);
-        } else {
-            matched.count++;
-        }
-
-        const key = this.getNodeKey(node);
-        this.classesByNode.set(node, matched.className);
-        this.stylesByNode.set(node, styles);
-        this.classesByNodeGuid.set(key, matched.className);
-        this.stylesByNodeGuid.set(key, styles);
-
-        // Count recurring values for :root extraction
+    /**
+     * Internal helper to record recurring values for :root extraction
+     * @param {Record<string, string>} styles
+     * @private
+     */
+    _countRecurringStyles(styles) {
+        if (!styles) return;
         for (const [prop, val] of Object.entries(styles)) {
             if (!val || val === 'transparent') continue;
 
@@ -308,6 +288,108 @@ class StylesheetManager {
                 }
             }
         }
+    }
+
+    /**
+     * Registers a Figma node, computes its CSS styles, and assigns a deduplicated class name
+     * @param {object} node
+     * @param {object} parentNode
+     * @param {Map<string, object>} imageRegistry
+     * @param {object} options
+     * @returns {string} Assigned CSS class name
+     */
+    registerNode(node, parentNode, imageRegistry, options = {}) {
+        if (!node || node.visible === false || node.mask === true || node.isMask === true || node.isStateGroup || parentNode?.isStateGroup) {
+            return '';
+        }
+
+        const styles = computeNodeStyles(node, parentNode, imageRegistry, options);
+        const isRoot = Boolean(options.isRoot || node.isRoot);
+        const isMulti = Boolean(this.isMultiPage || options.isMultiPage);
+        const pageSlug = options.pageSlug || this.currentPageSlug || 'index';
+
+        // Multi-page root container separation:
+        // Base container styles written to .main-container, canvas-specific parameters to .page-${slug}-container
+        if (isRoot && isMulti) {
+            const baseContainerStyles = {
+                'width': '100%',
+                'margin': '0 auto',
+                'box-sizing': 'border-box'
+            };
+            this.uniqueRules.set('main-container', baseContainerStyles);
+
+            const modifierStyles = {};
+            for (const [prop, val] of Object.entries(styles)) {
+                if (prop === 'width' && val === '100%') continue;
+                if (prop === 'margin' && val === '0 auto') continue;
+                if (prop === 'box-sizing' && val === 'border-box') continue;
+                modifierStyles[prop] = val;
+            }
+
+            const modifierClass = `page-${pageSlug}-container`;
+            this.uniqueRules.set(modifierClass, modifierStyles);
+
+            const combinedClassName = `main-container ${modifierClass}`;
+            const key = this.getNodeKey(node);
+            this.classesByNode.set(node, combinedClassName);
+            this.stylesByNode.set(node, styles);
+            this.classesByNodeGuid.set(key, combinedClassName);
+            this.stylesByNodeGuid.set(key, styles);
+
+            this._countRecurringStyles(styles);
+            return combinedClassName;
+        }
+
+        const baseName = isRoot ? (options.rootClassName || 'main-container') : toBaseClassName(node.name, node.type);
+        const sig = styleSignature(styles);
+
+        if (!this.classRegistry.has(baseName)) {
+            this.classRegistry.set(baseName, []);
+        }
+
+        const variants = this.classRegistry.get(baseName);
+        let matched = variants.find(v => v.signature === sig);
+
+        if (!matched) {
+            let className = baseName;
+            if (variants.length > 0) {
+                // Style collision detected: same layer name, different styles!
+                if (isMulti && this.classScope === 'modifier' && pageSlug) {
+                    const modCandidate = `${baseName}--${pageSlug}`;
+                    if (!this.uniqueRules.has(modCandidate)) {
+                        className = modCandidate;
+                    } else {
+                        let counter = 2;
+                        while (this.uniqueRules.has(`${modCandidate}-${counter}`)) {
+                            counter++;
+                        }
+                        className = `${modCandidate}-${counter}`;
+                    }
+                } else if (isMulti && this.classScope === 'scoped' && pageSlug) {
+                    className = `${baseName}--${pageSlug}`;
+                } else {
+                    let counter = variants.length + 1;
+                    while (this.uniqueRules.has(`${baseName}-${counter}`)) {
+                        counter++;
+                    }
+                    className = `${baseName}-${counter}`;
+                }
+            }
+
+            matched = { signature: sig, className, styles, count: 1, pageSlug };
+            variants.push(matched);
+            this.uniqueRules.set(className, styles);
+        } else {
+            matched.count++;
+        }
+
+        const key = this.getNodeKey(node);
+        this.classesByNode.set(node, matched.className);
+        this.stylesByNode.set(node, styles);
+        this.classesByNodeGuid.set(key, matched.className);
+        this.stylesByNodeGuid.set(key, styles);
+
+        this._countRecurringStyles(styles);
 
         return matched.className;
     }
@@ -575,7 +657,10 @@ class StylesheetManager {
 
         // 3. Class rules
         for (const [className, styles] of this.uniqueRules.entries()) {
-            lines.push(`  .${className} {`);
+            const selector = (className.startsWith('.') || className.startsWith(':') || className.includes(' '))
+                ? className
+                : `.${className}`;
+            lines.push(`  ${selector} {`);
             for (const [prop, val] of Object.entries(styles)) {
                 const finalVal = this.substituteVar(prop, String(val).replace(/"/g, "'"));
                 lines.push(`    ${prop}: ${finalVal};`);

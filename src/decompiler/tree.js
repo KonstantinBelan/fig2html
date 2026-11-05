@@ -223,7 +223,7 @@ function buildSceneTree(nodeChanges, options = {}) {
         throw new Error('No valid CANVAS (Page) node found in .fig tree.');
     }
 
-    // 6. Recursively resolve all INSTANCE nodes under target page
+    // 6. Recursively resolve all INSTANCE nodes across all canvases
     function walkAndResolve(nodes) {
         for (const node of nodes) {
             if (node.type === 'INSTANCE') {
@@ -234,7 +234,11 @@ function buildSceneTree(nodeChanges, options = {}) {
             }
         }
     }
-    walkAndResolve(targetCanvas.children);
+    for (const c of canvases) {
+        if (c.children && c.children.length > 0) {
+            walkAndResolve(c.children);
+        }
+    }
 
     // 7. Collect native Figma variables and variable sets
     const variableSets = [];
@@ -255,6 +259,7 @@ function buildSceneTree(nodeChanges, options = {}) {
     return {
         document: documentNode,
         canvas: targetCanvas,
+        canvases: canvases,
         rootNodes: targetCanvas.children || [],
         allNodesMap,
         variableSets,

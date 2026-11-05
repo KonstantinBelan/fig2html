@@ -42,6 +42,14 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}-i, --input <file>${colors.reset}         Path to input .fig file
   ${colors.cyan}-o, --output <file>${colors.reset}        Path to output .html file
   ${colors.cyan}-p, --page <name>${colors.reset}          Target Figma page name (default: "Page 1")
+  ${colors.cyan}--multi-page${colors.reset}              Enable multi-page export mode (default: auto/enabled)
+  ${colors.cyan}--single-page${colors.reset}             Force single-page export only
+  ${colors.cyan}--page-tag <tag>${colors.reset}          Custom page tag or comma-separated list of tags
+  ${colors.cyan}--pages <names>${colors.reset}           Filter specific pages/frames to export comma-separated
+  ${colors.cyan}--all-canvases${colors.reset}            Export all document canvas tabs as separate HTML pages
+  ${colors.cyan}--min-page-width <px>${colors.reset}     Minimum frame width to recognize as screen artboard (default: 320)
+  ${colors.cyan}--min-page-height <px>${colors.reset}    Minimum frame height to recognize as screen artboard (default: 400)
+  ${colors.cyan}--class-scope <mode>${colors.reset}      CSS collision resolution: modifier, scoped, or numbered (default: modifier)
   ${colors.cyan}-w, --watch${colors.reset}                Watch input file and rebuild automatically on change
   ${colors.cyan}-s, --separate-files${colors.reset}      Extract external CSS (css/style.css) and images (img/)
   ${colors.cyan}--extract-css${colors.reset}              Extract stylesheet to a separate CSS file instead of <style>
@@ -89,6 +97,14 @@ function parseArgs(args) {
         input: null,
         output: null,
         page: 'Page 1',
+        multiPage: true,
+        singlePage: false,
+        pageTag: null,
+        pages: null,
+        allCanvases: false,
+        minPageWidth: 320,
+        minPageHeight: 400,
+        classScope: 'modifier',
         watch: false,
         inlineImages: true,
         inlineStyles: false,
@@ -122,6 +138,24 @@ function parseArgs(args) {
             options.output = args[++i];
         } else if (arg === '-p' || arg === '--page') {
             options.page = args[++i];
+        } else if (arg === '--multi-page') {
+            options.multiPage = true;
+            options.singlePage = false;
+        } else if (arg === '--single-page') {
+            options.singlePage = true;
+            options.multiPage = false;
+        } else if (arg === '--page-tag' || arg === '--tag') {
+            options.pageTag = args[++i];
+        } else if (arg === '--pages') {
+            options.pages = args[++i];
+        } else if (arg === '--all-canvases' || arg === '--all-pages') {
+            options.allCanvases = true;
+        } else if (arg === '--min-page-width') {
+            options.minPageWidth = parseFloat(args[++i]);
+        } else if (arg === '--min-page-height') {
+            options.minPageHeight = parseFloat(args[++i]);
+        } else if (arg === '--class-scope' || arg === '--scope') {
+            options.classScope = args[++i];
         } else if (arg === '-w' || arg === '--watch') {
             options.watch = true;
         } else if (arg === '-s' || arg === '--separate-files' || arg === '--split') {
@@ -214,6 +248,14 @@ async function runConversion(options) {
         result = await convertFigToHtml(inputPath, {
             outputHtmlPath: outputPath,
             pageName: options.page,
+            multiPage: options.multiPage,
+            singlePage: options.singlePage,
+            pageTag: options.pageTag,
+            pages: options.pages,
+            allCanvases: options.allCanvases,
+            minPageWidth: options.minPageWidth,
+            minPageHeight: options.minPageHeight,
+            classScope: options.classScope,
             inlineImages: options.inlineImages,
             inlineStyles: options.inlineStyles,
             separateFiles: options.separateFiles,
@@ -235,12 +277,30 @@ async function runConversion(options) {
         if (bar) bar.stop();
     }
 
-    const outStat = fs.statSync(outputPath);
+    const finalHtmlPath = result.outputPath && fs.existsSync(result.outputPath)
+        ? result.outputPath
+        : (fs.existsSync(outputPath) ? outputPath : null);
+    const outStat = finalHtmlPath ? fs.statSync(finalHtmlPath) : null;
 
     console.log(`\n${colors.green}${colors.bold}✔ Decompilation complete in ${result.durationMs}ms!${colors.reset}`);
     console.log(`${colors.bold}┌─────────────────────────────────────────┐${colors.reset}`);
-    console.log(`│ ${colors.bold}HTML:${colors.reset}       ${path.basename(outputPath).padEnd(27)} │`);
-    console.log(`│ ${colors.bold}HTML Size:${colors.reset}  ${formatBytes(outStat.size).padEnd(27)} │`);
+    if (result.isMultiPage && result.pages && result.pages.length > 1) {
+        const strat = result.stats?.detectionStrategy || 'multi';
+        console.log(`│ ${colors.bold}Pages:${colors.reset}      ${(result.pages.length + ' pages (' + strat + ')').padEnd(27)} │`);
+        for (let i = 0; i < Math.min(result.pages.length, 4); i++) {
+            const p = result.pages[i];
+            const pStr = `${p.fileName} (${p.cleanName})`;
+            console.log(`│   ${colors.dim}P${i + 1}:${colors.reset}       ${pStr.slice(0, 26).padEnd(27)} │`);
+        }
+        if (result.pages.length > 4) {
+            console.log(`│   ${colors.dim}... +${result.pages.length - 4} more pages${colors.reset}             │`);
+        }
+    } else {
+        console.log(`│ ${colors.bold}HTML:${colors.reset}       ${path.basename(finalHtmlPath || outputPath).padEnd(27)} │`);
+        if (outStat) {
+            console.log(`│ ${colors.bold}HTML Size:${colors.reset}  ${formatBytes(outStat.size).padEnd(27)} │`);
+        }
+    }
     if (options.layoutMode && options.layoutMode !== 'default') {
         const layoutLabel = options.layoutMode === 'fluid' ? 'Fluid (100vw/100dvh)' : (options.layoutMode === 'grid' ? 'CSS Grid' : 'Relative (rem/vw)');
         console.log(`│ ${colors.bold}Layout:${colors.reset}     ${layoutLabel.padEnd(27)} │`);

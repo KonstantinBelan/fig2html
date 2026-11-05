@@ -510,10 +510,13 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
         }
     }
 
-    const stylesheetManager = new StylesheetManager(options);
+    const stylesheetManager = options.stylesheetManager || new StylesheetManager(options);
+    if (options.pageSlug) {
+        stylesheetManager.setPageContext(options.pageSlug, title);
+    }
 
     // Register native Figma variables and Design Tokens if provided
-    if (options.variables && options.variables.length > 0) {
+    if (options.variables && options.variables.length > 0 && !options.skipRegisterVariables) {
         stylesheetManager.registerFigmaVariables(options.variables, options.variableSets || []);
     }
 
@@ -531,16 +534,20 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
             }
         }
     }
-    for (const root of rootNodes) {
-        registerTree(root, null, true);
+    if (!options.skipRegisterTree) {
+        for (const root of rootNodes) {
+            registerTree(root, null, true);
+        }
     }
 
     // Generate CSS rules (classes + :root) or base resets if inlineStyles is requested
-    let cssContent = '';
-    if (options.inlineStyles) {
-        cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n    line-height: 1.5;\n  }\n  button, input, optgroup, select, textarea {\n    font-family: inherit;\n    font-size: 100%;\n    line-height: inherit;\n    color: inherit;\n    margin: 0;\n    padding: 0;\n    border: 0;\n    background: transparent;\n    vertical-align: baseline;\n  }\n  button, [type="button"], [type="reset"], [type="submit"] {\n    -webkit-appearance: button;\n    appearance: button;\n    cursor: pointer;\n    background: transparent;\n    border: none;\n    outline: none;\n  }\n  input, textarea {\n    outline: none;\n    background: transparent;\n    border: none;\n  }\n  h1, h2, h3, h4, h5, h6, p {\n    margin: 0;\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  ul, ol {\n    list-style: none;\n    margin: 0;\n    padding: 0;\n  }\n  img, svg {\n    max-width: 100%;\n    display: block;\n  }\n  a {\n    color: inherit;\n    text-decoration: inherit;\n  }`;
-    } else {
-        cssContent = stylesheetManager.generateFullStylesheet(rootBg);
+    let cssContent = options.cssContent || '';
+    if (!cssContent) {
+        if (options.inlineStyles) {
+            cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n    line-height: 1.5;\n  }\n  button, input, optgroup, select, textarea {\n    font-family: inherit;\n    font-size: 100%;\n    line-height: inherit;\n    color: inherit;\n    margin: 0;\n    padding: 0;\n    border: 0;\n    background: transparent;\n    vertical-align: baseline;\n  }\n  button, [type="button"], [type="reset"], [type="submit"] {\n    -webkit-appearance: button;\n    appearance: button;\n    cursor: pointer;\n    background: transparent;\n    border: none;\n    outline: none;\n  }\n  input, textarea {\n    outline: none;\n    background: transparent;\n    border: none;\n  }\n  h1, h2, h3, h4, h5, h6, p {\n    margin: 0;\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  ul, ol {\n    list-style: none;\n    margin: 0;\n    padding: 0;\n  }\n  img, svg {\n    max-width: 100%;\n    display: block;\n  }\n  a {\n    color: inherit;\n    text-decoration: inherit;\n  }`;
+        } else {
+            cssContent = stylesheetManager.generateFullStylesheet(rootBg);
+        }
     }
 
     // Pass 2: Render semantic HTML
@@ -555,6 +562,9 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
         ? `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`
         : `  <style>\n${cssContent}\n  </style>\n`;
 
+    const bodyClass = options.pageSlug ? `page-${options.pageSlug}` : (options.bodyClass || '');
+    const bodyClassAttr = bodyClass ? ` class="${escapeHtml(bodyClass)}"` : '';
+
     const html = `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -562,7 +572,7 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
 ${googleFontsUrl ? `  <link rel="preconnect" href="https://fonts.googleapis.com">\n  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n  <link href="${googleFontsUrl}" rel="stylesheet">\n` : ''}${styleTagOrLink}</head>
-<body>
+<body${bodyClassAttr}>
 ${bodyContent}</body>
 </html>
 `;

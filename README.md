@@ -3,9 +3,9 @@
 # 🎨 HTML to .fig & .fig to HTML
 ### Figma Bi-Directional Engine 2.0
 
-[![Version](https://img.shields.io/badge/version-1.2.0-6366f1.svg?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/version-1.3.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 85 passed](https://img.shields.io/badge/tests-85%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 95 passed](https://img.shields.io/badge/tests-95%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -43,7 +43,7 @@ $ html-to-fig showcase.html showcase.fig
 
 ┌──────────────────────────────────────────┐
 │             HTML to Figma CLI            │
-│               v1.2.0                     │
+│               v1.3.0                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
 [██░░░░░░░░]  20% • Loading Kiwi schema...
@@ -73,7 +73,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 
 ┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
-│               v1.2.0                     │
+│               v1.3.0                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
 [██░░░░░░░░]  20% • Decoding Kiwi binary AST...
@@ -175,6 +175,16 @@ Open dist/index.html in any browser.
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
+- **🌐 Figma Multi-Page Import Engine (v1.3.0)**:
+  - **Многостраничный экспорт за одну команду**: декомпиляция проектов Figma с множеством экранов или вкладок в готовую модульную файловую структуру (`index.html`, `about.html`, `catalog.html`, `contacts.html`) с **единым оптимизированным файлом `css/style.css`**.
+  - **Трёхуровневая детекция страниц**:
+    - **Приоритет 1 (Явные теги)**: поиск маркированных фреймов (`[page]`, `[страница]`, `[p]`, `#page`, `/page` или кастомных через `--page-tag`). Имя страницы очищается и транслитерируется (`[page] Home` ➔ `index.html`, `[страница] О нас` ➔ `about.html`). Неразмеченные черновики и палитры игнорируются.
+    - **Приоритет 2 (Экранные артборды)**: автоматическое распознавание верхнеуровневых фреймов экрана (по умолчанию `width >= 320px`, `height >= 400px`) при отсутствии тегов. Первый экран становится `index.html`, остальные — `<slug>.html`.
+    - **Приоритет 3 (Canvas вкладки)**: поддержка декомпиляции нативных страниц Figma (`CANVAS` узлы в Kiwi AST) по флагу `--all-canvases`.
+  - **Smart DRY CSS**: слои на разных страницах с одинаковыми именами и полностью совпадающими стилями объединяются в единое правило (например, общий `.btn` или `.header`).
+  - **Изоляция коллизий стилей (100% Conflict-Free)**: слои с одинаковыми именами, но разными параметрами автоматически изолируются страничными модификаторами (`.btn--cart`), предотвращая перезапись стилей.
+  - **Разделение свойств `.main-container`**: базовые стили пишутся в `.main-container`, а индивидуальные параметры страницы — в модификатор (`.page-home-container`, `.page-about-container`).
+  - **Единый пул ассетов и токенов**: изображения дедуплицируются по SHA-1 хешу в единую папку `img/`, а токены проекта объединяются в секцию `:root`.
 - **📐 Интеллектуальный синтез адаптивной верстки (Layout Synthesis Engine)**:
   - **Полный отказ от `position: absolute`**: для макетов Figma, созданных дизайнерами **без единого Auto Layout**, движок автоматически группирует плоские абсолютные слои в гибкие Flexbox-контейнеры (`flex-direction: row | column`) и CSS Grid.
   - **Фаза 1. Spatial Normalization & Indexing**: точное вычисление 2D-габаритов (`BoundingBox`), пространственное индексирование и разрешение порядка наложения z-index.
@@ -251,6 +261,15 @@ node cli-reverse.js design.fig index.html --relative
 node cli-reverse.js design.fig index.html --grid
 # или:
 node cli-reverse.js design.fig index.html --layout grid
+
+# Многостраничный экспорт в модульный сайт (dist/*.html + dist/css/style.css + dist/img/*):
+node cli-reverse.js website.fig dist -s --webp
+
+# Экспорт всех Canvas-вкладок документа Figma:
+node cli-reverse.js website.fig dist --all-canvases -s
+
+# Экспорт только выбранных страниц через фильтр:
+node cli-reverse.js website.fig dist --pages "Home, About, Pricing" -s
 
 # Экспорт нативных Figma Variables в файл дизайн-токенов JSON (W3C Design Tokens format):
 node cli-reverse.js design.fig index.html --tokens tokens.json
@@ -329,8 +348,16 @@ USAGE:
 
 OPTIONS:
   -i, --input <file>       Входной .fig файл
-  -o, --output <file>      Выходной .html файл
+  -o, --output <file>      Выходной .html файл или директория
   -p, --page <name>        Имя страницы в Figma (по умолчанию: "Page 1")
+  --multi-page             Включить многостраничный режим (по умолчанию: включен при наличии страниц)
+  --single-page            Принудительный экспорт только одной (первой/указанной) страницы
+  --page-tag <tag>         Кастомный тег или список тегов в названии фреймов ([page],[страница])
+  --pages <names>          Список конкретных страниц/фреймов для экспорта через запятую
+  --all-canvases           Экспортировать все Canvas-вкладки документа Figma как отдельные страницы
+  --min-page-width <px>    Минимальная ширина фрейма для признания отдельной страницей (по умолчанию: 320)
+  --min-page-height <px>   Минимальная высота фрейма для признания отдельной страницей (по умолчанию: 400)
+  --class-scope <mode>     Режим изоляции конфликтующих классов: modifier, scoped, numbered (по умолчанию: modifier)
   -w, --watch              Режим наблюдения (авторебилд при изменении .fig)
   -s, --separate-files     Извлекать отдельный CSS (css/style.css) и картинки (img/*)
   --extract-css            Вынести стили в отдельный .css файл вместо <style> в <head>
@@ -415,6 +442,16 @@ async function decompile() {
         verbose: true
     });
 
+    // 4. Полноценный многостраничный экспорт сайта (index.html, about.html, catalog.html + css/style.css):
+    const result4 = await convertFigToHtml('website.fig', {
+        outputHtmlPath: 'dist/index.html',
+        multiPage: true,      // автоопределение тегов [page] и экранных артбордов
+        separateFiles: true,  // единый оптимизированный css/style.css и дедуплицированный пул img/*
+        imageFormat: 'webp',
+        verbose: true
+    });
+    console.log(`Экспортировано ${result4.pages.length} страниц: ${result4.pages.map(p => p.fileName).join(', ')}`);
+
     console.log(`Декомпилировано ${result2.totalNodes} нод за ${result2.durationMs}мс!`);
     console.log(`HTML: ${result2.outputPath}, CSS: ${result2.cssPath}, Assets: ${result2.assetsDir}`);
 }
@@ -426,7 +463,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (85 тестов):
+Проект покрыт всесторонними автоматическими тестами (95 тестов):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -475,6 +512,15 @@ decompile();
   - Парсинг CLI-флагов `--smart-layout` и `--no-smart-layout`
   - End-to-End декомпиляция макетов без единого Auto Layout фрейма в чистый Flexbox и CSS Grid без `position: absolute`
   - Проверка сохранения традиционного абсолютного позиционирования при флаге `--no-smart-layout`
+- **Figma Multi-Page Import Engine (v1.3.0)**:
+  - Транслитерация кириллических названий страниц в URL-совместимые латинские имена файлов (`RU_MAP`)
+  - Распознавание явных тегов страниц (`[page]`, `[страница]`, `[p]`, `#page`, `/page`) и кастомных тегов (`--page-tag`)
+  - Автоматическое определение страниц по экранным артбордам (`width >= 320px`, `height >= 400px`)
+  - Экспорт нативных Canvas-вкладок Figma документа (`--all-canvases`, `--pages`, `--single-page`)
+  - Интеллектуальная дедупликация идентичных стилей между страницами в единый CSS-класс (Smart DRY CSS)
+  - Автоматическое разрешение коллизий стилей при одинаковых именах слоев через страничный модификатор (`.btn--cart`)
+  - Разделение свойств корневого `.main-container` и страницы (`.page-index-container`, `.page-about-container`)
+  - Сквозной E2E-тест многостраничного экспорта: генерация сайта `dist/*.html` с общим `dist/css/style.css` и дедуплицированными ассетами
 
 Запуск тестов:
 ```bash
@@ -501,6 +547,7 @@ html-to-fig/
 │   ├── schema.js           # Компилятор и кэш Kiwi схемы
 │   ├── decompiler/         # ДВИЖОК ОБРАТНОЙ КОНВЕРТАЦИИ (FIG -> HTML)
 │   │   ├── index.js        # Главный оркестратор декомпиляции
+│   │   ├── page-detector.js # Детекция страниц (теги, артборды, Canvas) и санитизация URL
 │   │   ├── geometry.js     # BoundingBox, 1D-проекции, Fuzzy Clustering и интервалы
 │   │   ├── container-detector.js # Обнаружение карточек-подложек и изолирование оверлеев
 │   │   ├── synthesizer.js  # Recursive XY-Cut, детекция сеток N x M и Auto Layout синтез
