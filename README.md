@@ -19,6 +19,7 @@
   <a href="#-демонстрация-cli">📺 Демонстрация CLI</a> •
   <a href="#-установка-и-быстрый-старт">🚀 Быстрый старт</a> •
   <a href="#-особенности-и-возможности">⚡ Возможности</a> •
+  <a href="docs/figma-design-guide.md">🎨 Руководство дизайнера</a> •
   <a href="#-cli-справка">💻 CLI Справка</a> •
   <a href="#-программный-api-nodejs">🛠 API</a> •
   <a href="#-тестирование">🧪 Тесты</a>
@@ -324,10 +325,9 @@ node cli-reverse.js showcase.fig output.html --page "Page 1"
 
 # Тонкая настройка путей к CSS и картинкам:
 node cli-reverse.js test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir assets
-
-# Умный автовыбор направления через общую команду:
-node cli.js design.fig # автоматически определит .fig и создаст design.html
 ```
+
+> 📖 **Подробное руководство для дизайнеров**: советы по созданию макетов для идеального 100% Pixel-Perfect экспорта в HTML/CSS читайте в [**docs/figma-design-guide.md**](docs/figma-design-guide.md).
 
 Вы также можете связать утилиты глобально:
 ```bash
