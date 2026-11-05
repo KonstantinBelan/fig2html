@@ -19,6 +19,8 @@ test/*.fig
 !test/hard.fig
 fleader/
 hard-reverse.html
+unorganized.html
+demo-absolute.html
 
 # Logs
 logs/
