@@ -72,7 +72,10 @@ function resolveInstanceNode(instanceNode, allNodesMap, depth = 0) {
         const ov = (overrideKey && overrideMap.get(overrideKey)) || (childKey && overrideMap.get(childKey));
         if (ov) {
             if (ov.visible !== undefined) child.visible = ov.visible;
-            if (ov.textData) child.textData = ov.textData;
+            if (ov.textData) {
+                child.textData = ov.textData;
+                if (ov.textData.characters) child.characters = ov.textData.characters;
+            }
             if (ov.fillPaints) child.fillPaints = ov.fillPaints;
             if (ov.strokePaints) child.strokePaints = ov.strokePaints;
             if (ov.size) child.size = ov.size;
@@ -80,6 +83,18 @@ function resolveInstanceNode(instanceNode, allNodesMap, depth = 0) {
             if (ov.opacity !== undefined) child.opacity = ov.opacity;
             if (ov.fontName) child.fontName = ov.fontName;
             if (ov.lineHeight) child.lineHeight = ov.lineHeight;
+            if (ov.letterSpacing) child.letterSpacing = ov.letterSpacing;
+            if (ov.textTracking !== undefined) child.textTracking = ov.textTracking;
+            if (ov.textAlignHorizontal) child.textAlignHorizontal = ov.textAlignHorizontal;
+            if (ov.textAlignVertical) child.textAlignVertical = ov.textAlignVertical;
+            if (ov.textAutoResize) child.textAutoResize = ov.textAutoResize;
+            if (ov.textTruncation) child.textTruncation = ov.textTruncation;
+            if (ov.maxLines !== undefined) child.maxLines = ov.maxLines;
+            if (ov.cornerRadius !== undefined) child.cornerRadius = ov.cornerRadius;
+            if (ov.stackCounterSizing) child.stackCounterSizing = ov.stackCounterSizing;
+            if (ov.stackPositioning) child.stackPositioning = ov.stackPositioning;
+            if (ov.styleIdForText) child.styleIdForText = ov.styleIdForText;
+            if (ov.styleIdForFill) child.styleIdForFill = ov.styleIdForFill;
         }
 
         // Apply parameterConsumptionMap entries from componentPropAssignments

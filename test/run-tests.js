@@ -809,6 +809,40 @@ async function runAllTests() {
         assert(!cssContent.includes('min-height: 0'), 'CSS should not include redundant min-height: 0');
         assert(cssContent.includes('flex: 1'), 'CSS should use concise flex: 1');
 
+        // 13. Check Sidebar 2 preserves fixed width 256px despite align-self: stretch
+        const sidebar2Match = cssContent.match(/\.sidebar-2\s*\{([^}]+)\}/);
+        assert(sidebar2Match, 'should have .sidebar-2 rule');
+        assert(sidebar2Match[1].includes('width: 256px'), 'Sidebar 2 should have fixed width 256px');
+        assert(sidebar2Match[1].includes('align-self: stretch'), 'Sidebar 2 should have align-self: stretch');
+
+        // 14. Check Limits preserves fixed height 32px despite align-self: stretch
+        const limitsMatch = cssContent.match(/\.limits\s*\{([^}]+)\}/);
+        assert(limitsMatch, 'should have .limits rule');
+        assert(limitsMatch[1].includes('height: 32px'), 'Limits should have fixed height 32px');
+        assert(limitsMatch[1].includes('align-self: stretch'), 'Limits should have align-self: stretch');
+
+        // 15. Check text node has line-height and letter-spacing (including instance overrides like CRM2 with -3% letter-spacing)
+        const punkt2Match = cssContent.match(/\.punkt-2\s*\{([^}]+)\}/);
+        assert(punkt2Match, 'should have .punkt-2 rule');
+        assert(punkt2Match[1].includes('line-height: 1.25'), 'punkt-2 should have line-height: 1.25');
+        assert(punkt2Match[1].includes('letter-spacing: -0.03em'), 'punkt-2 (CRM2 with -3% override) should have letter-spacing: -0.03em');
+
+        const punkt3Match = cssContent.match(/\.punkt-3\s*\{([^}]+)\}/);
+        assert(punkt3Match, 'should have .punkt-3 rule');
+        assert(punkt3Match[1].includes('letter-spacing: 0em'), 'punkt-3 should have default letter-spacing: 0em');
+
+        // 16. Check masked robot image is not absolute and fills 100% of group-1 container (34x24)
+        const maskot2Match = cssContent.match(/\.schastlivyi-neonovyi-robot-maskot-2\s*\{([^}]+)\}/);
+        assert(maskot2Match, 'should have .schastlivyi-neonovyi-robot-maskot-2 rule');
+        assert(!maskot2Match[1].includes('position: absolute'), 'masked robot image should not be absolute');
+        assert(maskot2Match[1].includes('width: 100%'), 'masked robot image should have width: 100%');
+        assert(maskot2Match[1].includes('height: 100%'), 'masked robot image should have height: 100%');
+
+        const group1CssMatch = cssContent.match(/\.group-1\s*\{([^}]+)\}/);
+        assert(group1CssMatch, 'should have .group-1 rule');
+        assert(group1CssMatch[1].includes('width: 34px'), 'group-1 container should have width 34px');
+        assert(group1CssMatch[1].includes('height: 24px'), 'group-1 container should have height 24px');
+
         // Clean up
         fs.rmSync(outDir, { recursive: true, force: true });
     });

@@ -312,19 +312,32 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
 
         if (node.lineHeight) {
-            if (node.lineHeight.units === 'PERCENT' && node.lineHeight.value && node.lineHeight.value !== 100) {
-                styles['line-height'] = String(Math.round(node.lineHeight.value) / 100);
-            } else if (node.lineHeight.units === 'PIXELS' && node.lineHeight.value) {
+            if (typeof node.lineHeight === 'number') {
+                styles['line-height'] = `${Math.round(node.lineHeight * 10) / 10}px`;
+            } else if (node.lineHeight.units === 'RAW' && typeof node.lineHeight.value === 'number') {
+                styles['line-height'] = String(Math.round(node.lineHeight.value * 100) / 100);
+            } else if (node.lineHeight.units === 'PERCENT' && typeof node.lineHeight.value === 'number') {
+                const val = node.lineHeight.value > 10 ? node.lineHeight.value / 100 : node.lineHeight.value;
+                styles['line-height'] = String(Math.round(val * 100) / 100);
+            } else if (node.lineHeight.units === 'PIXELS' && typeof node.lineHeight.value === 'number') {
                 styles['line-height'] = `${Math.round(node.lineHeight.value * 10) / 10}px`;
             }
         }
 
-        if (node.letterSpacing && node.letterSpacing.value) {
+        if (node.letterSpacing && typeof node.letterSpacing.value === 'number') {
             if (node.letterSpacing.units === 'PERCENT') {
-                styles['letter-spacing'] = `${Math.round((node.letterSpacing.value / 100) * 100) / 100}em`;
+                const emVal = Math.round((node.letterSpacing.value / 100) * 1000) / 1000;
+                styles['letter-spacing'] = `${emVal}em`;
             } else if (node.letterSpacing.units === 'PIXELS') {
                 styles['letter-spacing'] = `${Math.round(node.letterSpacing.value * 10) / 10}px`;
+            } else if (node.letterSpacing.units === 'RAW') {
+                styles['letter-spacing'] = `${Math.round(node.letterSpacing.value * 1000) / 1000}em`;
             }
+        } else if (typeof node.letterSpacing === 'number') {
+            styles['letter-spacing'] = `${Math.round(node.letterSpacing * 10) / 10}px`;
+        } else if (typeof node.textTracking === 'number') {
+            const emVal = Math.abs(node.textTracking) > 1 ? node.textTracking / 1000 : node.textTracking;
+            styles['letter-spacing'] = `${Math.round(emVal * 1000) / 1000}em`;
         }
 
         if (node.textAlignHorizontal) {
@@ -419,7 +432,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     // 8. Sizing & Position relative to parent
     const parentIsAutoLayout = parentNode && (parentNode.stackMode === 'HORIZONTAL' || parentNode.stackMode === 'VERTICAL');
-    const isAbsolute = node.stackPositioning === 'ABSOLUTE' || (!parentIsAutoLayout && parentNode);
+    const parentHasMask = Boolean(parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.mask === true || c.isMask === true));
+    const isAbsolute = node.stackPositioning === 'ABSOLUTE' || (!parentIsAutoLayout && parentNode && !parentHasMask);
 
     // If current node has absolute children or is a slide/card, or is a container with children and not auto-layout
     const isContainer = ['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'COMPONENT'].includes(node.type);
@@ -465,6 +479,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
         if (node.size?.x) styles['width'] = `${Math.round(node.size.x)}px`;
         if (node.size?.y) styles['height'] = `${Math.round(node.size.y)}px`;
+    } else if (parentHasMask) {
+        // Masked child filling its container
+        styles['width'] = '100%';
+        styles['height'] = '100%';
+        styles['display'] = 'block';
     } else if (parentIsAutoLayout) {
         // Flow child in Auto Layout
         const isGrow = node.stackChildPrimaryGrow === 1.0 || node.layoutGrow === 1.0 || node.layoutGrow === 1;
@@ -534,15 +553,15 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             isFixedX = (node.textAutoResize === 'HEIGHT' || node.textAutoResize === 'NONE');
             isFixedY = (node.textAutoResize === 'NONE');
         } else {
-            // Non-auto-layout frame, instance, or group
-            isFixedX = !node.resizeToFit;
-            isFixedY = !node.resizeToFit;
+            // Non-auto-layout frame, instance, or group inside Auto Layout
+            isFixedX = true;
+            isFixedY = true;
         }
 
         // Primary & counter axis sizing
         if (isRow) {
             // Primary axis: Width
-            if (!styles['flex'] && !styles['flex-grow'] && styles['align-self'] !== 'stretch') {
+            if (!styles['flex'] && !styles['flex-grow']) {
                 if (isFixedX && node.size?.x) {
                     styles['width'] = `${Math.round(node.size.x)}px`;
                     styles['flex-shrink'] = '0';
@@ -556,7 +575,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             }
         } else {
             // Primary axis: Height
-            if (!styles['flex'] && !styles['flex-grow'] && styles['align-self'] !== 'stretch') {
+            if (!styles['flex'] && !styles['flex-grow']) {
                 if (isFixedY && node.size?.y) {
                     styles['height'] = `${Math.round(node.size.y)}px`;
                     styles['flex-shrink'] = '0';
