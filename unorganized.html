@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Page 1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+  :root {
+    --font-display: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --color-text-main: #f8fafc;
+    --color-text-muted: #94a3b8;
+    --color-card-bg: #1e293b;
+    --color-accent: #06b6d4;
+    --radius-md: 12px;
+    --radius-sm: 6px;
+    --color-primary: #6366f1;
+    --color-primary-hover: #4f46e5;
+    --color-bg: #0f172a;
+    --space-md: 16px;
+    --space-sm: 8px;
+    --space-lg: 24px;
+  }
+
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Fira Code', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--color-bg);
+    color: #c9d1d9;
+    line-height: 1.5;
+  }
+
+  button, input, optgroup, select, textarea {
+    font-family: inherit;
+    font-size: 100%;
+    line-height: inherit;
+    color: inherit;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    vertical-align: baseline;
+  }
+
+  button, [type="button"], [type="reset"], [type="submit"] {
+    -webkit-appearance: button;
+    appearance: button;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    outline: none;
+  }
+
+  input, textarea {
+    outline: none;
+    background: transparent;
+    border: none;
+  }
+
+  h1, h2, h3, h4, h5, h6, p {
+    margin: 0;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  ul, ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  img, svg {
+    display: block;
+    max-width: 100%;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: inherit;
+  }
+
+  .figma-bi-directional-engine-v1-2-0 {
+    background-color: var(--color-bg);
+    display: flex;
+    flex-direction: column;
+    padding: 46px 40px 40px 40px;
+    width: 1080px;
+    min-height: 522px;
+    margin: 0 auto;
+    position: relative;
+  }
+
+  .engine-v1-2-0-new-features-dem {
+    color: var(--color-accent);
+    font-size: 12px;
+    font-family: 'Fira Code', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0em;
+    display: flex;
+    align-items: center;
+  }
+
+  .title {
+    color: var(--color-text-main);
+    font-size: 32px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 38.4px;
+    letter-spacing: 0em;
+    align-self: stretch;
+    margin-top: 20px;
+  }
+
+  .subtitle {
+    color: var(--color-text-muted);
+    font-size: 15px;
+    font-family: var(--font-display);
+    line-height: 22.5px;
+    letter-spacing: 0em;
+    align-self: stretch;
+    margin-top: 10px;
+  }
+
+  .row {
+    display: flex;
+    flex-direction: row;
+    gap: 24px;
+    align-items: center;
+    align-self: stretch;
+    margin-top: 32px;
+  }
+
+  .card {
+    background-color: var(--color-card-bg);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-md);
+    box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.25);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 24px 24px 20px 24px;
+    position: relative;
+    overflow: hidden;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .card-icon {
+    color: var(--color-text-main);
+    font-size: 28px;
+    font-family: var(--font-display);
+    line-height: 28px;
+    letter-spacing: 0em;
+  }
+
+  .card-title {
+    color: var(--color-text-main);
+    font-size: 18px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0em;
+  }
+
+  .card-desc {
+    color: var(--color-text-muted);
+    font-size: 13px;
+    font-family: var(--font-display);
+    line-height: 19.5px;
+    letter-spacing: 0em;
+    align-self: stretch;
+  }
+
+  .row-2 {
+    display: flex;
+    flex-direction: row;
+    gap: 16px;
+    align-items: center;
+    margin-top: 36px;
+  }
+
+  .btn-primary {
+    background-color: var(--color-primary);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    padding: 12px 24px;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    align-self: center;
+    cursor: pointer;
+    border: none;
+  }
+
+  .zapustit-proekt {
+    color: #ffffff;
+    font-size: 14px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0em;
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+  }
+
+  .btn-secondary {
+    border: 1px solid var(--color-accent);
+    border-radius: var(--radius-sm);
+    display: flex;
+    flex-direction: column;
+    padding: 12px 24px;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    align-self: center;
+    cursor: pointer;
+  }
+
+  .eksport-tokenov {
+    color: var(--color-accent);
+    font-size: 14px;
+    font-family: var(--font-display);
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0em;
+    display: flex;
+    align-items: center;
+    align-self: stretch;
+  }
+
+  </style>
+</head>
+<body>
+    <div class="figma-bi-directional-engine-v1-2-0">
+      <span class="engine-v1-2-0-new-features-dem">ENGINE v1.2.0 • NEW FEATURES DEMO</span>
+      <h1 class="title">Новые возможности HTML ➔ Figma</h1>
+      <p class="subtitle">Этот файл демонстрирует нативные Figma Variables, CSS Grid, интерактивные ховеры и Google Fonts.</p>
+      <div class="row">
+        <div class="card">
+          <span class="card-icon">🎨</span>
+          <h3 class="card-title">Figma Variables</h3>
+          <p class="card-desc">Все :root CSS-переменные автоматически экспортированы в нативную коллекцию Local Variables (цвета, радиусы, отступы).</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">📐</span>
+          <h3 class="card-title">CSS Grid Auto Layout</h3>
+          <p class="card-desc">Сетка 3 колонки трансформирована в Auto Layout Wrap с вычисленными равными ширинами колонок без перекосов.</p>
+        </div>
+        <div class="card">
+          <span class="card-icon">✨</span>
+          <h3 class="card-title">Interactive Variants</h3>
+          <p class="card-desc">Кнопки ниже имеют готовые интерактивные прототипные связи для состояния :hover. Нажмите Present (Play) в Figma!</p>
+        </div>
+      </div>
+      <div class="row-2">
+        <button class="btn-primary">
+          <span class="zapustit-proekt">Запустить проект</span>
+        </button>
+        <button class="btn-secondary">
+          <span class="eksport-tokenov">Экспорт токенов</span>
+        </button>
+      </div>
+    </div>
+</body>
+</html>

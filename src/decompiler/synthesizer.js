@@ -176,6 +176,17 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         return containerNode;
     }
 
+    // Mark button-like containers to hug content
+    for (const node of flowNodes) {
+        const nodeName = (node.name || '').toLowerCase();
+        const isBtn = nodeName.startsWith('btn') || nodeName === 'button' || nodeName.includes('btn-');
+        if (isBtn) {
+            node.isButton = true;
+            node.stackPrimarySizing = 'RESIZE_TO_FIT';
+            node.stackCounterSizing = 'RESIZE_TO_FIT';
+        }
+    }
+
     // Single flow child inside container
     if (flowNodes.length === 1) {
         const child = flowNodes[0];
@@ -194,8 +205,8 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         containerNode.stackPaddingBottom = pb;
         containerNode.stackSpacing = 0;
 
-        // If child spans content width, stretch it
-        if (containerW > 0 && childBox.width >= (containerW - pl - pr - epsilon * 2)) {
+        // If child spans content width, stretch it (unless it is a button)
+        if (containerW > 0 && childBox.width >= (containerW - pl - pr - epsilon * 2) && !child.isButton) {
             child.stackCounterSizing = 'FIXED';
             child.layoutAlign = 'STRETCH';
         }
@@ -279,13 +290,39 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         containerNode.stackPaddingRight = pr;
         containerNode.stackPaddingBottom = pb;
 
-        // Calculate median gap between rows
+        // Evaluate row gaps uniformity
         const rowGaps = [];
         for (let i = 0; i < yBands.length - 1; i++) {
             const gap = yBands[i + 1].interval.start - yBands[i].interval.end;
             rowGaps.push(Math.max(0, Math.round(gap)));
         }
-        containerNode.stackSpacing = computeMedian(rowGaps);
+
+        const minRowGap = Math.min(...rowGaps);
+        const maxRowGap = Math.max(...rowGaps);
+        const isUniformGap = (maxRowGap - minRowGap) <= epsilon;
+
+        let baseGap = 0;
+        let useChildMargins = false;
+
+        if (isUniformGap) {
+            baseGap = computeMedian(rowGaps);
+            containerNode.stackSpacing = baseGap;
+        } else {
+            // Gaps vary! Find if there is a dominant gap
+            const gapClusters = clusterValues(rowGaps, epsilon);
+            gapClusters.sort((a, b) => b.values.length - a.values.length);
+
+            if (gapClusters[0].values.length >= Math.ceil(rowGaps.length * 0.7)) {
+                baseGap = Math.round(gapClusters[0].median);
+                containerNode.stackSpacing = baseGap;
+                useChildMargins = true;
+            } else {
+                // No dominant gap, all gaps differ (e.g. 20, 10, 32, 36)
+                baseGap = 0;
+                containerNode.stackSpacing = 0;
+                useChildMargins = true;
+            }
+        }
 
         // Horizontal cross-axis alignment
         const centers = yBands.map(b => b.bounds.centerX);
@@ -301,13 +338,25 @@ function synthesizeContainerLayout(containerNode, options = {}) {
 
         const newChildren = [];
 
-        for (const band of yBands) {
+        for (let bandIdx = 0; bandIdx < yBands.length; bandIdx++) {
+            const band = yBands[bandIdx];
+            let rowMarginTop = 0;
+            if (useChildMargins && bandIdx > 0) {
+                const actualGap = rowGaps[bandIdx - 1];
+                if (Math.abs(actualGap - baseGap) > epsilon || baseGap === 0) {
+                    rowMarginTop = actualGap - baseGap;
+                }
+            }
+
             if (band.nodes.length === 1) {
                 const singleNode = band.nodes[0];
+                if (rowMarginTop > 0) {
+                    singleNode.stackChildMarginTop = rowMarginTop;
+                }
                 const nodeBox = BoundingBox.fromNode(singleNode);
 
-                // Stretch full-width items
-                if (containerW > 0 && nodeBox.width >= (containerW - pl - pr - epsilon * 2)) {
+                // Stretch full-width items (unless it is a button)
+                if (containerW > 0 && nodeBox.width >= (containerW - pl - pr - epsilon * 2) && !singleNode.isButton) {
                     singleNode.stackCounterSizing = 'FIXED';
                     singleNode.layoutAlign = 'STRETCH';
                 }
@@ -319,12 +368,16 @@ function synthesizeContainerLayout(containerNode, options = {}) {
             } else {
                 // Synthesize a virtual horizontal row frame
                 const rowBounds = band.bounds;
+                const isFullWidthRow = containerW > 0 && rowBounds.width >= (containerW - pl - pr - epsilon * 2);
                 const rowFrame = {
                     guid: nextVirtualGuid(),
                     type: 'FRAME',
                     name: 'Row',
                     isSynthesized: true,
                     stackMode: 'HORIZONTAL',
+                    stackPrimarySizing: isFullWidthRow ? 'FIXED' : 'RESIZE_TO_FIT',
+                    stackCounterSizing: 'RESIZE_TO_FIT',
+                    layoutAlign: isFullWidthRow ? 'STRETCH' : 'INHERIT',
                     size: { x: rowBounds.width, y: rowBounds.height },
                     transform: {
                         m00: 1,
@@ -336,6 +389,10 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                     },
                     children: band.nodes
                 };
+
+                if (rowMarginTop > 0) {
+                    rowFrame.stackChildMarginTop = rowMarginTop;
+                }
 
                 // Adjust nodes' coordinates relative to rowFrame
                 for (const node of band.nodes) {
@@ -366,13 +423,100 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         containerNode.stackPaddingRight = pr;
         containerNode.stackPaddingBottom = pb;
 
+        // Mark button-like containers to hug content
+        for (const node of flowNodes) {
+            const nodeName = (node.name || '').toLowerCase();
+            const isBtn = nodeName.startsWith('btn') || nodeName === 'button' || nodeName.includes('btn-');
+            if (isBtn) {
+                node.isButton = true;
+                node.stackPrimarySizing = 'RESIZE_TO_FIT';
+                node.stackCounterSizing = 'RESIZE_TO_FIT';
+            }
+        }
+
+        // Analyze child widths and heights for equal sizing / flex distribution
+        const nonBtnNodes = flowNodes.filter(n => !n.isButton);
+        if (nonBtnNodes.length >= 2) {
+            const widths = nonBtnNodes.map(n => n.size?.x || n.width || 0).filter(w => w > 0);
+            const widthClusters = clusterValues(widths, epsilon);
+            const heights = nonBtnNodes.map(n => n.size?.y || n.height || 0).filter(h => h > 0);
+            const heightClusters = clusterValues(heights, epsilon);
+
+            // 1. Equal-width distribution
+            if (widthClusters.length === 1) {
+                // All items in the row have equal width
+                for (const n of nonBtnNodes) {
+                    n.layoutGrow = 1;
+                    n.stackChildPrimaryGrow = 1.0;
+                    n.isEqualWidthGroup = true;
+                }
+            } else if (widthClusters.length > 1) {
+                // Multiple width clusters: items in dominant cluster get flex: 1, others keep fixed width
+                widthClusters.sort((a, b) => b.values.length - a.values.length);
+                const largestCluster = widthClusters[0];
+                if (largestCluster.values.length >= 2) {
+                    for (const n of nonBtnNodes) {
+                        const nw = n.size?.x || n.width || 0;
+                        if (fuzzyEqual(nw, largestCluster.median, epsilon)) {
+                            n.layoutGrow = 1;
+                            n.stackChildPrimaryGrow = 1.0;
+                            n.isEqualWidthGroup = true;
+                        }
+                    }
+                }
+            }
+
+            // 2. Equal-height distribution
+            if (heightClusters.length === 1) {
+                // All items in the row have equal height
+                for (const n of nonBtnNodes) {
+                    n.isEqualHeightGroup = true;
+                }
+            } else if (heightClusters.length > 1) {
+                // Some items have equal height, some have different heights
+                heightClusters.sort((a, b) => b.values.length - a.values.length);
+                const largestHeightCluster = heightClusters[0];
+                if (largestHeightCluster.values.length >= 2) {
+                    for (const n of nonBtnNodes) {
+                        const nh = n.size?.y || n.height || 0;
+                        if (fuzzyEqual(nh, largestHeightCluster.median, epsilon)) {
+                            n.isEqualHeightGroup = true;
+                        }
+                    }
+                }
+            }
+        }
+
         // Calculate median gap between columns
         const colGaps = [];
         for (let i = 0; i < xBands.length - 1; i++) {
             const gap = xBands[i + 1].interval.start - xBands[i].interval.end;
             colGaps.push(Math.max(0, Math.round(gap)));
         }
-        containerNode.stackSpacing = computeMedian(colGaps);
+
+        const minColGap = Math.min(...colGaps);
+        const maxColGap = Math.max(...colGaps);
+        const isUniformColGap = (maxColGap - minColGap) <= epsilon;
+
+        let baseColGap = 0;
+        let useColMargins = false;
+
+        if (isUniformColGap) {
+            baseColGap = computeMedian(colGaps);
+            containerNode.stackSpacing = baseColGap;
+        } else {
+            const gapClusters = clusterValues(colGaps, epsilon);
+            gapClusters.sort((a, b) => b.values.length - a.values.length);
+            if (gapClusters[0].values.length >= Math.ceil(colGaps.length * 0.7)) {
+                baseColGap = Math.round(gapClusters[0].median);
+                containerNode.stackSpacing = baseColGap;
+                useColMargins = true;
+            } else {
+                baseColGap = 0;
+                containerNode.stackSpacing = 0;
+                useColMargins = true;
+            }
+        }
 
         // Check primary alignment (justify-content)
         // If elements are pushed to far edges (e.g., space-between navbar)
@@ -418,9 +562,21 @@ function synthesizeContainerLayout(containerNode, options = {}) {
 
         const newChildren = [];
 
-        for (const band of xBands) {
+        for (let bandIdx = 0; bandIdx < xBands.length; bandIdx++) {
+            const band = xBands[bandIdx];
+            let colMarginLeft = 0;
+            if (useColMargins && bandIdx > 0) {
+                const actualGap = colGaps[bandIdx - 1];
+                if (Math.abs(actualGap - baseColGap) > epsilon || baseColGap === 0) {
+                    colMarginLeft = actualGap - baseColGap;
+                }
+            }
+
             if (band.nodes.length === 1) {
                 const singleNode = band.nodes[0];
+                if (colMarginLeft > 0) {
+                    singleNode.stackChildMarginLeft = colMarginLeft;
+                }
                 if (singleNode.children && singleNode.children.length > 0 && singleNode.stackMode === 'NONE') {
                     synthesizeContainerLayout(singleNode, options);
                 }
@@ -434,6 +590,8 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                     name: 'Column',
                     isSynthesized: true,
                     stackMode: 'VERTICAL',
+                    stackPrimarySizing: 'RESIZE_TO_FIT',
+                    stackCounterSizing: 'RESIZE_TO_FIT',
                     size: { x: colBounds.width, y: colBounds.height },
                     transform: {
                         m00: 1,
@@ -445,6 +603,10 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                     },
                     children: band.nodes
                 };
+
+                if (colMarginLeft > 0) {
+                    colFrame.stackChildMarginLeft = colMarginLeft;
+                }
 
                 for (const node of band.nodes) {
                     adjustCoordinatesRelativeToContainer(node, colBounds.xMin, colBounds.yMin);

@@ -596,11 +596,15 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             }
         }
 
-        const alignSelfVal = node.stackChildAlignSelf || node.layoutAlign;
-        if (alignSelfVal === 'STRETCH') styles['align-self'] = 'stretch';
-        else if (alignSelfVal === 'CENTER') styles['align-self'] = 'center';
-        else if (alignSelfVal === 'MIN') styles['align-self'] = 'flex-start';
-        else if (alignSelfVal === 'MAX') styles['align-self'] = 'flex-end';
+        const rawAlignSelf = (node.stackChildAlignSelf && node.stackChildAlignSelf !== 'AUTO')
+            ? node.stackChildAlignSelf
+            : (node.layoutAlign || 'INHERIT');
+        if (rawAlignSelf === 'STRETCH') styles['align-self'] = 'stretch';
+        else if (rawAlignSelf === 'CENTER') styles['align-self'] = 'center';
+        else if (rawAlignSelf === 'MIN') styles['align-self'] = 'flex-start';
+        else if (rawAlignSelf === 'MAX') styles['align-self'] = 'flex-end';
+
+        const alignSelfVal = rawAlignSelf;
 
         const parentIsGrid = (layoutMode === 'grid' || parentNode?.isGrid || parentNode?.layoutType === 'GRID' || Boolean(parentNode?.gridColumns)) && parentNode && (
             parentNode.stackWrap === 'WRAP' ||
@@ -623,7 +627,15 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         const mr = node.stackChildMarginRight || 0;
         const mb = node.stackChildMarginBottom || 0;
         const ml = node.stackChildMarginLeft || 0;
-        if (mt || mr || mb || ml) {
+        if (mt && !mr && !mb && !ml) {
+            styles['margin-top'] = fmtSpacing(mt);
+        } else if (!mt && !mr && mb && !ml) {
+            styles['margin-bottom'] = fmtSpacing(mb);
+        } else if (!mt && mr && !mb && !ml) {
+            styles['margin-right'] = fmtSpacing(mr);
+        } else if (!mt && !mr && !mb && ml) {
+            styles['margin-left'] = fmtSpacing(ml);
+        } else if (mt || mr || mb || ml) {
             if (mt === mb && mr === ml && mt === mr) {
                 styles['margin'] = fmtSpacing(mt);
             } else if (mt === mb && mr === ml) {
@@ -637,6 +649,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         const isRow = parentNode.stackMode === 'HORIZONTAL';
         const isShapeOrImage = ['ELLIPSE', 'RECTANGLE', 'VECTOR', 'REGULAR_POLYGON', 'STAR', 'LINE'].includes(node.type);
         const isIconContainer = isVectorContainerCheck(node);
+        const isButton = Boolean(node.isButton || (/^(btn|button)/i.test(node.name || '')));
+
+        if (isButton) {
+            styles['cursor'] = 'pointer';
+        }
 
         const nodeIsAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
         let nodeHorizontalSizing = null;
@@ -673,22 +690,67 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             isFixedY = true;
         }
 
+        // Special handling for button-like elements, synthesized containers, and equal-dimension groups
+        if (isButton) {
+            isFixedX = false;
+            isFixedY = false;
+        }
+
+        if (node.isSynthesized) {
+            if (node.stackMode === 'HORIZONTAL') {
+                isFixedY = false;
+            } else if (node.stackMode === 'VERTICAL') {
+                isFixedX = false;
+            }
+        }
+
+        if (node.isEqualWidthGroup || node.layoutGrow === 1) {
+            isFixedX = false;
+            if (!styles['flex'] && !styles['flex-grow']) {
+                styles['flex'] = '1';
+                styles['min-width'] = '0';
+            }
+        }
+
+        if (node.isEqualHeightGroup) {
+            isFixedY = false;
+        }
+
+        // In a vertical flex container, check if child width stretches across container content
+        if (!isRow && parentNode && parentNode.size?.x) {
+            const padL = parentNode.stackPaddingLeft || parentNode.stackHorizontalPadding || 0;
+            const padR = parentNode.stackPaddingRight || parentNode.stackHorizontalPadding || 0;
+            const contentW = parentNode.size.x - padL - padR;
+            if (contentW > 0 && node.size?.x && Math.abs(node.size.x - contentW) <= 6) {
+                isFixedX = false;
+            }
+        }
+
+        // If align-self is stretch, cross-axis is not fixed
+        if (styles['align-self'] === 'stretch') {
+            if (isRow) {
+                isFixedY = false;
+            } else {
+                isFixedX = false;
+            }
+        }
+
         // Primary & counter axis sizing
         if (parentIsGrid) {
             styles['width'] = '100%';
-            if (isFixedY && node.size?.y) {
+            if (isFixedY && node.size?.y && !node.isEqualHeightGroup && !isButton) {
                 styles['height'] = fmtH(node.size.y);
             }
         } else if (isRow) {
             // Primary axis: Width
             if (!styles['flex'] && !styles['flex-grow']) {
-                if (isFixedX && node.size?.x) {
+                if (isFixedX && node.size?.x && !isButton) {
                     styles['width'] = fmtW(node.size.x);
                     styles['flex-shrink'] = '0';
                 }
             }
             // Counter axis: Height
-            if (styles['align-self'] !== 'stretch') {
+            if (styles['align-self'] !== 'stretch' && !node.isEqualHeightGroup && !isButton) {
                 if (isFixedY && node.size?.y) {
                     styles['height'] = fmtH(node.size.y);
                 }
@@ -696,13 +758,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         } else {
             // Primary axis: Height
             if (!styles['flex'] && !styles['flex-grow']) {
-                if (isFixedY && node.size?.y) {
+                if (isFixedY && node.size?.y && !node.isEqualHeightGroup && !isButton) {
                     styles['height'] = fmtH(node.size.y);
                     styles['flex-shrink'] = '0';
                 }
             }
             // Counter axis: Width
-            if (styles['align-self'] !== 'stretch') {
+            if (styles['align-self'] !== 'stretch' && !node.isEqualWidthGroup && !isButton) {
                 if (isFixedX && node.size?.x) {
                     styles['width'] = fmtW(node.size.x);
                 }

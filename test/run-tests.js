@@ -1890,6 +1890,66 @@ async function runAllTests() {
         fs.unlinkSync(outFigPath);
     });
 
+    it('handles equal-dimension flex distribution and outlier items in row', () => {
+        const mixedRow = {
+            type: 'FRAME',
+            name: 'Row',
+            size: { x: 1000, y: 200 },
+            stackMode: 'NONE',
+            children: [
+                { name: 'CardA', transform: { m02: 0, m12: 0 }, size: { x: 300, y: 200 }, stackMode: 'NONE' },
+                { name: 'CardB', transform: { m02: 320, m12: 0 }, size: { x: 300, y: 200 }, stackMode: 'NONE' },
+                { name: 'CardC', transform: { m02: 640, m12: 0 }, size: { x: 300, y: 200 }, stackMode: 'NONE' },
+                { name: 'SideBadge', transform: { m02: 960, m12: 80 }, size: { x: 40, y: 40 }, stackMode: 'NONE' }
+            ]
+        };
+        synthesizeContainerLayout(mixedRow);
+        assert.strictEqual(mixedRow.stackMode, 'HORIZONTAL');
+        assert.strictEqual(mixedRow.children[0].isEqualWidthGroup, true);
+        assert.strictEqual(mixedRow.children[0].layoutGrow, 1);
+        assert.strictEqual(mixedRow.children[1].isEqualWidthGroup, true);
+        assert.strictEqual(mixedRow.children[2].isEqualWidthGroup, true);
+        assert.strictEqual(mixedRow.children[3].isEqualWidthGroup, undefined);
+        assert.strictEqual(mixedRow.children[3].layoutGrow, undefined);
+    });
+
+    it('marks button-like containers to hug content and omit fixed width/height', () => {
+        const btnRow = {
+            type: 'FRAME',
+            name: 'BtnRow',
+            size: { x: 300, y: 50 },
+            stackMode: 'NONE',
+            children: [
+                { name: 'btn-submit', transform: { m02: 0, m12: 0 }, size: { x: 140, y: 44 }, stackMode: 'NONE' }
+            ]
+        };
+        synthesizeContainerLayout(btnRow);
+        assert.strictEqual(btnRow.children[0].isButton, true);
+        assert.strictEqual(btnRow.children[0].stackPrimarySizing, 'RESIZE_TO_FIT');
+        assert.strictEqual(btnRow.children[0].stackCounterSizing, 'RESIZE_TO_FIT');
+    });
+
+    await itAsync('decompiles unorganized.fig with clean Flexbox, no redundant width/height, and accurate section margins', async () => {
+        const res = await convertFigToHtml('unorganized.fig', { smartLayout: true });
+        const html = res.html;
+        assert(!html.includes('height: 215px'), 'Should not contain hardcoded height: 215px');
+        assert(!html.includes('width: 317px'), 'Should not contain hardcoded width: 317px');
+        assert(!html.includes('width: 175px'), 'btn-primary should not contain hardcoded width: 175px');
+        assert(!html.includes('height: 45px'), 'Buttons should not contain hardcoded height: 45px');
+        assert(html.includes('.figma-bi-directional-engine-v1-2-0'), 'Root container present');
+
+        // Ensure root container does NOT have artificial gap
+        const rootBlockMatch = html.match(/\.figma-bi-directional-engine-v1-2-0\s*\{([^}]+)\}/);
+        assert(rootBlockMatch, 'Root css block should exist');
+        assert(!rootBlockMatch[1].includes('gap:'), 'Root block should not have artificial uniform gap');
+
+        // Ensure precise margin-top rhythm is applied to sections
+        assert(html.includes('margin-top: 20px'), 'Title should have margin-top: 20px');
+        assert(html.includes('margin-top: 10px'), 'Subtitle should have margin-top: 10px');
+        assert(html.includes('margin-top: 32px'), 'Row should have margin-top: 32px');
+        assert(html.includes('margin-top: 36px'), 'Row-2 should have margin-top: 36px');
+    });
+
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);
     if (passedTests === totalTests) {
         console.log('\x1b[32m\x1b[1mAll tests passed successfully! 🚀\x1b[0m\n');
