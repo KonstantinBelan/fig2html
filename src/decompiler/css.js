@@ -133,6 +133,60 @@ function formatEffects(effects, options = {}) {
 }
 
 /**
+ * Formats Figma image paintFilter adjustments into CSS filter functions
+ * (exposure, contrast, saturation/vibrance, temperature, tint, highlights, shadows)
+ * @param {object} paintFilter
+ * @returns {string|null} CSS filter string
+ */
+function formatPaintFilter(paintFilter) {
+    if (!paintFilter || typeof paintFilter !== 'object') return null;
+    const parts = [];
+
+    // 1. Exposure (Brightness) [-1..1]
+    const exposure = paintFilter.exposure || 0;
+    if (Math.abs(exposure) > 0.01) {
+        const bVal = Math.max(0, Math.round((1 + exposure) * 100) / 100);
+        parts.push(`brightness(${bVal})`);
+    }
+
+    // 2. Contrast [-1..1]
+    const contrast = paintFilter.contrast || 0;
+    if (Math.abs(contrast) > 0.01) {
+        const cVal = Math.max(0, Math.round((1 + contrast) * 100) / 100);
+        parts.push(`contrast(${cVal})`);
+    }
+
+    // 3. Saturation / Vibrance [-1..1]
+    const sat = (paintFilter.vibrance !== undefined ? paintFilter.vibrance : paintFilter.saturation) || 0;
+    if (Math.abs(sat) > 0.01) {
+        if (sat <= -0.99) {
+            parts.push('grayscale(1)');
+        } else {
+            const sVal = Math.max(0, Math.round((1 + sat) * 100) / 100);
+            parts.push(`saturate(${sVal})`);
+        }
+    }
+
+    // 4. Temperature [-1..1] (Warmth / Coolness)
+    const temp = paintFilter.temperature || 0;
+    if (Math.abs(temp) > 0.01) {
+        if (temp > 0) {
+            parts.push(`sepia(${Math.round(temp * 40)}%)`);
+        } else {
+            parts.push(`hue-rotate(${Math.round(temp * 30)}deg)`);
+        }
+    }
+
+    // 5. Tint [-1..1]
+    const tint = paintFilter.tint || 0;
+    if (Math.abs(tint) > 0.01) {
+        parts.push(`hue-rotate(${Math.round(tint * 45)}deg)`);
+    }
+
+    return parts.length > 0 ? parts.join(' ') : null;
+}
+
+/**
  * Parses font style and weight names to numeric font-weight and italic style
  * @param {string} fontStyleName E.g. "Bold", "Semi Bold Italic", "Medium", "Light"
  * @returns {{ fontWeight: number, fontStyle: string }}
@@ -322,6 +376,20 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     if (eff.boxShadow) styles['box-shadow'] = eff.boxShadow;
     if (eff.filter) styles['filter'] = eff.filter;
     if (eff.backdropFilter) styles['backdrop-filter'] = eff.backdropFilter;
+
+    // 4b. Image Paint Adjustments (Exposure, Contrast, Saturation, Temperature, Tint)
+    let paintFilterStr = null;
+    if (Array.isArray(node.fillPaints)) {
+        for (const paint of node.fillPaints) {
+            if (paint && paint.visible !== false && paint.paintFilter) {
+                paintFilterStr = formatPaintFilter(paint.paintFilter);
+                if (paintFilterStr) break;
+            }
+        }
+    }
+    if (paintFilterStr) {
+        styles['filter'] = styles['filter'] ? `${styles['filter']} ${paintFilterStr}` : paintFilterStr;
+    }
 
     // 5. Opacity & Blend Mode
     if (node.opacity !== undefined && node.opacity !== null && node.opacity < 1.0) {
@@ -537,8 +605,9 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         styles['position'] = 'relative';
     }
 
-    // Overflow clipping for frames with absolute children, corner radius, slides/cards, masks, or clipsContent
-    if (node.clipsContent || hasAbsoluteChildren || isSlideOrCard || hasMaskChild || (node.type === 'FRAME' && node.cornerRadius && node.children?.length)) {
+    // Overflow clipping for frames with corner radius, slides/cards, masks, or clipsContent
+    // Note: Synthesized virtual frames should NEVER clip content unless explicitly marked clipsContent
+    if (!node.isSynthesized && (node.clipsContent || isSlideOrCard || hasMaskChild || (node.type === 'FRAME' && node.cornerRadius && node.children?.length))) {
         styles['overflow'] = 'hidden';
     }
 
@@ -553,11 +622,10 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
     }
 
-    // If parent has absolute children and this node is in-flow, elevate it above absolute backgrounds
+    // In-flow positioning relative to absolute siblings
     const parentHasAbsoluteChildren = parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.stackPositioning === 'ABSOLUTE');
     if (parentHasAbsoluteChildren && !isAbsolute && !styles['position']) {
         styles['position'] = 'relative';
-        styles['z-index'] = '1';
     }
 
     if (isAbsolute && parentNode) {
@@ -574,6 +642,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         } else {
             styles['left'] = `${posX}px`;
             styles['top'] = `${posY}px`;
+        }
+
+        // Overlay z-index calculation:
+        // Overlays and floating elements must be elevated above in-flow content
+        if (node.isDecorativeOverlay || node.stackPositioning === 'ABSOLUTE') {
+            const childIndex = Array.isArray(parentNode.children) ? parentNode.children.indexOf(node) : 0;
+            styles['z-index'] = String(10 + Math.max(0, childIndex));
         }
 
         if (node.size?.x) styles['width'] = fmtW(node.size.x);
@@ -697,11 +772,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
 
         if (node.isSynthesized) {
-            if (node.stackMode === 'HORIZONTAL') {
-                isFixedY = false;
-            } else if (node.stackMode === 'VERTICAL') {
-                isFixedX = false;
-            }
+            isFixedX = false;
+            isFixedY = false;
         }
 
         if (node.isEqualWidthGroup || node.layoutGrow === 1) {
@@ -738,19 +810,19 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         // Primary & counter axis sizing
         if (parentIsGrid) {
             styles['width'] = '100%';
-            if (isFixedY && node.size?.y && !node.isEqualHeightGroup && !isButton) {
+            if (isFixedY && node.size?.y && !node.isEqualHeightGroup && !isButton && !node.isSynthesized) {
                 styles['height'] = fmtH(node.size.y);
             }
         } else if (isRow) {
             // Primary axis: Width
             if (!styles['flex'] && !styles['flex-grow']) {
-                if (isFixedX && node.size?.x && !isButton) {
+                if (isFixedX && node.size?.x && !isButton && !node.isSynthesized) {
                     styles['width'] = fmtW(node.size.x);
                     styles['flex-shrink'] = '0';
                 }
             }
             // Counter axis: Height
-            if (styles['align-self'] !== 'stretch' && !node.isEqualHeightGroup && !isButton) {
+            if (styles['align-self'] !== 'stretch' && !node.isEqualHeightGroup && !isButton && !node.isSynthesized) {
                 if (isFixedY && node.size?.y) {
                     styles['height'] = fmtH(node.size.y);
                 }
@@ -758,13 +830,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         } else {
             // Primary axis: Height
             if (!styles['flex'] && !styles['flex-grow']) {
-                if (isFixedY && node.size?.y && !node.isEqualHeightGroup && !isButton) {
+                if (isFixedY && node.size?.y && !node.isEqualHeightGroup && !isButton && !node.isSynthesized) {
                     styles['height'] = fmtH(node.size.y);
                     styles['flex-shrink'] = '0';
                 }
             }
             // Counter axis: Width
-            if (styles['align-self'] !== 'stretch' && !node.isEqualWidthGroup && !isButton) {
+            if (styles['align-self'] !== 'stretch' && !node.isEqualWidthGroup && !isButton && !node.isSynthesized) {
                 if (isFixedX && node.size?.x) {
                     styles['width'] = fmtW(node.size.x);
                 }
@@ -833,6 +905,7 @@ module.exports = {
     getLinearGradientAngle,
     formatGradient,
     formatEffects,
+    formatPaintFilter,
     parseFontWeightAndStyle,
     computeNodeStyles,
     toStyleString

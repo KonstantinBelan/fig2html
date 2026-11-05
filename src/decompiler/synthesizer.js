@@ -400,6 +400,9 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                 }
 
                 synthesizeContainerLayout(rowFrame, options);
+                if (rowFrame.isSynthesized && rowFrame.stackMode === 'VERTICAL') {
+                    rowFrame.name = 'Column';
+                }
                 newChildren.push(rowFrame);
             }
         }
@@ -613,6 +616,9 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                 }
 
                 synthesizeContainerLayout(colFrame, options);
+                if (colFrame.isSynthesized && colFrame.stackMode === 'HORIZONTAL') {
+                    colFrame.name = 'Row';
+                }
                 newChildren.push(colFrame);
             }
         }

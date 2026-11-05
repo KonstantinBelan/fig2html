@@ -35,6 +35,7 @@ const {
     getLinearGradientAngle,
     formatGradient,
     formatEffects,
+    formatPaintFilter,
     parseFontWeightAndStyle,
     getExtensionForMime
 } = require('../src/decompiler/css');
@@ -479,6 +480,28 @@ async function runAllTests() {
         assert(res.boxShadow.includes('0px 4px 6px -1px rgba(0, 0, 0, 0.1)'));
         assert(res.boxShadow.includes('inset 0px 2px 4px rgba(0, 0, 0, 0.2)'));
         assert.strictEqual(res.backdropFilter, 'blur(12px)');
+    });
+
+    it('formats Figma image adjustments (paintFilter: exposure, contrast, saturation, temperature, tint) into CSS filter', () => {
+        // 1. Exposure and contrast
+        const f1 = formatPaintFilter({ exposure: 0.25, contrast: 0.1 });
+        assert.strictEqual(f1, 'brightness(1.25) contrast(1.1)');
+
+        // 2. Grayscale desaturation
+        const f2 = formatPaintFilter({ exposure: 0.09, contrast: 0.15, saturation: -1.0 });
+        assert.strictEqual(f2, 'brightness(1.09) contrast(1.15) grayscale(1)');
+
+        // 3. Vibrance and temperature (warm)
+        const f3 = formatPaintFilter({ vibrance: 0.5, temperature: 0.3 });
+        assert.strictEqual(f3, 'saturate(1.5) sepia(12%)');
+
+        // 4. Cold temperature and tint
+        const f4 = formatPaintFilter({ temperature: -0.5, tint: 0.2 });
+        assert.strictEqual(f4, 'hue-rotate(-15deg) hue-rotate(9deg)');
+
+        // 5. Empty or null filter
+        assert.strictEqual(formatPaintFilter(null), null);
+        assert.strictEqual(formatPaintFilter({}), null);
     });
 
     it('parses font weights and italic styles', () => {
@@ -1950,6 +1973,38 @@ async function runAllTests() {
         assert(html.includes('margin-top: 10px'), 'Subtitle should have margin-top: 10px');
         assert(html.includes('margin-top: 32px'), 'Row should have margin-top: 32px');
         assert(html.includes('margin-top: 36px'), 'Row-2 should have margin-top: 36px');
+    });
+
+    await itAsync('decompiles demo-absolute.fig without redundant height on rows, with elevated overlay z-index and paintFilter', async () => {
+        const res = await convertFigToHtml('demo-absolute.fig', { smartLayout: true });
+        const html = res.html;
+
+        // 1. Row/column container should NOT have static height
+        const rowMatch = html.match(/\.row\s*\{([^}]+)\}/);
+        assert(rowMatch, '.row rule should exist');
+        assert(!rowMatch[1].includes('height:'), '.row should not have hardcoded height');
+        assert(!rowMatch[1].includes('flex-shrink: 0'), '.row should not have flex-shrink: 0');
+
+        const colMatch = html.match(/\.column\s*\{([^}]+)\}/);
+        assert(colMatch, '.column rule should exist');
+        assert(!colMatch[1].includes('height:'), '.column should not have hardcoded height');
+
+        // 2. Main container should be responsive max-width
+        const mainMatch = html.match(/\.main-container\s*\{([^}]+)\}/);
+        assert(mainMatch, '.main-container should exist');
+        assert(mainMatch[1].includes('max-width: 1080px'), '.main-container should have max-width: 1080px');
+        assert(!/(?:^|[^-])width:\s*1080px/.test(mainMatch[1]), '.main-container should not have fixed width: 1080px');
+
+        // 3. Absolute overlay elements should have elevated z-index and image paintFilter
+        const abs2Match = html.match(/\.absolute-element-2\s*\{([^}]+)\}/);
+        assert(abs2Match, '.absolute-element-2 should exist');
+        assert(abs2Match[1].includes('z-index:'), '.absolute-element-2 should have z-index');
+        const zIndexVal = parseInt(abs2Match[1].match(/z-index:\s*(\d+)/)[1], 10);
+        assert(zIndexVal >= 10, `Overlay z-index should be >= 10, got ${zIndexVal}`);
+        assert(abs2Match[1].includes('filter: brightness(1.09) contrast(1.15) grayscale(1)'), 'Should contain image filter');
+
+        // 4. Overlays should not be clipped by synthesized containers
+        assert(!rowMatch[1].includes('overflow: hidden'), '.row should not clip overlay children');
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);
