@@ -37,6 +37,15 @@ const {
     toBaseClassName
 } = require('../src/decompiler/stylesheet');
 const {
+    toRem,
+    toEm,
+    toVw,
+    toVh,
+    formatFluidFontSize,
+    formatFluidSpacing,
+    formatFluidDimension
+} = require('../src/decompiler/units');
+const {
     parseCommandsBlob,
     parseVectorNetworkBlob,
     isVectorNode
@@ -536,6 +545,54 @@ async function runAllTests() {
         assert.strictEqual(opts5.compress, true);
         assert.strictEqual(opts5.imageFormat, 'avif');
         assert.strictEqual(opts5.imageScale, 1.5);
+
+        const opts6 = parseReverseArgs(['input.fig', '--layout', 'fluid']);
+        assert.strictEqual(opts6.layoutMode, 'fluid');
+
+        const opts7 = parseReverseArgs(['input.fig', '--fluid']);
+        assert.strictEqual(opts7.layoutMode, 'fluid');
+
+        const opts8 = parseReverseArgs(['input.fig', '--layout', 'relative']);
+        assert.strictEqual(opts8.layoutMode, 'relative');
+
+        const opts9 = parseReverseArgs(['input.fig', '--relative']);
+        assert.strictEqual(opts9.layoutMode, 'relative');
+
+        const opts10 = parseReverseArgs(['input.fig', '--rem']);
+        assert.strictEqual(opts10.layoutMode, 'relative');
+    });
+
+    it('converts px to relative units (rem, em, vw, vh)', () => {
+        assert.strictEqual(toRem(16), '1rem');
+        assert.strictEqual(toRem(24), '1.5rem');
+        assert.strictEqual(toRem(0), '0');
+        assert.strictEqual(toEm(32, 16), '2em');
+        assert.strictEqual(toEm(0), '0');
+        assert.strictEqual(toVw(720, 1440), '50vw');
+        assert.strictEqual(toVw(0), '0');
+        assert.strictEqual(toVh(450, 900), '50vh');
+        assert.strictEqual(toVh(0), '0');
+    });
+
+    it('formats fluid responsive values using clamp(), min() and max()', () => {
+        const fluidFont = formatFluidFontSize(32, 1440);
+        assert(fluidFont.startsWith('clamp('));
+        assert(fluidFont.includes('rem'));
+        assert(fluidFont.includes('vw'));
+
+        const fluidSpacing = formatFluidSpacing(40, 1440);
+        assert(fluidSpacing.startsWith('clamp('));
+        assert(fluidSpacing.includes('rem'));
+        assert(fluidSpacing.includes('vw'));
+
+        const fluidContainerWidth = formatFluidDimension(1200, 1440, true);
+        assert(fluidContainerWidth.startsWith('min(100%, clamp('));
+
+        const fluidCardWidth = formatFluidDimension(300, 1440, true);
+        assert(fluidCardWidth.startsWith('clamp('));
+
+        const fluidSmall = formatFluidDimension(24, 1440, true);
+        assert.strictEqual(fluidSmall, '1.5rem');
     });
 
     await itAsync('decompiles test/showcase.fig into valid standalone HTML', async () => {
@@ -774,6 +831,53 @@ async function runAllTests() {
         assert(meta.format === 'heif' || meta.format === 'avif', 'Image format on disk should be valid AVIF');
 
         fs.rmSync(outDir, { recursive: true, force: true });
+    });
+
+    await itAsync('decompiles test/showcase.fig with relative layout mode (--relative / --rem)', async () => {
+        const outHtml = path.resolve('test/test-relative.html');
+        await convertFigToHtml('test/showcase.fig', {
+            outputHtmlPath: outHtml,
+            layoutMode: 'relative'
+        });
+
+        assert(fs.existsSync(outHtml), 'HTML file should exist');
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+
+        // Check viewport meta
+        assert(htmlContent.includes('<meta name="viewport" content="width=device-width, initial-scale=1">'), 'Should include responsive viewport meta');
+
+        // Check root container styles: width: 100vw; min-height: 100vh;
+        assert(htmlContent.includes('width: 100vw'), 'Root container should have width: 100vw');
+        assert(htmlContent.includes('min-height: 100vh'), 'Root container should have min-height: 100vh');
+
+        // Check relative units (rem) used
+        assert(htmlContent.includes('rem'), 'Should use rem units in stylesheet');
+
+        fs.unlinkSync(outHtml);
+    });
+
+    await itAsync('decompiles test/showcase.fig with fluid responsive layout mode (--fluid)', async () => {
+        const outHtml = path.resolve('test/test-fluid.html');
+        await convertFigToHtml('test/showcase.fig', {
+            outputHtmlPath: outHtml,
+            layoutMode: 'fluid'
+        });
+
+        assert(fs.existsSync(outHtml), 'HTML file should exist');
+        const htmlContent = fs.readFileSync(outHtml, 'utf8');
+
+        // Check viewport meta
+        assert(htmlContent.includes('<meta name="viewport" content="width=device-width, initial-scale=1">'), 'Should include responsive viewport meta');
+
+        // Check main container styles: width: 100vw; min-height: 100dvh;
+        assert(htmlContent.includes('width: 100vw'), 'Root container should have width: 100vw');
+        assert(htmlContent.includes('min-height: 100dvh'), 'Root container should have min-height: 100dvh');
+
+        // Check fluid functions: min(), max(), clamp()
+        assert(htmlContent.includes('clamp('), 'Should use clamp() for fluid typography and spacing');
+        assert(htmlContent.includes('vw'), 'Should use viewport units (vw) inside fluid expressions');
+
+        fs.unlinkSync(outHtml);
     });
 
     await itAsync('performs full round-trip HTML -> .fig -> HTML and verifies content', async () => {
