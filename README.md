@@ -43,7 +43,7 @@ $ html-to-fig showcase.html showcase.fig
 
 ┌──────────────────────────────────────────┐
 │             HTML to Figma CLI            │
-│               v1.3.0                     │
+│               v1.4.0                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
 [██░░░░░░░░]  20% • Loading Kiwi schema...
@@ -73,7 +73,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 
 ┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
-│               v1.3.0                     │
+│               v1.4.0                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
 [██░░░░░░░░]  20% • Decoding Kiwi binary AST...
@@ -606,7 +606,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (99 тестов)
+    ├── run-tests.js        # Автоматический тестовый запуск (107 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
