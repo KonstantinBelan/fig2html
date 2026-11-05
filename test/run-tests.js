@@ -96,6 +96,24 @@ const {
 } = require('../src/decompiler/synthesizer');
 const { getCompiledSchema } = require('../src/schema');
 const { ZstdCodec } = require('zstd-codec');
+const {
+    parseBreakpointTag,
+    resolveBreakpointName,
+    categorizeWidth,
+    normalizeBaseName,
+    groupFramesIntoResponsivePages
+} = require('../src/decompiler/breakpoint-detector');
+const {
+    computeNodeSimilarity,
+    matchChildren,
+    alignBreakpointTrees
+} = require('../src/decompiler/ast-aligner');
+const {
+    calculateFluidClamp,
+    getBreakpointMediaQuery,
+    diffNodeStyles,
+    synthesizeResponsiveStyles
+} = require('../src/decompiler/responsive-css');
 
 let totalTests = 0;
 let passedTests = 0;
@@ -2542,6 +2560,469 @@ async function runAllTests() {
         // Buttons: Home and About shared identical styles, Catalog has different styles
         assert(cssContent.includes('.nav-btn {'), 'Base .nav-btn must exist in css');
         assert(cssContent.includes('.nav-btn--catalog {'), 'Conflicting .nav-btn--catalog must exist in css');
+
+        // Clean up
+        fs.unlinkSync(testFigPath);
+        fs.rmSync(outDir, { recursive: true, force: true });
+    });
+
+    console.log('\n12. Adaptive Multi-Breakpoint Engine Tests (v1.4.0)');
+
+    it('parses breakpoint tags across bracket, at-sign, delimiter, space and direct syntaxes', () => {
+        // 1. Bracket syntax
+        const b1 = parseBreakpointTag('Home [desktop]');
+        assert.strictEqual(b1.isBreakpointTagged, true);
+        assert.strictEqual(b1.baseName, 'Home');
+        assert.strictEqual(b1.breakpoint, 'desktop');
+
+        const b2 = parseBreakpointTag('Catalog [tablet]');
+        assert.strictEqual(b2.isBreakpointTagged, true);
+        assert.strictEqual(b2.breakpoint, 'tablet');
+
+        const b3 = parseBreakpointTag('Hero [w:375]');
+        assert.strictEqual(b3.isBreakpointTagged, true);
+        assert.strictEqual(b3.targetWidth, 375);
+        assert.strictEqual(b3.breakpoint, 'mobile');
+
+        const b4 = parseBreakpointTag('Landing [768px]');
+        assert.strictEqual(b4.isBreakpointTagged, true);
+        assert.strictEqual(b4.targetWidth, 768);
+        assert.strictEqual(b4.breakpoint, 'tablet');
+
+        const b5 = parseBreakpointTag('Главная [десктоп]');
+        assert.strictEqual(b5.isBreakpointTagged, true);
+        assert.strictEqual(b5.breakpoint, 'desktop');
+
+        // 2. At-sign syntax
+        const at1 = parseBreakpointTag('Home @1440');
+        assert.strictEqual(at1.isBreakpointTagged, true);
+        assert.strictEqual(at1.targetWidth, 1440);
+        assert.strictEqual(at1.breakpoint, 'desktop');
+
+        const at2 = parseBreakpointTag('Catalog @mobile');
+        assert.strictEqual(at2.isBreakpointTagged, true);
+        assert.strictEqual(at2.breakpoint, 'mobile');
+
+        // 3. Delimiter syntax
+        const d1 = parseBreakpointTag('Home / Desktop');
+        assert.strictEqual(d1.isBreakpointTagged, true);
+        assert.strictEqual(d1.baseName, 'Home');
+        assert.strictEqual(d1.breakpoint, 'desktop');
+
+        const d2 = parseBreakpointTag('Home - Mobile');
+        assert.strictEqual(d2.isBreakpointTagged, true);
+        assert.strictEqual(d2.breakpoint, 'mobile');
+
+        const d3 = parseBreakpointTag('Header (Tablet)');
+        assert.strictEqual(d3.isBreakpointTagged, true);
+        assert.strictEqual(d3.breakpoint, 'tablet');
+
+        // 4. Space syntax
+        const s1 = parseBreakpointTag('Home Desktop');
+        assert.strictEqual(s1.isBreakpointTagged, true);
+        assert.strictEqual(s1.breakpoint, 'desktop');
+
+        const s2 = parseBreakpointTag('Hero Mobile');
+        assert.strictEqual(s2.isBreakpointTagged, true);
+        assert.strictEqual(s2.breakpoint, 'mobile');
+
+        // 5. Direct keyword
+        const dk1 = parseBreakpointTag('Desktop');
+        assert.strictEqual(dk1.isBreakpointTagged, true);
+        assert.strictEqual(dk1.breakpoint, 'desktop');
+
+        const dk2 = parseBreakpointTag('Mobile');
+        assert.strictEqual(dk2.isBreakpointTagged, true);
+        assert.strictEqual(dk2.breakpoint, 'mobile');
+
+        // 6. Non-breakpoint names
+        const n1 = parseBreakpointTag('Primary Button');
+        assert.strictEqual(n1.isBreakpointTagged, false);
+
+        const n2 = parseBreakpointTag('Hero Section Title');
+        assert.strictEqual(n2.isBreakpointTagged, false);
+    });
+
+    it('groups screen frames into canonical responsive pages', () => {
+        const frames = [
+            { name: 'Home [desktop]', size: { x: 1440, y: 900 }, visible: true },
+            { name: 'Home [mobile]', size: { x: 375, y: 812 }, visible: true },
+            { name: 'About [desktop]', size: { x: 1440, y: 900 }, visible: true },
+            { name: 'About [mobile]', size: { x: 375, y: 812 }, visible: true }
+        ];
+
+        const pages = groupFramesIntoResponsivePages(frames);
+        assert.strictEqual(pages.length, 2, 'Should create 2 responsive page units (Home and About)');
+
+        const homePage = pages.find(p => p.pageName === 'Home');
+        assert(homePage, 'Home page must exist');
+        assert.strictEqual(homePage.isResponsive, true);
+        assert.strictEqual(homePage.breakpoints.length, 2);
+        assert.strictEqual(homePage.breakpoints[0].name, 'desktop');
+        assert.strictEqual(homePage.breakpoints[0].width, 1440);
+        assert.strictEqual(homePage.breakpoints[1].name, 'mobile');
+        assert.strictEqual(homePage.breakpoints[1].width, 375);
+
+        const aboutPage = pages.find(p => p.pageName === 'About');
+        assert(aboutPage, 'About page must exist');
+        assert.strictEqual(aboutPage.isResponsive, true);
+        assert.strictEqual(aboutPage.breakpoints.length, 2);
+    });
+
+    it('computes AST node similarity and matches corresponding elements across viewports', () => {
+        const desktopLogo = {
+            type: 'TEXT',
+            name: 'Logo',
+            characters: 'Acme Inc.',
+            textData: { characters: 'Acme Inc.' }
+        };
+        const mobileLogo = {
+            type: 'TEXT',
+            name: 'Logo',
+            characters: 'Acme Inc.',
+            textData: { characters: 'Acme Inc.' }
+        };
+        const differentText = {
+            type: 'TEXT',
+            name: 'Description',
+            characters: 'Some description text here',
+            textData: { characters: 'Some description text here' }
+        };
+        const rectNode = {
+            type: 'RECTANGLE',
+            name: 'Background'
+        };
+
+        const scoreIdentical = computeNodeSimilarity(desktopLogo, mobileLogo);
+        assert.strictEqual(scoreIdentical, 1.0, 'Identical nodes must have 1.0 similarity');
+
+        const scoreDiff = computeNodeSimilarity(desktopLogo, differentText);
+        assert(scoreDiff < 0.4, 'Completely different text must have low similarity');
+
+        const scoreTypeMismatch = computeNodeSimilarity(desktopLogo, rectNode);
+        assert.strictEqual(scoreTypeMismatch, 0.0, 'Incompatible types must have 0 similarity');
+
+        // matchChildren
+        const baseChildren = [desktopLogo, differentText];
+        const variantChildren = [mobileLogo];
+        const { matches, unmatchedBase, unmatchedVariant } = matchChildren(baseChildren, variantChildren);
+
+        assert.strictEqual(matches.length, 1);
+        assert.strictEqual(matches[0].base, desktopLogo);
+        assert.strictEqual(matches[0].variant, mobileLogo);
+        assert.strictEqual(unmatchedBase.length, 1);
+        assert.strictEqual(unmatchedBase[0], differentText);
+        assert.strictEqual(unmatchedVariant.length, 0);
+    });
+
+    it('reconciles AST trees and isolates exclusive desktop-only and mobile-only elements', () => {
+        const logoDesktop = { type: 'TEXT', name: 'Logo', characters: 'Acme' };
+        const navLinks = { type: 'FRAME', name: 'NavLinks', children: [] };
+        const ctaBtn = { type: 'FRAME', name: 'CTA', children: [] };
+
+        const desktopHeader = {
+            type: 'FRAME',
+            name: 'Header',
+            children: [logoDesktop, navLinks, ctaBtn]
+        };
+
+        const logoMobile = { type: 'TEXT', name: 'Logo', characters: 'Acme' };
+        const burgerBtn = { type: 'FRAME', name: 'BurgerBtn', children: [] };
+        const ctaMobile = { type: 'FRAME', name: 'CTA', children: [] };
+
+        const mobileHeader = {
+            type: 'FRAME',
+            name: 'Header',
+            children: [logoMobile, burgerBtn, ctaMobile]
+        };
+
+        const { canonicalTree, exclusiveNodes } = alignBreakpointTrees(desktopHeader, [
+            { name: 'mobile', width: 375, frame: mobileHeader }
+        ]);
+
+        assert(canonicalTree, 'Canonical tree must be returned');
+        // Canonical header should have 4 children: Logo, NavLinks, CTA, and injected BurgerBtn
+        assert.strictEqual(canonicalTree.children.length, 4, 'Canonical tree must contain 4 children (all elements)');
+
+        const cLogo = canonicalTree.children.find(c => c.name === 'Logo');
+        const cNav = canonicalTree.children.find(c => c.name === 'NavLinks');
+        const cCta = canonicalTree.children.find(c => c.name === 'CTA');
+        const cBurger = canonicalTree.children.find(c => c.name === 'BurgerBtn');
+
+        assert(cLogo && !cLogo.responsiveMetadata.isExclusive, 'Logo is shared');
+        assert(cCta && !cCta.responsiveMetadata.isExclusive, 'CTA is shared');
+
+        assert(cNav && cNav.responsiveMetadata.isExclusive, 'NavLinks must be marked exclusive');
+        assert.strictEqual(cNav.responsiveMetadata.exclusiveMode, 'desktop-only');
+        assert.strictEqual(cNav.responsiveMetadata.visibility.desktop, true);
+        assert.strictEqual(cNav.responsiveMetadata.visibility.mobile, false);
+
+        assert(cBurger && cBurger.responsiveMetadata.isExclusive, 'BurgerBtn must be marked exclusive');
+        assert.strictEqual(cBurger.responsiveMetadata.exclusiveMode, 'mobile-only');
+        assert.strictEqual(cBurger.responsiveMetadata.visibility.desktop, false);
+        assert.strictEqual(cBurger.responsiveMetadata.visibility.mobile, true);
+    });
+
+    it('calculates mathematical fluid clamp() formulas and formats media queries', () => {
+        // Desktop 48px at 1440px, Mobile 24px at 375px
+        const clampTitle = calculateFluidClamp(48, 1440, 24, 375);
+        assert(clampTitle.startsWith('clamp('), 'Must produce clamp()');
+        assert(clampTitle.includes('1.5rem'), 'Must contain min 1.5rem');
+        assert(clampTitle.includes('3rem'), 'Must contain max 3rem');
+        assert(clampTitle.includes('vw'), 'Must contain vw slope');
+
+        // Static value (no difference)
+        const staticVal = calculateFluidClamp(24, 1440, 24, 375);
+        assert.strictEqual(staticVal, '24px', 'Static value when no delta');
+
+        // getBreakpointMediaQuery
+        const mqDesktopFirst = getBreakpointMediaQuery({ name: 'mobile', width: 375 }, [{ width: 1440 }, { width: 375 }], false);
+        assert.strictEqual(mqDesktopFirst, '@media (max-width: 768px)', 'Mobile with no tablet defaults to standard 768px threshold');
+
+        const mqMobileFirst = getBreakpointMediaQuery({ name: 'desktop', width: 1440 }, [], true);
+        assert.strictEqual(mqMobileFirst, '@media (min-width: 1440px)');
+    });
+
+    it('synthesizes fluid clamp() for continuous properties and emits @media queries for discrete structural changes', () => {
+        const desktopHero = {
+            guid: { sessionID: 0, localID: 10 },
+            type: 'FRAME',
+            name: 'Hero',
+            stackMode: 'HORIZONTAL',
+            stackSpacing: 32,
+            size: { x: 1440, y: 600 }
+        };
+        const desktopTitle = {
+            guid: { sessionID: 0, localID: 11 },
+            type: 'TEXT',
+            name: 'Title',
+            fontSize: 48,
+            fontName: { family: 'Inter', style: 'Bold' },
+            textData: { characters: 'Hello World' },
+            size: { x: 600, y: 60 }
+        };
+        const desktopNav = {
+            guid: { sessionID: 0, localID: 12 },
+            type: 'FRAME',
+            name: 'DesktopNav',
+            stackMode: 'HORIZONTAL',
+            size: { x: 300, y: 40 }
+        };
+
+        const mobileHero = {
+            guid: { sessionID: 0, localID: 20 },
+            type: 'FRAME',
+            name: 'Hero',
+            stackMode: 'VERTICAL',
+            stackSpacing: 16,
+            size: { x: 375, y: 500 }
+        };
+        const mobileTitle = {
+            guid: { sessionID: 0, localID: 21 },
+            type: 'TEXT',
+            name: 'Title',
+            fontSize: 24,
+            fontName: { family: 'Inter', style: 'Bold' },
+            textData: { characters: 'Hello World' },
+            size: { x: 340, y: 40 }
+        };
+        const mobileBurger = {
+            guid: { sessionID: 0, localID: 22 },
+            type: 'FRAME',
+            name: 'BurgerBtn',
+            stackMode: 'HORIZONTAL',
+            size: { x: 40, y: 40 }
+        };
+
+        desktopHero.children = [desktopTitle, desktopNav];
+        mobileHero.children = [mobileTitle, mobileBurger];
+
+        const { canonicalTree } = alignBreakpointTrees(desktopHero, [
+            { name: 'mobile', width: 375, frame: mobileHero }
+        ]);
+
+        const stylesheetManager = new StylesheetManager();
+        const imgRegistry = new Map();
+
+        // Register tree
+        function reg(node) {
+            stylesheetManager.registerNode(node, null, imgRegistry);
+            if (node.children) node.children.forEach(reg);
+        }
+        reg(canonicalTree);
+
+        // Synthesize responsive styles
+        synthesizeResponsiveStyles({
+            canonicalTree,
+            pageBreakpoints: [
+                { name: 'desktop', width: 1440, frame: desktopHero },
+                { name: 'mobile', width: 375, frame: mobileHero }
+            ],
+            imageRegistry: imgRegistry,
+            stylesheetManager,
+            options: { fluid: true }
+        });
+
+        const fullCss = stylesheetManager.generateFullStylesheet();
+
+        // 1. Title should have fluid clamp for font-size
+        assert(fullCss.includes('font-size: clamp('), 'Title must have fluid font-size clamp');
+
+        // 2. Hero should have flex-direction: column in media query
+        assert(fullCss.includes('@media (max-width: 768px) {'), 'Must contain media query');
+        assert(fullCss.includes('flex-direction: column;'), 'Media query must contain flex-direction column override');
+
+        // 3. DesktopNav should be hidden in media query
+        assert(fullCss.includes('.desktopnav {'), 'DesktopNav selector exists');
+
+        // 4. BurgerBtn should have display: none in base, display: flex in media query
+        assert(fullCss.includes('.burgerbtn {'), 'BurgerBtn selector exists');
+    });
+
+    it('parses reverse CLI arguments for v1.4.0 responsive flags', () => {
+        const parsed1 = parseReverseArgs(['design.fig', '--responsive']);
+        assert.strictEqual(parsed1.responsive, true);
+
+        const parsed2 = parseReverseArgs(['design.fig', '--no-responsive']);
+        assert.strictEqual(parsed2.responsive, false);
+
+        const parsed3 = parseReverseArgs(['design.fig', '--breakpoints', '1440,768,375']);
+        assert.strictEqual(parsed3.breakpoints, '1440,768,375');
+
+        const parsed4 = parseReverseArgs(['design.fig', '--mobile-first']);
+        assert.strictEqual(parsed4.mobileFirst, true);
+    });
+
+    await itAsync('decompiles multi-breakpoint .fig into single canonical responsive HTML with fluid clamp and media queries', async () => {
+        const testFigPath = path.resolve('test/responsive-demo.fig');
+        const outDir = path.resolve('test/dist-responsive');
+        if (fs.existsSync(outDir)) {
+            fs.rmSync(outDir, { recursive: true, force: true });
+        }
+        fs.mkdirSync(outDir, { recursive: true });
+
+        // Create a 2-breakpoint mock HTML: Desktop (1440px) and Mobile (375px)
+        const mockHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .screen-desktop {
+            position: absolute;
+            left: 0px;
+            top: 0px;
+            width: 1440px;
+            height: 900px;
+            background-color: #0f172a;
+            display: flex;
+            flex-direction: column;
+            padding: 40px;
+        }
+        .screen-mobile {
+            position: absolute;
+            left: 1600px;
+            top: 0px;
+            width: 375px;
+            height: 812px;
+            background-color: #0f172a;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            font-size: 24px;
+            color: #ffffff;
+        }
+        .nav-links {
+            display: flex;
+            gap: 20px;
+            color: #94a3b8;
+        }
+        .burger-btn {
+            width: 32px;
+            height: 32px;
+            background-color: #3b82f6;
+        }
+        .hero-title {
+            font-size: 48px;
+            color: #ffffff;
+            margin-top: 40px;
+        }
+        .hero-title-mobile {
+            font-size: 24px;
+            color: #ffffff;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Screen 1: Desktop -->
+    <div class="screen-desktop" data-name="Home [desktop]">
+        <div class="header">
+            <div class="logo">Acme Inc.</div>
+            <div class="nav-links">Products</div>
+        </div>
+        <div class="hero-title">Build High Performance Websites</div>
+    </div>
+
+    <!-- Screen 2: Mobile -->
+    <div class="screen-mobile" data-name="Home [mobile]">
+        <div class="header">
+            <div class="logo">Acme Inc.</div>
+            <div class="burger-btn">Menu</div>
+        </div>
+        <div class="hero-title-mobile" data-name="hero-title">Build High Performance Websites</div>
+    </div>
+</body>
+</html>`;
+
+        const mockHtmlPath = path.resolve('test/temp-responsive.html');
+        fs.writeFileSync(mockHtmlPath, mockHtml, 'utf8');
+
+        // Compile to .fig
+        await generateFigFile({
+            htmlPath: mockHtmlPath,
+            outputPath: testFigPath,
+            templatePath: path.resolve('templates/template.fig'),
+            pageName: 'Page 1',
+            verbose: false
+        });
+        fs.unlinkSync(mockHtmlPath);
+
+        assert(fs.existsSync(testFigPath), 'responsive-demo.fig must be generated');
+
+        // Decompile with responsive engine active
+        const result = await convertFigToHtml(testFigPath, {
+            outputHtmlPath: path.join(outDir, 'index.html'),
+            responsive: true,
+            separateFiles: true,
+            cssFile: 'css/style.css'
+        });
+
+        assert.strictEqual(result.isResponsive, true, 'Result must be marked responsive');
+        assert(result.html, 'Must produce HTML');
+
+        // Verify single output HTML file is generated
+        const indexHtmlPath = path.join(outDir, 'index.html');
+        const styleCssPath = path.join(outDir, 'css/style.css');
+
+        assert(fs.existsSync(indexHtmlPath), 'index.html must exist');
+        assert(fs.existsSync(styleCssPath), 'css/style.css must exist');
+
+        const htmlContent = fs.readFileSync(indexHtmlPath, 'utf8');
+        const cssContent = fs.readFileSync(styleCssPath, 'utf8');
+
+        // Check HTML content: unified DOM contains both desktop and mobile elements
+        assert(htmlContent.includes('Acme Inc.'), 'HTML must contain shared logo text');
+        assert(htmlContent.includes('Build High Performance Websites'), 'HTML must contain shared hero title');
+        assert(htmlContent.includes('<meta name="viewport" content="width=device-width, initial-scale=1">'), 'Responsive viewport tag must be present');
+
+        // Check CSS content: fluid clamp or media queries
+        assert(cssContent.includes('@media (max-width:') || cssContent.includes('clamp('), 'CSS must include media queries or fluid clamp');
 
         // Clean up
         fs.unlinkSync(testFigPath);

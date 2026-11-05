@@ -3,9 +3,9 @@
 # 🎨 HTML to .fig & .fig to HTML
 ### Figma Bi-Directional Engine 2.0
 
-[![Version](https://img.shields.io/badge/version-1.3.0-6366f1.svg?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/version-1.4.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 99 passed](https://img.shields.io/badge/tests-99%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 107 passed](https://img.shields.io/badge/tests-107%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -175,6 +175,19 @@ Open dist/index.html in any browser.
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
+- **📱 Figma Adaptive Multi-Breakpoint Engine (v1.4.0)**:
+  - **Кросс-девайсная адаптивная верстка из связанных фреймов**: автоматическое объединение макетов разных экранов (например, Desktop `1440px`, Tablet `768px`, Mobile `375px`) в **единый канонический HTML-документ** без дублирования DOM-дерева.
+  - **AST Reconciliation & Similarity Matching**: интеллектуальный скоринг нод по контенту, именам слоев, типам и положению в иерархии с автоматическим связыванием соответствующих элементов.
+  - **Гибридный синтез стилей (Fluid `clamp()` + Media Queries)**:
+    - Непрерывные численные параметры (`font-size`, `padding`, `gap`, `border-radius`, `width`) интерполируются математической функцией `clamp(min, slope * 100vw + intercept, max)`, обеспечивая абсолютно плавное изменение размеров без скачков при ресайзе окна.
+    - Дискретные изменения каркаса (`flex-direction: row` ➔ `column`, `grid-template-columns`, `order`) аккуратно выносятся в медиа-запросы `@media (max-width: 768px)`.
+  - **Обработка эксклюзивных элементов (Exclusive Elements)**:
+    - Десктопное меню (`.nav-links`) и мобильная кнопка (`.burger-btn`) сосуществуют в одном семантическом HTML-дереве и переключаются через чистый `display: none` / `display: flex` без JavaScript.
+  - **Гибкая детекция и поддержка соглашений имён**:
+    - Теги: `Home [desktop]`, `Home [mobile]`, `Catalog @1440`, `Catalog @375`, `Landing / Desktop`, `Home Mobile`.
+  - **Поддержка Desktop-first и Mobile-first**:
+    - По умолчанию Desktop-first (`@media (max-width: ...)`).
+    - Флаг `--mobile-first` для генерации восходящих запросов (`@media (min-width: ...)`).
 - **🌐 Figma Multi-Page Import Engine (v1.3.0)**:
   - **Многостраничный экспорт за одну команду**: декомпиляция проектов Figma с множеством экранов или вкладок в готовую модульную файловую структуру (`index.html`, `about.html`, `catalog.html`, `contacts.html`) с **единым оптимизированным файлом `css/style.css`**.
   - **Трёхуровневая детекция страниц**:
@@ -250,6 +263,15 @@ npm run build
 ```bash
 # Декомпиляция .fig файла в чистый автономный HTML (Retina 2x + адаптивный srcset / sizes):
 node cli-reverse.js design.fig
+
+# Автоматическое слияние связанных экранов (Desktop, Tablet, Mobile) в единый responsive сайт (v1.4.0):
+node cli-reverse.js design.fig index.html --responsive
+
+# Явное указание целевых брейкпоинтов:
+node cli-reverse.js design.fig index.html --breakpoints 1440,1024,768,375
+
+# Подход Mobile-first (min-width вместо max-width):
+node cli-reverse.js design.fig index.html --mobile-first -s
 
 # Полноценная резиновая (fluid) вёрстка на всю ширину (100vw / 100dvh, clamp(), min(), max(), rem):
 node cli-reverse.js design.fig index.html --fluid
@@ -361,6 +383,10 @@ OPTIONS:
   --min-page-height <px>   Минимальная высота фрейма для признания отдельной страницей (по умолчанию: 400)
   --class-scope <mode>     Режим изоляции конфликтующих классов: modifier, scoped, numbered (по умолчанию: modifier)
   -w, --watch              Режим наблюдения (авторебилд при изменении .fig)
+  --responsive             Автоматическое слияние связанных экранов в единый responsive сайт (по умолчанию: включено)
+  --no-responsive          Отключить слияние брейкпоинтов (экспортировать каждый экран отдельной HTML страницей)
+  --breakpoints <list>     Целевые ширины брейкпоинтов через запятую (например: "1440,768,375")
+  --mobile-first           Генерация стилей Mobile-first (min-width вместо max-width)
   -s, --separate-files     Извлекать отдельный CSS (css/style.css) и картинки (img/*)
   --extract-css            Вынести стили в отдельный .css файл вместо <style> в <head>
   --css-file <path>        Путь для внешнего файла стилей (по умолчанию: "css/style.css")
@@ -451,6 +477,14 @@ async function decompile() {
         separateFiles: true,  // единый оптимизированный css/style.css и дедуплицированный пул img/*
         imageFormat: 'webp',
         verbose: true
+    });
+
+    // 5. Адаптивное слияние связанных экранов (Desktop, Tablet, Mobile) в единый сайт (v1.4.0):
+    const result5 = await convertFigToHtml('responsive.fig', {
+        outputHtmlPath: 'dist/index.html',
+        responsive: true,     // объединяет связанные фреймы в 1 канонический HTML-документ
+        separateFiles: true,  // dist/index.html + dist/css/style.css
+        breakpoints: '1440,768,375'
     });
     console.log(`Экспортировано ${result4.pages.length} страниц: ${result4.pages.map(p => p.fileName).join(', ')}`);
 

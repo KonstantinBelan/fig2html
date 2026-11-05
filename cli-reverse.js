@@ -53,6 +53,10 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--min-page-height <px>${colors.reset}    Minimum frame height to recognize as screen artboard (default: 400)
   ${colors.cyan}--class-scope <mode>${colors.reset}      CSS collision resolution: modifier, scoped, or numbered (default: modifier)
   ${colors.cyan}-w, --watch${colors.reset}                Watch input file and rebuild automatically on change
+  ${colors.cyan}--responsive${colors.reset}              Auto-detect & merge responsive breakpoints into 1 page (default: true)
+  ${colors.cyan}--no-responsive${colors.reset}           Disable responsive merge (export each frame as separate page)
+  ${colors.cyan}--breakpoints <list>${colors.reset}      Custom target breakpoint widths (e.g. "1440,768,375")
+  ${colors.cyan}--mobile-first${colors.reset}            Generate mobile-first CSS (min-width instead of max-width)
   ${colors.cyan}-s, --separate-files${colors.reset}      Extract external CSS (css/style.css) and images (img/)
   ${colors.cyan}--extract-css${colors.reset}              Extract stylesheet to a separate CSS file instead of <style>
   ${colors.cyan}--css-file <path>${colors.reset}          Path for external CSS file (default: "css/style.css")
@@ -120,7 +124,10 @@ function parseArgs(args) {
         compress: false,
         imageFormat: 'original',
         layoutMode: 'default',
-        smartLayout: true
+        smartLayout: true,
+        responsive: true,
+        breakpoints: null,
+        mobileFirst: false
     };
 
     const positionals = [];
@@ -182,10 +189,19 @@ function parseArgs(args) {
             options.inlineImages = false;
         } else if (arg === '--image-scale' || arg === '--scale') {
             options.imageScale = parseFloat(args[++i]);
-        } else if (arg === '--no-srcset' || arg === '--no-responsive' || arg === '--no-responsive-images') {
+        } else if (arg === '--no-srcset' || arg === '--no-responsive-images') {
             options.responsiveImages = false;
-        } else if (arg === '--srcset' || arg === '--responsive' || arg === '--responsive-images') {
+        } else if (arg === '--srcset' || arg === '--responsive-images') {
             options.responsiveImages = true;
+        } else if (arg === '--responsive') {
+            options.responsive = true;
+        } else if (arg === '--no-responsive') {
+            options.responsive = false;
+            options.noResponsive = true;
+        } else if (arg === '--breakpoints') {
+            options.breakpoints = args[++i];
+        } else if (arg === '--mobile-first') {
+            options.mobileFirst = true;
         } else if (arg === '-c' || arg === '--compress' || arg === '--lossless' || arg === '--optimize' || arg === '--compress-images') {
             options.compress = true;
         } else if (arg === '--format' || arg === '--image-format') {
@@ -277,6 +293,10 @@ async function runConversion(options) {
             imageFormat: options.imageFormat,
             layoutMode: options.layoutMode,
             smartLayout: options.smartLayout,
+            responsive: options.responsive,
+            noResponsive: options.noResponsive,
+            breakpoints: options.breakpoints,
+            mobileFirst: options.mobileFirst,
             extractTokens: options.extractTokens,
             tokens: options.tokens,
             onProgress: (pct, msg) => bar && bar.update(pct, msg)

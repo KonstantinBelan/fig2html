@@ -84,6 +84,30 @@ class StylesheetManager {
         this.nativeVariables = new Map(); // varName -> { name, rawName, type, value, modes }
         this.themeModeRules = new Map();  // modeName -> Map<varName, value>
         this.pseudoClassRules = new Map(); // `${className}:${pseudo}` -> styles
+        this.mediaRules = new Map(); // mediaQuery -> Map<selector, Record<string, string>>
+    }
+
+    /**
+     * Adds CSS style overrides to a media query block
+     * @param {string} mediaQuery e.g. "@media (max-width: 768px)"
+     * @param {string} selector e.g. ".hero" or ".burger-btn"
+     * @param {Record<string, string>} styles
+     */
+    addMediaRule(mediaQuery, selector, styles) {
+        if (!mediaQuery || !selector || !styles || Object.keys(styles).length === 0) return;
+        const cleanSelector = (selector.startsWith('.') || selector.startsWith(':') || selector.startsWith('#') || selector.includes(' '))
+            ? selector
+            : `.${selector}`;
+
+        if (!this.mediaRules.has(mediaQuery)) {
+            this.mediaRules.set(mediaQuery, new Map());
+        }
+        const selectorMap = this.mediaRules.get(mediaQuery);
+        if (!selectorMap.has(cleanSelector)) {
+            selectorMap.set(cleanSelector, {});
+        }
+        const existing = selectorMap.get(cleanSelector);
+        Object.assign(existing, styles);
     }
 
     /**
@@ -676,6 +700,43 @@ class StylesheetManager {
                 lines.push(`    ${prop}: ${finalVal};`);
             }
             lines.push('  }\n');
+        }
+
+        // 3.2 Media Query blocks (Adaptive Multi-Breakpoint Engine v1.4.0)
+        if (this.mediaRules.size > 0) {
+            // Sort media queries:
+            // Desktop-first: descending by max-width (e.g. 1024px, 768px, 480px)
+            // Mobile-first: ascending by min-width (e.g. 768px, 1024px, 1440px)
+            const sortedQueries = Array.from(this.mediaRules.keys()).sort((a, b) => {
+                const maxA = a.match(/max-width:\s*(\d+)px/);
+                const maxB = b.match(/max-width:\s*(\d+)px/);
+                if (maxA && maxB) {
+                    return parseInt(maxB[1], 10) - parseInt(maxA[1], 10);
+                }
+                const minA = a.match(/min-width:\s*(\d+)px/);
+                const minB = b.match(/min-width:\s*(\d+)px/);
+                if (minA && minB) {
+                    return parseInt(minA[1], 10) - parseInt(minB[1], 10);
+                }
+                return a.localeCompare(b);
+            });
+
+            for (const mq of sortedQueries) {
+                const selectorMap = this.mediaRules.get(mq);
+                if (!selectorMap || selectorMap.size === 0) continue;
+
+                lines.push(`  ${mq} {`);
+                for (const [sel, styles] of selectorMap.entries()) {
+                    if (!styles || Object.keys(styles).length === 0) continue;
+                    lines.push(`    ${sel} {`);
+                    for (const [prop, val] of Object.entries(styles)) {
+                        const finalVal = this.substituteVar(prop, String(val).replace(/"/g, "'"));
+                        lines.push(`      ${prop}: ${finalVal};`);
+                    }
+                    lines.push('    }\n');
+                }
+                lines.push('  }\n');
+            }
         }
 
         return lines.join('\n');

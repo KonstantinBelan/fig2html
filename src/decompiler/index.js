@@ -23,6 +23,9 @@ const {
     DEFAULT_MIN_PAGE_WIDTH,
     DEFAULT_MIN_PAGE_HEIGHT
 } = require('./page-detector');
+const { groupFramesIntoResponsivePages } = require('./breakpoint-detector');
+const { alignBreakpointTrees } = require('./ast-aligner');
+const { synthesizeResponsiveStyles } = require('./responsive-css');
 
 /**
  * Converts a Figma .fig binary file into a clean, standalone HTML/CSS document (or multi-page project)
@@ -124,6 +127,287 @@ async function convertFigToHtml(figInput, options = {}) {
     const cssPrefix = options.cssAssetUrlPrefix || (isExtractCss ? `../${assetsPrefix}` : assetsPrefix);
     const isResponsive = options.responsiveImages !== false && options.srcset !== false;
     const layoutMode = options.layoutMode || (options.fluid ? 'fluid' : (options.relative || options.rem ? 'relative' : 'default'));
+
+    // =========================================================================
+    // BRANCH R: ADAPTIVE MULTI-BREAKPOINT ENGINE (v1.4.0)
+    // =========================================================================
+    const isResponsiveEngineEnabled = options.responsive !== false && options.noResponsive !== true;
+    let responsiveGroups = [];
+    if (isResponsiveEngineEnabled) {
+        let candidateFrames = Boolean(options.allCanvases || options.allPages)
+            ? canvases.flatMap(c => c.children || [])
+            : rootNodes;
+
+        // If single wrapper container (e.g. body or canvas frame) and children contain screen frames
+        if (candidateFrames.length === 1 && Array.isArray(candidateFrames[0].children) && candidateFrames[0].children.length >= 2) {
+            candidateFrames = candidateFrames[0].children;
+        }
+
+        responsiveGroups = groupFramesIntoResponsivePages(candidateFrames, options);
+    }
+    const hasResponsivePages = responsiveGroups.length > 0 && responsiveGroups.some(p => p.isResponsive);
+
+    if (hasResponsivePages) {
+        log(`Responsive engine active: detected ${responsiveGroups.filter(p => p.isResponsive).length} responsive page groups.`);
+
+        // R.1 AST Reconciliation for responsive pages
+        reportProgress(30, 'Reconciling multi-breakpoint AST trees...');
+        for (const page of responsiveGroups) {
+            if (page.isResponsive) {
+                const isMobileFirst = Boolean(options.mobileFirst);
+                let baseBp = page.baseBreakpoint;
+                if (isMobileFirst) {
+                    baseBp = page.breakpoints.reduce((min, b) => b.width < min.width ? b : min, page.breakpoints[0]);
+                }
+                const variantBps = page.breakpoints.filter(b => b !== baseBp);
+                const { canonicalTree, nodeAlignmentMap, exclusiveNodes } = alignBreakpointTrees(baseBp.frame, variantBps);
+                page.canonicalTree = canonicalTree;
+                page.rootNodes = [canonicalTree];
+                page.width = baseBp.width;
+                page.height = baseBp.height;
+                page.exclusiveNodes = exclusiveNodes;
+            } else {
+                page.canonicalTree = page.rootNodes[0];
+            }
+        }
+
+        // R.2 Smart Layout Synthesis across canonical trees
+        if (isSmartLayout) {
+            reportProgress(38, 'Synthesizing adaptive layout across responsive trees...');
+            log('Running Smart Layout Synthesis across responsive canonical trees...');
+            for (const page of responsiveGroups) {
+                applySmartLayout(page.rootNodes, options);
+            }
+        }
+
+        // R.3 Image Optimization across all breakpoints
+        const allResponsiveFrames = responsiveGroups.flatMap(p => p.breakpoints ? p.breakpoints.map(b => b.frame) : p.rootNodes);
+        reportProgress(48, `Optimizing responsive images (${images.size} items)...`);
+        log('Optimizing project-wide images across all breakpoints...');
+        const { processedImages, nodeImageMap, filesToWrite, stats: imgStats } = await optimizeAllImages(images, allResponsiveFrames, {
+            imageScale: options.imageScale !== undefined ? options.imageScale : 2,
+            responsiveImages: isResponsive,
+            compress: options.compress || options.lossless,
+            imageFormat: options.imageFormat || options.format || 'original',
+            inlineImages: isInlineImages,
+            assetUrlPrefix: assetsPrefix,
+            cssAssetUrlPrefix: cssPrefix,
+            onProgress: (current, total) => {
+                const pct = 48 + Math.round((current / Math.max(1, total)) * 24);
+                reportProgress(pct, `Optimizing images (${current}/${total})...`);
+            }
+        });
+
+        // R.4 Extract image files if not inline
+        let outAssetsDir = null;
+        if (isInlineImages === false) {
+            reportProgress(72, 'Writing extracted image files...');
+            outAssetsDir = path.resolve(baseDir, assetsRelDir);
+            if (!fs.existsSync(outAssetsDir)) {
+                fs.mkdirSync(outAssetsDir, { recursive: true });
+            }
+            for (const file of filesToWrite) {
+                const filePath = path.join(outAssetsDir, file.fileName);
+                fs.writeFileSync(filePath, file.buffer);
+            }
+            log(`Extracted ${filesToWrite.length} image files to ${outAssetsDir}`);
+        }
+
+        // R.5 Node Statistics
+        const stats = { frames: 0, textNodes: 0, images: 0, shapes: 0 };
+        function collectStats(node) {
+            if (!node) return;
+            if (node.type === 'FRAME' || node.type === 'GROUP' || node.type === 'COMPONENT' || node.type === 'INSTANCE') stats.frames++;
+            else if (node.type === 'TEXT') stats.textNodes++;
+            else if (node.type === 'RECTANGLE' && node.fillPaints?.some(f => f.type === 'IMAGE')) stats.images++;
+            else stats.shapes++;
+            if (node.children) {
+                for (const c of node.children) collectStats(c);
+            }
+        }
+        for (const page of responsiveGroups) {
+            for (const r of page.rootNodes) collectStats(r);
+        }
+
+        // R.6 Unified Responsive Stylesheet & Style Synthesis
+        reportProgress(76, 'Building unified responsive stylesheet (clamp + @media)...');
+        log('Synthesizing fluid clamp() and breakpoint media queries...');
+        const isMulti = responsiveGroups.length > 1;
+        const stylesheetManager = new StylesheetManager({
+            ...options,
+            isMultiPage: isMulti,
+            classScope: options.classScope || 'modifier'
+        });
+
+        if (variables && variables.length > 0) {
+            stylesheetManager.registerFigmaVariables(variables, variableSets || []);
+        }
+
+        function registerTree(node, parent, isRoot = false) {
+            if (!node || node.visible === false || node.mask === true || node.isMask === true) return;
+            stylesheetManager.registerNode(node, parent, processedImages, { ...options, isRoot });
+            stylesheetManager.registerVariants(node, processedImages, options);
+            if (isVectorContainer(node)) return;
+            if (node.children) {
+                for (const child of node.children) {
+                    registerTree(child, node, false);
+                }
+            }
+        }
+
+        for (const page of responsiveGroups) {
+            stylesheetManager.setPageContext(page.slug, page.cleanName || page.pageName);
+            for (const root of page.rootNodes) {
+                registerTree(root, null, true);
+            }
+            if (page.isResponsive) {
+                synthesizeResponsiveStyles({
+                    canonicalTree: page.canonicalTree,
+                    pageBreakpoints: page.breakpoints,
+                    imageRegistry: processedImages,
+                    stylesheetManager,
+                    options
+                });
+            }
+        }
+
+        let rootBg = '#0d1117';
+        for (const page of responsiveGroups) {
+            const root = page.rootNodes[0];
+            if (root && Array.isArray(root.fillPaints)) {
+                const solid = root.fillPaints.find(f => f.type === 'SOLID' && f.visible !== false);
+                if (solid) {
+                    rootBg = formatColor(solid.color, solid.opacity);
+                    break;
+                }
+            }
+        }
+
+        const unifiedCss = stylesheetManager.generateFullStylesheet(rootBg);
+        const tokens = stylesheetManager.exportDesignTokens();
+
+        let extractedCssPath = null;
+        if (isExtractCss && unifiedCss) {
+            extractedCssPath = path.resolve(baseDir, cssRelPath);
+            const cssDir = path.dirname(extractedCssPath);
+            if (!fs.existsSync(cssDir)) {
+                fs.mkdirSync(cssDir, { recursive: true });
+            }
+            fs.writeFileSync(extractedCssPath, unifiedCss, 'utf8');
+            log(`Saved shared external stylesheet to ${extractedCssPath} (${Buffer.byteLength(unifiedCss, 'utf8')} bytes)`);
+        }
+
+        let extractedTokensPath = null;
+        if ((options.extractTokens || options.tokens) && tokens) {
+            const tokensRelPath = typeof options.tokens === 'string' ? options.tokens : 'tokens.json';
+            extractedTokensPath = path.isAbsolute(tokensRelPath)
+                ? tokensRelPath
+                : (path.dirname(tokensRelPath) !== '.' ? path.resolve(process.cwd(), tokensRelPath) : path.resolve(baseDir, tokensRelPath));
+            const tokensDir = path.dirname(extractedTokensPath);
+            if (!fs.existsSync(tokensDir)) {
+                fs.mkdirSync(tokensDir, { recursive: true });
+            }
+            fs.writeFileSync(extractedTokensPath, JSON.stringify(tokens, null, 2), 'utf8');
+            log(`Saved design tokens to ${extractedTokensPath}`);
+        }
+
+        // R.7 Generate HTML for each responsive page
+        const generatedPages = [];
+        for (let i = 0; i < responsiveGroups.length; i++) {
+            const page = responsiveGroups[i];
+            const pageNum = i + 1;
+            const total = responsiveGroups.length;
+            reportProgress(82 + Math.round((pageNum / total) * 16), `Generating HTML (Page ${pageNum}/${total}: ${page.fileName})...`);
+
+            const docResult = generateFullHtmlDocument(page.rootNodes, processedImages, {
+                ...options,
+                stylesheetManager,
+                skipRegisterTree: true,
+                skipRegisterVariables: true,
+                cssContent: unifiedCss,
+                pageSlug: page.slug,
+                isMultiPage: isMulti,
+                title: page.cleanName || page.pageName,
+                inlineImages: isInlineImages,
+                inlineStyles: options.inlineStyles === true,
+                extractCss: isExtractCss,
+                cssHref: cssRelPath,
+                assetUrlPrefix: assetsPrefix,
+                cssAssetUrlPrefix: cssPrefix,
+                blobs,
+                variables,
+                variableSets,
+                nodeImageMap,
+                responsiveImages: isResponsive,
+                layoutMode,
+                canvasWidth: page.width,
+                canvasHeight: page.height
+            });
+
+            const pageHtml = typeof docResult === 'string' ? docResult : docResult.html;
+
+            let pageOutputPath = null;
+            if (outputPath) {
+                if (outputPath.endsWith('.html')) {
+                    const outDir = path.dirname(outputPath);
+                    if (page.slug === 'index' || (i === 0 && !responsiveGroups.some(p => p.slug === 'index'))) {
+                        pageOutputPath = outputPath;
+                    } else {
+                        pageOutputPath = path.join(outDir, page.fileName);
+                    }
+                } else {
+                    pageOutputPath = path.join(outputPath, page.fileName);
+                }
+                const pDir = path.dirname(pageOutputPath);
+                if (!fs.existsSync(pDir)) {
+                    fs.mkdirSync(pDir, { recursive: true });
+                }
+                fs.writeFileSync(pageOutputPath, pageHtml, 'utf8');
+                log(`Saved HTML page [${page.slug}] to ${pageOutputPath}`);
+            }
+
+            generatedPages.push({
+                name: page.pageName,
+                cleanName: page.cleanName,
+                slug: page.slug,
+                fileName: page.fileName,
+                isResponsive: page.isResponsive,
+                breakpoints: page.breakpoints,
+                outputPath: pageOutputPath,
+                html: pageHtml,
+                rootNodes: page.rootNodes
+            });
+        }
+
+        reportProgress(100, 'Complete');
+        const durationMs = Date.now() - startTime;
+        const mainPage = generatedPages.find(p => p.slug === 'index') || generatedPages[0];
+
+        return {
+            html: mainPage.html,
+            css: (isExtractCss || options.returnCss || options.extractCss) ? unifiedCss : null,
+            tokens,
+            tokensPath: extractedTokensPath,
+            outputPath: mainPage.outputPath || outputPath,
+            cssPath: extractedCssPath,
+            assetsDir: isInlineImages === false ? outAssetsDir : null,
+            totalNodes: nodeChanges.length,
+            imagesCount: processedImages.size,
+            durationMs,
+            isResponsive: true,
+            isMultiPage: isMulti,
+            pages: generatedPages,
+            stats: {
+                ...stats,
+                pagesCount: generatedPages.length,
+                breakpointsCount: responsiveGroups.reduce((acc, p) => acc + (p.breakpoints ? p.breakpoints.length : 1), 0),
+                variablesCount: variables?.length || 0,
+                variableSetsCount: variableSets?.length || 0,
+                imageOptimization: imgStats,
+                exportedFilesCount: filesToWrite.length
+            }
+        };
+    }
 
     // =========================================================================
     // BRANCH A: MULTI-PAGE EXPORT PIPELINE

@@ -41,25 +41,33 @@ ${colors.bold}ARGUMENTS:${colors.reset}
   ${colors.green}[output.fig]${colors.reset}      Path for the generated .fig file (default: <input-basename>.fig)
 
 ${colors.bold}OPTIONS:${colors.reset}
-  ${colors.cyan}-i, --input <file>${colors.reset}       Path to input HTML file
-  ${colors.cyan}-o, --output <file>${colors.reset}      Path to output .fig file
+  ${colors.cyan}-i, --input <file>${colors.reset}       Path to input HTML or .fig file
+  ${colors.cyan}-o, --output <file>${colors.reset}      Path to output .fig or .html file
   ${colors.cyan}-t, --template <file>${colors.reset}    Path to template .fig (default: templates/template.fig)
   ${colors.cyan}-p, --page <name>${colors.reset}        Target Figma page name (default: "Page 1")
   ${colors.cyan}-w, --watch${colors.reset}              Watch input file and rebuild automatically on change
+  ${colors.cyan}--responsive${colors.reset}            Auto-detect & merge responsive breakpoints into 1 page (default: true)
+  ${colors.cyan}--no-responsive${colors.reset}         Disable responsive merge (export each frame as separate page)
+  ${colors.cyan}--breakpoints <list>${colors.reset}    Custom target breakpoint widths (e.g. "1440,768,375")
+  ${colors.cyan}--mobile-first${colors.reset}          Generate mobile-first CSS (min-width instead of max-width)
+  ${colors.cyan}--separate-files${colors.reset}        Extract CSS to style.css and images to img/
   ${colors.cyan}--no-remote-images${colors.reset}     Disable downloading remote HTTP/HTTPS images
   ${colors.cyan}-v, --verbose${colors.reset}            Print verbose execution logs
   ${colors.cyan}-h, --help${colors.reset}               Display this help message
   ${colors.cyan}-V, --version${colors.reset}            Display version number
 
 ${colors.bold}EXAMPLES:${colors.reset}
-  ${colors.gray}# Simple conversion:${colors.reset}
+  ${colors.gray}# Simple conversion (HTML -> Figma):${colors.reset}
   $ html-to-fig index.html
 
-  ${colors.gray}# Specify custom output:${colors.reset}
-  $ html-to-fig landing.html landing-design.fig
+  ${colors.gray}# Decompile Figma .fig -> HTML/CSS (Auto Responsive):${colors.reset}
+  $ html-to-fig design.fig
 
-  ${colors.gray}# Live reload / watch mode:${colors.reset}
-  $ html-to-fig test/test.html -w
+  ${colors.gray}# Responsive decompile with custom breakpoints:${colors.reset}
+  $ html-to-fig design.fig --breakpoints 1440,1024,768,375
+
+  ${colors.gray}# Mobile-first responsive export:${colors.reset}
+  $ html-to-fig design.fig --mobile-first --separate-files
 `);
 }
 
@@ -97,6 +105,21 @@ function parseArgs(args) {
             options.watch = true;
         } else if (arg === '--no-remote-images') {
             options.remoteImages = false;
+        } else if (arg === '--responsive') {
+            options.responsive = true;
+        } else if (arg === '--no-responsive') {
+            options.responsive = false;
+            options.noResponsive = true;
+        } else if (arg === '--breakpoints') {
+            options.breakpoints = args[++i];
+        } else if (arg === '--mobile-first') {
+            options.mobileFirst = true;
+        } else if (arg === '--separate-files') {
+            options.separateFiles = true;
+        } else if (arg === '--extract-css') {
+            options.extractCss = true;
+        } else if (arg === '-r' || arg === '--reverse') {
+            options.reverse = true;
         } else if (arg === '-v' || arg === '--verbose') {
             options.verbose = true;
         } else if (!arg.startsWith('-')) {
@@ -131,7 +154,7 @@ async function runConversion(options) {
     const outputPath = path.resolve(options.output);
     const isReverse = inputPath.toLowerCase().endsWith('.fig');
 
-    if (isReverse) {
+    if (isReverse || options.reverse) {
         console.log(`${colors.magenta}⚡ Decompiling:${colors.reset} ${path.basename(inputPath)} -> ${path.basename(outputPath)}...`);
 
         const bar = options.verbose ? null : new ProgressBar();
@@ -140,7 +163,13 @@ async function runConversion(options) {
             result = await convertFigToHtml(inputPath, {
                 outputHtmlPath: outputPath,
                 pageName: options.page,
-                inlineImages: true,
+                inlineImages: options.separateFiles ? false : true,
+                separateFiles: options.separateFiles,
+                extractCss: options.extractCss,
+                responsive: options.responsive,
+                noResponsive: options.noResponsive,
+                breakpoints: options.breakpoints,
+                mobileFirst: options.mobileFirst,
                 verbose: options.verbose,
                 onProgress: (pct, msg) => bar && bar.update(pct, msg)
             });
@@ -154,6 +183,9 @@ async function runConversion(options) {
         console.log(`${colors.bold}┌─────────────────────────────────────────┐${colors.reset}`);
         console.log(`│ ${colors.bold}File:${colors.reset}       ${path.basename(outputPath).padEnd(27)} │`);
         console.log(`│ ${colors.bold}Size:${colors.reset}       ${formatBytes(outStat.size).padEnd(27)} │`);
+        if (result.isResponsive) {
+            console.log(`│ ${colors.bold}Responsive:${colors.reset} ${String((result.stats.breakpointsCount || 2) + ' breakpoints merged').padEnd(27)} │`);
+        }
         console.log(`│ ${colors.bold}Nodes:${colors.reset}      ${String(result.totalNodes + ' total in fig').padEnd(27)} │`);
         console.log(`│   ${colors.dim}Frames:${colors.reset}   ${String(result.stats.frames).padEnd(27)} │`);
         console.log(`│   ${colors.dim}Text:${colors.reset}     ${String(result.stats.textNodes).padEnd(27)} │`);
