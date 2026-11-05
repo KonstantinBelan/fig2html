@@ -150,6 +150,93 @@ function detectGrid(nodes, containerSize = null, epsilon = 3) {
 }
 
 /**
+ * Determines whether a child node should be treated as an absolute/decorative overlay
+ * rather than an in-flow layout element.
+ *
+ * @param {object} node Node to inspect
+ * @param {number} containerW Container width
+ * @param {number} containerH Container height
+ * @param {Array<object>} allChildren All sibling children in this container
+ * @param {number} epsilon Tolerance
+ * @returns {boolean}
+ */
+function isOverlayNode(node, containerW, containerH, allChildren, epsilon = 3) {
+    if (!node) return false;
+    if (node.stackPositioning === 'ABSOLUTE' || node.isDecorativeOverlay) {
+        return true;
+    }
+
+    const nodeName = (node.name || '').toLowerCase();
+
+    // 1. Explicit naming convention: absolute-*, overlay-*, badge-*, float-*
+    if (nodeName.startsWith('absolute') || nodeName.includes('absolute-') ||
+        nodeName.startsWith('overlay') || nodeName.includes('overlay-') ||
+        nodeName.startsWith('badge-') || nodeName.includes('badge-') ||
+        nodeName.startsWith('float-') || nodeName.includes('float-')) {
+        return true;
+    }
+
+    const nodeBox = BoundingBox.fromNode(node);
+    if (!nodeBox || nodeBox.width <= 0 || nodeBox.height <= 0) return false;
+
+    // Full-width spanning elements are flow sections, not overlays
+    if (containerW > 0 && nodeBox.width >= containerW - epsilon * 2) {
+        return false;
+    }
+
+    // 2. Bleeding outside container / artboard boundaries:
+    // If an element protrudes beyond artboard edges (left < 0, top < 0, right > W, bottom > H),
+    // it cannot be an in-flow flex child — it must be positioned absolutely.
+    if (containerW > 0 && (nodeBox.xMax > containerW + epsilon || nodeBox.xMin < -epsilon)) {
+        return true;
+    }
+    if (containerH > 0 && (nodeBox.yMax > containerH + epsilon || nodeBox.yMin < -epsilon)) {
+        return true;
+    }
+
+    // 3. Touching artboard right/bottom edge while flow siblings have consistent padding
+    // If container has width, and node is a relatively small non-full-width element
+    // (e.g. coin, badge) whose right edge touches or nearly touches the canvas edge (nodeBox.xMax >= containerW - epsilon),
+    // but there are other flow siblings that have a significant margin (e.g. >= 15px),
+    // and this node overlaps one or more of them in Y:
+    if (containerW > 0 && nodeBox.width < containerW * 0.6 && allChildren && allChildren.length > 1) {
+        if (nodeBox.xMax >= containerW - epsilon) {
+            const otherSiblings = allChildren.filter(s => s !== node);
+            const otherBoxes = otherSiblings.map(s => BoundingBox.fromNode(s));
+            const otherMaxX = Math.max(...otherBoxes.map(b => b.xMax));
+            if (containerW - otherMaxX >= 15) {
+                const overlapsAny = otherBoxes.some(b => nodeBox.intersects(b, -epsilon));
+                if (overlapsAny) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    // 4. Overlap across multiple distinct flow siblings (Z-index / floating overlay):
+    // If this node is not a full-width container, and it overlaps 2 or more non-overlapping sibling nodes,
+    // it is floating over them.
+    if (allChildren && allChildren.length >= 3 && nodeBox.width < (containerW > 0 ? containerW * 0.7 : 800)) {
+        const otherNodes = allChildren.filter(s => s !== node);
+        const overlappingSiblings = otherNodes.filter(s => {
+            const sb = BoundingBox.fromNode(s);
+            return nodeBox.intersects(sb, -epsilon);
+        });
+
+        if (overlappingSiblings.length >= 2) {
+            // Check if those overlapping siblings are separated from each other
+            const b1 = BoundingBox.fromNode(overlappingSiblings[0]);
+            const b2 = BoundingBox.fromNode(overlappingSiblings[1]);
+            if (!b1.intersects(b2, epsilon)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
  * Synthesizes Auto Layout and Grid properties for a container frame and its children
  * @param {object} containerNode
  * @param {object} [options={}]
@@ -169,8 +256,18 @@ function synthesizeContainerLayout(containerNode, options = {}) {
     const containerH = containerNode.size?.y || containerNode.height || 0;
 
     // Separate flow nodes from absolute/decorative overlay nodes
-    let flowNodes = containerNode.children.filter(c => c.stackPositioning !== 'ABSOLUTE');
-    const overlayNodes = containerNode.children.filter(c => c.stackPositioning === 'ABSOLUTE');
+    let flowNodes = [];
+    const overlayNodes = [];
+
+    for (const child of containerNode.children) {
+        if (isOverlayNode(child, containerW, containerH, containerNode.children, epsilon)) {
+            child.stackPositioning = 'ABSOLUTE';
+            child.isDecorativeOverlay = true;
+            overlayNodes.push(child);
+        } else {
+            flowNodes.push(child);
+        }
+    }
 
     if (flowNodes.length === 0) {
         return containerNode;
@@ -216,6 +313,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
             synthesizeContainerLayout(child, options);
         }
 
+        containerNode.children = [child, ...overlayNodes];
         return containerNode;
     }
 
@@ -634,6 +732,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         }
     }
 
+    containerNode.children = [...flowNodes, ...overlayNodes];
     return containerNode;
 }
 

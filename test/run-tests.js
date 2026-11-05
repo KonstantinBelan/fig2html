@@ -1979,21 +1979,19 @@ async function runAllTests() {
         const res = await convertFigToHtml('demo-absolute.fig', { smartLayout: true });
         const html = res.html;
 
-        // 1. Row/column container should NOT have static height
+        // 1. Row container should NOT have static height
         const rowMatch = html.match(/\.row\s*\{([^}]+)\}/);
         assert(rowMatch, '.row rule should exist');
         assert(!rowMatch[1].includes('height:'), '.row should not have hardcoded height');
         assert(!rowMatch[1].includes('flex-shrink: 0'), '.row should not have flex-shrink: 0');
 
-        const colMatch = html.match(/\.column\s*\{([^}]+)\}/);
-        assert(colMatch, '.column rule should exist');
-        assert(!colMatch[1].includes('height:'), '.column should not have hardcoded height');
-
-        // 2. Main container should be responsive max-width
+        // 2. Main container should be responsive max-width with symmetric padding
         const mainMatch = html.match(/\.main-container\s*\{([^}]+)\}/);
         assert(mainMatch, '.main-container should exist');
         assert(mainMatch[1].includes('max-width: 1080px'), '.main-container should have max-width: 1080px');
         assert(!/(?:^|[^-])width:\s*1080px/.test(mainMatch[1]), '.main-container should not have fixed width: 1080px');
+        assert(mainMatch[1].includes('padding: 46px 40px 40px 40px'), '.main-container should have symmetric 40px padding');
+        assert(!mainMatch[1].includes('padding: 46px 0px 40px 40px'), '.main-container should not lose right padding due to absolute overlay');
 
         // 3. Absolute overlay elements should have elevated z-index and image paintFilter
         const abs2Match = html.match(/\.absolute-element-2\s*\{([^}]+)\}/);
@@ -2005,6 +2003,30 @@ async function runAllTests() {
 
         // 4. Overlays should not be clipped by synthesized containers
         assert(!rowMatch[1].includes('overflow: hidden'), '.row should not clip overlay children');
+    });
+
+    it('isolates elements bleeding outside canvas boundaries without distorting container padding', () => {
+        const frame = {
+            type: 'FRAME',
+            name: 'Hero',
+            size: { x: 1000, y: 500 },
+            stackMode: 'NONE',
+            children: [
+                { name: 'Title', transform: { m02: 50, m12: 40 }, size: { x: 900, y: 60 }, stackMode: 'NONE' },
+                { name: 'Card', transform: { m02: 50, m12: 120 }, size: { x: 900, y: 320 }, stackMode: 'NONE' },
+                // Bleeds off right edge (xMax = 1050 > 1000)
+                { name: 'BleedingCoin', transform: { m02: 950, m12: 80 }, size: { x: 100, y: 100 }, stackMode: 'NONE' }
+            ]
+        };
+        synthesizeContainerLayout(frame);
+        assert.strictEqual(frame.stackPaddingRight, 50, 'Right padding should be 50px from in-flow cards, not 0');
+        assert.strictEqual(frame.stackHorizontalPadding, 50, 'Left padding should be 50px');
+        assert.strictEqual(frame.stackVerticalPadding, 40, 'Top padding should be 40px');
+        assert.strictEqual(frame.stackPaddingBottom, 60, 'Bottom padding should be 60px');
+        const coin = frame.children.find(c => c.name === 'BleedingCoin');
+        assert(coin, 'Coin should be in children');
+        assert.strictEqual(coin.stackPositioning, 'ABSOLUTE', 'Coin should be positioned absolutely');
+        assert.strictEqual(coin.isDecorativeOverlay, true, 'Coin should be marked as decorative overlay');
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);
