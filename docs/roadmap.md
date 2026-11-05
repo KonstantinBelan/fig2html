@@ -1,178 +1,348 @@
-# 🌐 Спецификация Figma Multi-Page Import Engine (v1.3.0)
-## Автоматический импорт многостраничных проектов из Figma в структурированный HTML/CSS сайт
+# 📱 Спецификация Figma Adaptive Multi-Breakpoint Engine (v1.4.0)
+## Кросс-девайсная адаптивная верстка из нескольких фреймов Figma в единый responsive HTML/CSS сайт
 
-> **Цель версии 1.3.0**: Реализация поддержки **полноценного многостраничного экспорта** (.fig ➔ Мультистраничный HTML-сайт). Возможность за один вызов команды декомпилировать проект из Figma, содержащий множество страниц или артбордов, формируя чистую структуру `index.html`, `about.html`, `catalog.html` с **единым оптимизированным файлом стилей `css/style.css`**, дедуплицированным пулом ассетов и гарантией **100% отсутствия конфликтов CSS-стилей** при одинаковых названиях слоев в Figma.
-
----
-
-## 1. Проблема и требования
-
-В текущей версии (v1.2.0) декомпилятор обрабатывает один Canvas или первый верхнеуровневый фрейм и генерирует одиночный файл `index.html`. 
-
-В реальных веб-проектах дизайнеры Figma создают сайты следующим образом:
-1. **Несколько верхнеуровневых фреймов-экранов на одном холсте** (например, `[page] Home`, `[page] About`, `[page] Pricing` или `Index`, `Catalog`, `Product`, `Cart`).
-2. **Несколько страниц в левой панели Figma** (нативные `CANVAS` узлы в Kiwi AST: «Landing», «Dashboard», «Settings»).
-3. **Общие компоненты и одинаковые имена слоев с разными стилями**:
-   - На странице `Home` кнопка `.btn` синяя с высотой 48px, а на странице `Checkout` кнопка с тем же названием `.btn` зеленая с высотой 56px.
-   - Если объединить их в один общий CSS файл без изоляции коллизий, произойдет перезапись стилей (CSS clash), что сломает верстку на одной из страниц.
-   - В то же время, элементы с **полностью одинаковыми параметрами** (шапка, подвал, логотипы, типографика) **должны переиспользоваться**, соблюдая принцип DRY (Don't Repeat Yourself) и минимизируя итоговый вес бандла.
+> **Цель версии 1.4.0**: Разработка и внедрение **Adaptive Multi-Breakpoint Engine** — интеллектуального механизма, способного объединять несколько связанных экранных фреймов Figma (Desktop, Tablet, Mobile) в **одно каноническое адаптивное HTML-дерево** с единым оптимизированным CSS-файлом, использующим современные **CSS Media Queries** и бесшовную **Fluid интерполяцию (`clamp()`)**.
 
 ---
 
-## 2. Стратегия обнаружения страниц (Page Detection Engine)
+## 1. Проблема и контекст
 
-Движок должен поддерживать гибкую трехуровневую эвристику детекции страниц в модуле `src/decompiler/page-detector.js`:
+### 1.1. Текущее положение дел
+В версии v1.3.0 проект `html-to-fig` научился экспортировать многостраничные сайты, но каждый экранный фрейм Figma обрабатывается как **отдельная независимая страница** (`index.html`, `about.html`, `mobile.html`).
+
+В реальной веб-разработке дизайнеры рисуют **один и тот же экран** под 2–4 разрешения:
+- **Desktop**: 1440px / 1920px (развернутая навигация, многоколоночные сетки, крупные заголовки)
+- **Tablet / Laptop**: 768px / 1024px (2-колоночные сетки, уменьшенные отступы)
+- **Mobile**: 375px / 390px (1-колоночный стек, гамбургер-меню, компактная типографика)
+
+### 1.2. Проблема существующих конвертеров
+Все существующие инструменты на рынке (Anima, Locofy, TeleportHQ и плагины Figma) при попытке экспортировать Desktop и Mobile сталкиваются с фундаментальной дилеммой:
+1. Либо генерируют **разные несвязанные HTML-страницы** (`desktop.html`, `mobile.html`), что делает невозможной публикацию единого адаптивного сайта;
+2. Либо дублируют все узлы внутри одного HTML-файла, скрывая целые экраны через `display: none !important`, что приводит к раздуванию DOM в 3 раза, ухудшению SEO, скачкам LCP/CLS и двойной загрузке изображений.
+
+### 1.3. Наше решение
+**Adaptive Multi-Breakpoint Engine v1.4.0** производит **семантическое слияние (Reconciliation)** деревьев разных брейкпоинтов:
+- Создается **ровно один семантический HTML-тег** для каждого логического элемента.
+- Стили десктопа берутся за базу (Desktop-first) либо стили мобайла (Mobile-first).
+- Различия в структуре оформляются через медиа-запросы `@media`.
+- Различия в числовых параметрах (размеры шрифтов, паддинги, гэпы) плавно интерполируются через математические функции `clamp()`.
+- Уникальные для брейкпоинтов элементы (например, десктопное меню vs бургер-кнопка) переключаются через чистый `display: none` / `display: flex`.
+
+---
+
+## 2. Архитектура движка (Adaptive Pipeline)
 
 ```mermaid
 flowchart TD
-    A["Вход: Дерево .fig (Figma Kiwi AST)"] --> B{"Есть явные теги в именах фреймов?\n([page], [страница], [p], #page, /page)"}
-    B -- "Да" --> C["Tag Strategy:\nКаждый помеченный фрейм = отдельная HTML страница"]
-    B -- "Нет" --> D{"На холсте несколько артбордов экранного размера?\n(W >= 320px, H >= 400px)"}
-    D -- "Да" --> E["Artboard Strategy:\nКаждый фрейм экрана = отдельная HTML страница"]
-    D -- "Нет" --> F{"В документе несколько Canvas-страниц?\n(--all-canvases)"}
-    F -- "Да" --> G["Canvas Strategy:\nКаждый Canvas = отдельная HTML страница"]
-    F -- "Нет" --> H["Fallback Strategy:\nЭкспорт одиночной страницы (поведение v1.2.0)"]
+    A["Вход: Дерево .fig (Figma Kiwi AST)"] --> B["1. Breakpoint Detector & Grouping\n(Поиск связанных фреймов: Desktop, Tablet, Mobile)"]
+    B --> C["2. AST Tree Aligner & Matcher\n(Сопоставление нод: Similarity Scoring по Content, Name, Path)"]
+    C --> D["3. Canonical DOM Tree Builder\n(Сборка единого HTML-дерева без дублей нод)"]
+    D --> E["4. Hybrid Style Synthesizer\n(Вычисление дельт стилей, @media queries и fluid clamp)"]
+    E --> F["5. Code Generator\n(Финальный чистый HTML + DRY Responsive CSS)"]
 ```
-
-### 2.1. Стратегия 1: Явные теги страниц (Explicit Tags) — наивысший приоритет
-- Если хотя бы один верхнеуровневый фрейм содержит префикс/тег:
-  - `[page]`, `[страница]`, `[p]`, `#page`, `/page`
-- Движок извлекает только тегированные фреймы, игнорируя черновики, палитры цветов, заметки и вынесенные компоненты.
-- **Именование страниц**:
-  - `[page] Home` или `[страница] Главная` ➔ `index.html`
-  - `[page] About Us` или `[страница] О компании` ➔ `about-us.html` (или `o-kompanii.html` через таблицу транслитерации `RU_MAP`)
-  - `[page] 404` ➔ `404.html`
-
-### 2.2. Стратегия 2: Экранные артборды (Screen Artboards)
-- Если тегов нет, движок анализирует верхнеуровневые фреймы холста:
-  - Фильтрует по минимальным габаритам экрана (по умолчанию: `width >= 320px`, `height >= 400px`).
-  - Фреймы, отсортированные по координате $X$ (слева направо) или $Y$, становятся страницами.
-  - Первый экран или экран с именем `Home` / `Index` / `Main` / `Desktop` становится `index.html`, остальные — `<slug>.html`.
-
-### 2.3. Стратегия 3: Нативные страницы Figma (Canvas Pages)
-- При указании флага `--all-canvases` или `--all-pages` движок декомпилирует все вкладки страниц Figma документа.
 
 ---
 
-## 3. Архитектура общего CSS и предотвращение конфликтов (CSS Collision Isolation)
+## 3. Детекция и группировка брейкпоинтов (Figma UX)
 
-Для реализации единого файла стилей `css/style.css` при экспорте с флагом `-s` модернизируется `src/decompiler/stylesheet.js`.
+Движок поддерживает 3 взаимодополняющих уровня детекции, избавляя дизайнера от необходимости соблюдать строгие искусственные ограничения:
+
+### 3.1. Приоритет 1: Явные теги в именах фреймов
+Дизайнер может прямо указать тип устройства или ширину в квадратных скобках или через префикс `@`:
+- **По устройствам**:
+  - `Home [desktop]`, `Home [tablet]`, `Home [mobile]`
+  - `[page:index][desktop]`, `[page:index][mobile]`
+  - `Landing / Desktop`, `Landing / Mobile`
+- **По точной ширине экрана**:
+  - `Catalog @1440`, `Catalog @768`, `Catalog @375`
+  - `About [w:1440]`, `About [w:375]`
+
+### 3.2. Приоритет 2: Figma Sections (разделы)
+Если фреймы объединены в Figma Section (например, секция с именем `Home Page`), все дочерние артборды внутри секции автоматически считаются брейкпоинтами одной страницы.
+
+### 3.3. Приоритет 3: Автоматическая геометрическая кластеризация
+Если тегов нет:
+- Анализируются все экранные фреймы (`width >= 320px`, `height >= 400px`).
+- Фреймы с похожим контентом (совпадение текстов $\ge 60\%$) или одинаковым базовым именем (`Landing` и `Landing Mobile`) группируются в один экран.
+- Классификация по ширине:
+  - $\ge 1200\text{px}$ ➔ **Desktop**
+  - $768\text{px} \dots 1199\text{px}$ ➔ **Tablet**
+  - $< 768\text{px}$ ➔ **Mobile**
+
+---
+
+## 4. Алгоритм согласования AST (Tree Reconciliation)
+
+Для объединения нескольких деревьев узлов в одно каноническое дерево используется алгоритм **AST Alignment**:
 
 ```mermaid
 flowchart LR
-    subgraph Pages ["Страницы Figma"]
-        P1["Page: Home\nСлой: Button (.btn)\n(bg: #0066ff, h: 48px)"]
-        P2["Page: About\nСлой: Button (.btn)\n(bg: #0066ff, h: 48px)"]
-        P3["Page: Cart\nСлой: Button (.btn)\n(bg: #10b981, h: 56px)"]
+    subgraph D_Tree ["Desktop Tree"]
+        D1["Header"] --> D2["Logo"]
+        D1 --> D3["NavLinks"]
+        D1 --> D4["CTA Button"]
     end
 
-    subgraph StylesheetManager ["StylesheetManager (Multi-Page Aware)"]
-        D{"Сравнение сигнатуры стилей\nstyleSignature(styles)"}
-        S1["Одинаковые стили:\nДедупликация в единый класс .btn"]
-        S2["Разные стили:\nРазрешение коллизии\n.btn--cart (или .btn-2)"]
+    subgraph M_Tree ["Mobile Tree"]
+        M1["Header"] --> M2["Logo"]
+        M1 --> M5["BurgerButton"]
+        M1 --> M4["CTA Button"]
     end
 
-    subgraph OutputCSS ["css/style.css"]
-        R1[".btn {\n  background: #0066ff;\n  height: 48px;\n}"]
-        R2[".btn--cart {\n  background: #10b981;\n  height: 56px;\n}"]
+    subgraph Matcher ["Reconciliation Matcher"]
+        D2 <--> |Score: 1.0| M2
+        D4 <--> |Score: 0.95| M4
+        D3 <--> |No Match| None1["Desktop-only"]
+        M5 <--> |No Match| None2["Mobile-only"]
     end
 
-    P1 & P2 --> D
-    P3 --> D
-    D --> S1 --> R1
-    D --> S2 --> R2
+    subgraph Unified ["Unified DOM Tree"]
+        U1["Header"]
+        U1 --> U2["Logo (all screens)"]
+        U1 --> U3["NavLinks (desktop only)"]
+        U1 --> U5["BurgerButton (mobile only)"]
+        U1 --> U4["CTA Button (all screens)"]
+    end
+
+    D_Tree & M_Tree --> Matcher --> Unified
 ```
 
-### 3.1. Интеллектуальная дедупликация (Smart DRY CSS)
-- Если на разных страницах слои имеют одинаковое имя и **идентичный набор CSS-свойств**:
-  - Им присваивается общий класс (например, `.btn`, `.header`, `.footer`, `.card`).
-  - В `css/style.css` создается **одно общее правило**.
-  - Это минимизирует размер CSS файла и ускоряет загрузку страниц в браузере.
+### 4.1. Формула схожести узлов (Similarity Score)
 
-### 3.2. Разрешение коллизий при различающихся параметрах (Conflict Resolution)
-- Если на странице `Cart` слой называется `.btn`, но его цвет, отступы или размеры отличаются от `.btn` на странице `Home`:
-  - Движок детектирует коллизию: базовое имя совпадает, но `styleSignature(styles)` отличается.
-  - Автоматически применяется детерминированное разрешение конфликта:
-    1. **Страничный модификатор**: `.btn--cart` (или `.btn-cart`), связывающий селектор со страницей.
-    2. **Контекстный селектор страницы**: на теге `<body>` каждой страницы указывается класс страницы:
-       `<body class="page-home">` и `<body class="page-cart">`.
-       Конфликтующее правило оформляется как `.page-cart .btn` либо `.btn--cart`.
-    3. **Альтернативный вариант**: прогрессивный числовой суффикс `.btn-2`, сохраняемый детерминированно в реестре.
-- Ни одно правило не перезаписывает другое!
+Для каждой пары узлов $U_{desktop}$ и $U_{mobile}$ вычисляется коэффициент схожести:
 
-### 3.3. Разделение параметров `.main-container`
-- Для каждой страницы создается корневой контейнер с базовым классом `.main-container`:
-  - Общие стили контейнера: `width: 100%; margin: 0 auto; box-sizing: border-box;`.
-  - Уникальные стили страницы (разные `max-width`, разный фон `background`, индивидуальные padding):
-    `<div class="main-container page-home-container">`
-    `<div class="main-container page-about-container">`
+$$\text{Similarity}(A, B) = w_c \cdot S_{content} + w_n \cdot S_{name} + w_p \cdot S_{path} + w_t \cdot S_{type}$$
 
-### 3.4. Глобальные токены `:root` и единый пул ассетов
-- Цвета, шрифты, радиусы и Figma Variables со всех страниц объединяются в единую секцию `:root`.
-- Реестр изображений (`imageRegistry`) дедуплицирует блобы по SHA-1 хешу: если один и тот же логотип или фото используется на 10 страницах, файл в `dist/img/` сохраняется ровно один раз.
+Где:
+- $w_c = 0.40$ — **Content Score** (совпадение текста или хеша изображения).
+- $w_n = 0.30$ — **Name Score** (совпадение имени слоя в Figma: `cta-button`, `hero-title`).
+- $w_p = 0.20$ — **Path Score** (совпадение положения в дереве предков).
+- $w_t = 0.10$ — **Type Score** (совпадение типа ноды: TEXT, FRAME, INSTANCE).
+
+Если $\text{Similarity}(A, B) \ge 0.70$, узлы считаются **одним и тем же элементом** и объединяются в один HTML-тег.
 
 ---
 
-## 4. Структура файлового вывода
+## 5. Обработка эксклюзивных элементов (Exclusive Elements)
 
-### При экспорте с разделением файлов (`-s / --separate-files`):
-```text
-dist/
-├── index.html              <-- <link rel="stylesheet" href="css/style.css">
-├── about.html              <-- <link rel="stylesheet" href="css/style.css">
-├── catalog.html            <-- <link rel="stylesheet" href="css/style.css">
-├── contact.html            <-- <link rel="stylesheet" href="css/style.css">
-├── css/
-│   └── style.css           <-- ЕДИНЫЙ оптимизированный CSS файл для ВСЕХ страниц
-└── img/
-    ├── logo.webp
-    ├── hero-home.webp
-    └── ...                 <-- ЕДИНЫЙ оптимизированный пул изображений
+В верстке часто встречаются элементы, существующие только на одном разрешении:
+- **Desktop-only**: десктопное горизонтальное меню, сложные сайдбары, декоративные фоновые 3D-иллюстрации.
+- **Mobile-only**: кнопка-гамбургер, мобильная шторка (drawer), нижний таб-бар (bottom navigation).
+
+### Механика работы:
+1. Элемент помещается в каноническое HTML-дерево в правильную позицию.
+2. Ему назначается семантический модификатор или утилитный класс (`.nav-desktop`, `.burger-btn`).
+3. В CSS генерируется переключение видимости:
+   ```css
+   /* Desktop-first база */
+   .nav-desktop {
+     display: flex;
+   }
+   .burger-btn {
+     display: none;
+   }
+
+   /* Переключение на экранах планшетов и мобилок */
+   @media (max-width: 768px) {
+     .nav-desktop {
+       display: none;
+     }
+     .burger-btn {
+       display: flex;
+     }
+   }
+   ```
+
+---
+
+## 6. Гибридный генератор стилей: Media Queries + Fluid clamp()
+
+Для достижения максимального качества верстки движок разделяет CSS-свойства на **дискретные** и **непрерывные**:
+
+### 6.1. Непрерывные свойства (Continuous / Fluid)
+Свойства, значения которых плавно меняются в зависимости от ширины экрана:
+- `font-size`, `line-height`, `letter-spacing`
+- `padding`, `margin`, `gap`
+- `border-radius`, `width`, `max-width`
+
+Для них движок использует математическую функцию `clamp()`:
+$$\text{clamp}(V_{min}, V_{slope} \cdot \text{vw} + V_{intercept}, V_{max})$$
+
+*Пример*: Заголовок 48px на Desktop (1440px) и 24px на Mobile (375px):
+```css
+.hero-title {
+  /* Никаких резких скачков при ресайзе окна — абсолютно плавная типографика */
+  font-size: clamp(24px, 1.5rem + 2.25vw, 48px);
+  padding-bottom: clamp(16px, 1rem + 1.5vw, 32px);
+}
 ```
 
-### При автономном экспорте (без `-s`):
-```text
-dist/
-├── index.html              <-- Автономный HTML со встроенным CSS для страницы 1
-├── about.html              <-- Автономный HTML со встроенным CSS для страницы 2
-└── catalog.html            <-- Автономный HTML со встроенным CSS для страницы 3
+### 6.2. Дискретные структурные свойства (Structural Changes)
+Свойства, которые не имеют промежуточных значений и определяют каркас раскладки:
+- `flex-direction` (`row` ➔ `column`)
+- `flex-wrap` (`nowrap` ➔ `wrap`)
+- `order` (смена визуального порядка текста и картинки)
+- `grid-template-columns` (`repeat(3, 1fr)` ➔ `1fr`)
+- `display` (`flex` ➔ `none`)
+
+Для них движок генерирует чистые и аккуратные медиа-запросы:
+```css
+.hero-container {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media (max-width: 768px) {
+  .hero-container {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
 ```
 
 ---
 
-## 5. Новые CLI опции для `fig-to-html` (v1.3.0)
+## 7. Пример работы движка: Было и Стало
 
-| Флаг / Опция | Тип | По умолчанию | Описание |
-|---|---|---|---|
-| `--multi-page` | `boolean` | `true` (auto) | Включить многостраничный режим декомпиляции при наличии нескольких страниц/тегов. |
-| `--single-page` | `boolean` | `false` | Принудительно экспортировать только одну (первую/указанную) страницу. |
-| `--page-tag <tag>` | `string` | `"[page],[страница]"` | Кастомный тег или список тегов в названии фреймов для маркировки страниц. |
-| `--pages <names>` | `string` | `null` | Список конкретных страниц/фреймов для экспорта через запятую (например, `"Home, About, Pricing"`). |
-| `--all-canvases` | `boolean` | `false` | Экспортировать все Canvas-вкладки документа Figma как отдельные страницы. |
-| `--min-page-width <px>` | `number` | `320` | Минимальная ширина фрейма на холсте для признания его отдельной страницей. |
-| `--class-scope <mode>` | `string` | `"modifier"` | Режим изоляции конфликтующих классов: `modifier` (`.btn--about`), `scoped` (`.page-about .btn`), или `numbered` (`.btn-2`). |
+### Входные данные (Figma)
+- Фрейм 1: `Home [desktop]` (1440×900)
+- Фрейм 2: `Home [mobile]` (375×812)
+
+### Результат компиляции
+
+#### `index.html` (Единый DOM без дублей)
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="logo">Acme Inc.</div>
+    <nav class="nav-links">
+      <a href="#features">Возможности</a>
+      <a href="#pricing">Тарифы</a>
+    </nav>
+    <button class="burger-btn" aria-label="Открыть меню">☰</button>
+  </header>
+
+  <main class="hero">
+    <div class="hero-content">
+      <h1 class="hero-title">Создавайте потрясающие сайты</h1>
+      <p class="hero-desc">Двусторонний компилятор HTML и Figma нового поколения.</p>
+      <button class="btn-primary">Попробовать бесплатно</button>
+    </div>
+    <div class="hero-image">
+      <img src="img/hero-mockup.png" alt="Mockup">
+    </div>
+  </main>
+</body>
+</html>
+```
+
+#### `css/style.css` (Fluid + Media Queries)
+```css
+/* Базовые переменные и fluid типографика */
+:root {
+  --color-primary: #6366f1;
+  --color-bg: #0f172a;
+  --color-text: #ffffff;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: clamp(16px, 1rem + 1.5vw, 32px);
+}
+
+.nav-links {
+  display: flex;
+  gap: clamp(16px, 1rem + 1vw, 32px);
+}
+
+.burger-btn {
+  display: none;
+}
+
+.hero {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: clamp(24px, 1.5rem + 2.5vw, 64px);
+  padding: clamp(24px, 1.5rem + 3.5vw, 80px);
+}
+
+.hero-title {
+  font-size: clamp(28px, 1.75rem + 2.25vw, 56px);
+  line-height: 1.15;
+}
+
+/* Дискретные медиа-запросы для мобильных экранов */
+@media (max-width: 768px) {
+  .nav-links {
+    display: none;
+  }
+  .burger-btn {
+    display: flex;
+  }
+  .hero {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+}
+```
 
 ---
 
-## 6. Независимость и совместимость с режимами верстки
+## 8. CLI интерфейс
 
-Многостраничный импорт должен бесшовно и независимо работать со всеми существующими подсистемами:
-1. **Smart Layout Synthesis**: автоматическая адаптивная группировка в Flexbox и CSS Grid для каждой страницы индивидуально.
-2. **Fluid Responsive (`--fluid`)**: адаптивные `clamp()`, `vw/vh` единицы рассчитываются от ширины холста конкретной страницы.
-3. **Оптимизация изображений**: Retina 2x, WebP, AVIF, lossless компрессия и responsive srcset.
-4. **CSS Variables & Design Tokens (`--tokens`)**: сбор токенов со всего проекта в единый JSON файл `dist/tokens.json`.
+```bash
+# Автоматическое определение брейкпоинтов и склейка в единый responsive сайт
+node cli.js --reverse design.fig --responsive
+
+# Явное указание целевых брейкпоинтов
+node cli.js --reverse design.fig --responsive --breakpoints 1440,1024,768,375
+
+# Выбор подхода: Desktop-first (max-width, по умолчанию) или Mobile-first (min-width)
+node cli.js --reverse design.fig --responsive --mobile-first
+
+# Отключение адаптивного слияния (экспорт каждого фрейма отдельной HTML-страницей)
+node cli.js --reverse design.fig --no-responsive
+```
 
 ---
 
-## 7. План реализации и контрольные тесты
+## 9. Поэтапный план реализации (Roadmap)
 
-1. **Модуль детекции страниц**: `src/decompiler/page-detector.js` (юнит-тесты на теги, артборды, размеры, санитизацию URL).
-2. **Мультистраничное дерево**: адаптация `buildSceneTree` в `src/decompiler/tree.js` для итерации по набору целевых страниц.
-3. **Многостраничный `StylesheetManager`**: поддержка контекста страницы, дедупликация совпадающих стилей и изолирование коллизий в `src/decompiler/stylesheet.js`.
-4. **Конвейер декомпиляции**: обновление `decompileFig` в `src/decompiler/index.js` для сохранения коллекции HTML-файлов и общего CSS.
-5. **CLI интеграция**: обновление `cli-reverse.js` с новыми аргументами и отображением прогресса по страницам `(Page 1/3: index.html...)`.
-6. **Набор тестов**:
-   - Юнит-тесты на детекцию страниц и санитизацию имен файлов.
-   - Тест на дедупликацию одинаковых стилей между страницами.
-   - Тест на разрешение конфликтов стилей при одинаковых именах слоев.
-   - End-to-end тест на декомпиляцию многостраничного `.fig` макета с генерацией сайта `dist/*.html` + `dist/css/style.css`.
+### Этап 1: Breakpoint & Group Detector
+- Модуль: `src/decompiler/breakpoint-detector.js`
+- Распознавание тегов: `[desktop]`, `[tablet]`, `[mobile]`, `@1440`, `@768`, `@375`.
+- Группировка артбордов по каноническим страницам.
+- Создание структур метаданных брейкпоинтов для каждой страницы.
+
+### Этап 2: AST Reconciliation & Tree Aligner
+- Модуль: `src/decompiler/ast-aligner.js`
+- Реализация скоринга схожести (`SimilarityScore`).
+- Сопоставление узлов между базовым и адаптивными деревьями.
+- Выделение общих элементов и изоляция `desktop-only` / `mobile-only` узлов.
+- Формирование единого унифицированного дерева элементов.
+
+### Этап 3: Responsive CSS Synthesizer
+- Модуль: `src/decompiler/responsive-css.js`
+- Вычисление разницы стилей (CSS Diffing) между брейкпоинтами.
+- Генерация медиа-запросов `@media (max-width: ...)`.
+- Интеграция с существующим Fluid Engine (`clamp()`) для численных свойств.
+- Устранение дублирующихся стилей.
+
+### Этап 4: Интеграция с CLI и Тестирование
+- Обновление `src/decompiler/index.js` и CLI аргументов (`--responsive`, `--breakpoints`, `--mobile-first`).
+- Разработка полного набора интеграционных и модульных тестов в `test/run-tests.js`.
+- Создание демо-файла Figma с несколькими брейкпоинтами для валидации.
+- Обновление документации `README.md` и версионирование v1.4.0.
