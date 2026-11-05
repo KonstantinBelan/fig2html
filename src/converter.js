@@ -158,12 +158,20 @@ function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
 /**
  * Extracts rich text with character-level style overrides
  */
-function extractRichText(element, win, defaultStyles, resolveVar = null) {
+function extractRichText(element, win, defaultStyles, resolveVar = null, varMap = null, colorToVarMap = null, createColorVar = null) {
     let fullText = '';
     const charStyles = [];
     const styleOverrideTable = [];
     const styleMap = new Map();
     let nextStyleId = 1;
+
+    function colorToHexKey(col) {
+        if (!col || typeof col.r !== 'number') return '';
+        const r = Math.round(col.r * 255).toString(16).padStart(2, '0');
+        const g = Math.round(col.g * 255).toString(16).padStart(2, '0');
+        const b = Math.round(col.b * 255).toString(16).padStart(2, '0');
+        return `#${r}${g}${b}`.toLowerCase();
+    }
 
     function traverse(node, currentStyle) {
         if (node.nodeType === 3) { // TEXT_NODE
@@ -231,13 +239,22 @@ function extractRichText(element, win, defaultStyles, resolveVar = null) {
                         textDecoration: textDec
                     };
                     if (colorParsed) {
-                        override.fillPaints = [{
+                        const richColorRaw = inline.color || inline.getPropertyValue('color') || computed.color || computed.getPropertyValue('color');
+                        const richVarName = richColorRaw ? (richColorRaw.match(/var\(\s*(--[a-zA-Z0-9-_]+)/) || [])[1] : null;
+                        const richVar = (richVarName && varMap && varMap.get(richVarName)) ||
+                            (colorParsed.a === 1 && colorToVarMap ? colorToVarMap.get(colorToHexKey(colorParsed)) : null);
+                        const richPaint = {
                             type: 'SOLID',
                             color: colorParsed,
                             opacity: colorParsed.a,
                             visible: true,
                             blendMode: 'NORMAL'
-                        }];
+                        };
+                        if (createColorVar && richVar) {
+                            const cVar = createColorVar(richVar);
+                            if (cVar) richPaint.colorVar = cVar;
+                        }
+                        override.fillPaints = [richPaint];
                     }
                     styleOverrideTable.push(override);
                 }
@@ -364,6 +381,46 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
     // 4. Generate native Figma Variables and Variable Sets from :root CSS custom properties
     const variableChanges = [];
     const varKeys = Object.keys(rootVars);
+    const varMap = new Map();
+    const colorToVarMap = new Map();
+    const floatToVarMap = new Map();
+    const radiusToVarMap = new Map();
+    const spaceToVarMap = new Map();
+
+    function colorToHexKey(col) {
+        if (!col || typeof col.r !== 'number') return '';
+        const r = Math.round(col.r * 255).toString(16).padStart(2, '0');
+        const g = Math.round(col.g * 255).toString(16).padStart(2, '0');
+        const b = Math.round(col.b * 255).toString(16).padStart(2, '0');
+        return `#${r}${g}${b}`.toLowerCase();
+    }
+
+    function createColorVar(varInfo) {
+        if (!varInfo || varInfo.varType !== 'COLOR') return undefined;
+        return {
+            value: {
+                alias: {
+                    guid: varInfo.guid
+                }
+            },
+            dataType: 'ALIAS',
+            resolvedDataType: 'COLOR'
+        };
+    }
+
+    function createFloatVar(varInfo) {
+        if (!varInfo || varInfo.varType !== 'FLOAT') return undefined;
+        return {
+            value: {
+                alias: {
+                    guid: varInfo.guid
+                }
+            },
+            dataType: 'ALIAS',
+            resolvedDataType: 'FLOAT'
+        };
+    }
+
     if (options.createVariables !== false && varKeys.length > 0) {
         const varSetGuid = guidGen.next();
         const modeId = { sessionID: options.sessionId || 1, localID: 1 };
@@ -410,6 +467,36 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             }
 
             const varGuid = guidGen.next();
+            const varInfo = {
+                guid: varGuid,
+                varType,
+                cleanName,
+                rawVal,
+                anyValue,
+                colorValue: parsedColor,
+                floatValue: parseFloat(rawVal) || 0
+            };
+            varMap.set(varName, varInfo);
+            varMap.set(cleanName, varInfo);
+            varMap.set(varName.replace(/^--/, ''), varInfo);
+
+            if (varType === 'COLOR' && parsedColor && parsedColor.a === 1) {
+                const hex = colorToHexKey(parsedColor);
+                if (hex && !colorToVarMap.has(hex)) {
+                    colorToVarMap.set(hex, varInfo);
+                }
+            } else if (varType === 'FLOAT' && varInfo.floatValue > 0) {
+                const lowerName = varName.toLowerCase();
+                if (lowerName.includes('radius')) {
+                    if (!radiusToVarMap.has(varInfo.floatValue)) radiusToVarMap.set(varInfo.floatValue, varInfo);
+                } else if (lowerName.includes('space') || lowerName.includes('gap') || lowerName.includes('pad')) {
+                    if (!spaceToVarMap.has(varInfo.floatValue)) spaceToVarMap.set(varInfo.floatValue, varInfo);
+                }
+                if (!floatToVarMap.has(varInfo.floatValue)) {
+                    floatToVarMap.set(varInfo.floatValue, varInfo);
+                }
+            }
+
             const varNode = {
                 guid: varGuid,
                 phase: 'CREATED',
@@ -426,6 +513,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     guid: varSetGuid
                 },
                 variableResolvedType: varType,
+                variableScopes: ['ALL_SCOPES'],
                 variableDataValues: {
                     entries: [
                         {
@@ -463,6 +551,12 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const inline = element.style;
         const computed = win.getComputedStyle(element);
 
+        function extractVarName(rawStr) {
+            if (!rawStr || typeof rawStr !== 'string') return null;
+            const match = rawStr.match(/var\(\s*(--[a-zA-Z0-9-_]+)/);
+            return match ? match[1] : null;
+        }
+
         const getProp = (...props) => {
             for (const p of props) {
                 const raw = inline[p] || inline.getPropertyValue(p) || computed[p] || computed.getPropertyValue(p);
@@ -471,6 +565,29 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 }
             }
             return '';
+        };
+
+        const getRawProp = (...props) => {
+            for (const p of props) {
+                const raw = inline[p] || inline.getPropertyValue(p) || computed[p] || computed.getPropertyValue(p);
+                if (raw !== undefined && raw !== null && raw !== '') {
+                    return raw;
+                }
+            }
+            return '';
+        };
+
+        const getVarForProp = (...props) => {
+            for (const p of props) {
+                const raw = inline[p] || inline.getPropertyValue(p) || computed[p] || computed.getPropertyValue(p);
+                if (raw !== undefined && raw !== null && raw !== '') {
+                    const varName = extractVarName(raw);
+                    if (varName && varMap.has(varName)) {
+                        return varMap.get(varName);
+                    }
+                }
+            }
+            return null;
         };
 
         // Visibility check
@@ -608,9 +725,12 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const isMarginAuto = marginStr.includes('auto') || (mlStr === 'auto' && mrStr === 'auto');
 
         // Inherited styles
+        const elementColorVar = getVarForProp('color', 'color');
+        const inheritedColorVar = elementColorVar || (parentContext?.inherited?.colorVar);
         const inheritedStyles = {
             fontFamily: getProp('font-family', 'fontFamily') || (parentContext?.inherited?.fontFamily) || 'Inter',
             color: getProp('color', 'color') || (parentContext?.inherited?.color) || '#000000',
+            colorVar: inheritedColorVar,
             lineHeight: getProp('line-height', 'lineHeight') || (parentContext?.inherited?.lineHeight) || 'normal',
             letterSpacing: getProp('letter-spacing', 'letterSpacing') || (parentContext?.inherited?.letterSpacing) || 'normal',
             fontWeight: getProp('font-weight', 'fontWeight') || (parentContext?.inherited?.fontWeight) || 'normal',
@@ -633,6 +753,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         const bgImage = getProp('background-image', 'backgroundImage');
         const bgVal = getProp('background', 'background');
         const bgColor = getProp('background-color', 'backgroundColor');
+        const bgVar = getVarForProp('background-color', 'backgroundColor', 'background');
 
         const bgCandidates = [bgImage, bgVal].filter(Boolean);
         for (const candidate of bgCandidates) {
@@ -653,13 +774,19 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 } else {
                     const col = parseColor(part);
                     if (col && col.a > 0 && !fills.some(f => f.type === 'SOLID')) {
-                        fills.push({
+                        const solidPaint = {
                             type: 'SOLID',
                             color: col,
                             opacity: col.a,
                             visible: true,
                             blendMode: 'NORMAL'
-                        });
+                        };
+                        const candidateVarName = extractVarName(part);
+                        const candidateVar = (candidateVarName && varMap.get(candidateVarName)) || bgVar ||
+                            (col.a === 1 ? colorToVarMap.get(colorToHexKey(col)) : null);
+                        const cVar = createColorVar(candidateVar);
+                        if (cVar) solidPaint.colorVar = cVar;
+                        fills.push(solidPaint);
                     }
                 }
             }
@@ -668,13 +795,16 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         if (bgColor) {
             const parsedBgColor = parseColor(bgColor);
             if (parsedBgColor && parsedBgColor.a > 0 && !fills.some(f => f.type === 'SOLID')) {
-                fills.push({
+                const solidPaint = {
                     type: 'SOLID',
                     color: parsedBgColor,
                     opacity: parsedBgColor.a,
                     visible: true,
                     blendMode: 'NORMAL'
-                });
+                };
+                const cVar = createColorVar(bgVar) || (parsedBgColor.a === 1 ? createColorVar(colorToVarMap.get(colorToHexKey(parsedBgColor))) : undefined);
+                if (cVar) solidPaint.colorVar = cVar;
+                fills.push(solidPaint);
             }
         }
 
@@ -688,15 +818,19 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         );
         const borderWidth = mainBorder.width;
         const parsedBorderColor = parseColor(mainBorder.color);
+        const strokeVar = getVarForProp('border-color', 'borderColor', 'border');
 
         if (borderWidth > 0 && mainBorder.style !== 'none' && parsedBorderColor && parsedBorderColor.a > 0) {
-            strokePaints.push({
+            const strokePaint = {
                 type: 'SOLID',
                 color: parsedBorderColor,
                 opacity: parsedBorderColor.a,
                 visible: true,
                 blendMode: 'NORMAL'
-            });
+            };
+            const cVar = createColorVar(strokeVar) || (parsedBorderColor.a === 1 ? createColorVar(colorToVarMap.get(colorToHexKey(parsedBorderColor))) : undefined);
+            if (cVar) strokePaint.colorVar = cVar;
+            strokePaints.push(strokePaint);
         }
 
         // Individual borders
@@ -716,13 +850,23 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         if (strokePaints.length === 0 && (borderTopW > 0 || borderBottomW > 0 || borderLeftW > 0 || borderRightW > 0)) {
             const sideColor = parseColor(topB.color || bottomB.color || leftB.color || rightB.color || mainBorder.color);
             if (sideColor && sideColor.a > 0) {
-                strokePaints.push({
+                const sideVar = getVarForProp(
+                    'border-top-color', 'borderTopColor', 'border-top', 'borderTop',
+                    'border-bottom-color', 'borderBottomColor', 'border-bottom', 'borderBottom',
+                    'border-left-color', 'borderLeftColor', 'border-left', 'borderLeft',
+                    'border-right-color', 'borderRightColor', 'border-right', 'borderRight',
+                    'border-color', 'borderColor', 'border'
+                );
+                const strokePaint = {
                     type: 'SOLID',
                     color: sideColor,
                     opacity: sideColor.a,
                     visible: true,
                     blendMode: 'NORMAL'
-                });
+                };
+                const cVar = createColorVar(sideVar) || (sideColor.a === 1 ? createColorVar(colorToVarMap.get(colorToHexKey(sideColor))) : undefined);
+                if (cVar) strokePaint.colorVar = cVar;
+                strokePaints.push(strokePaint);
             }
         }
 
@@ -915,6 +1059,17 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
 
         if ((isTextTag && hasNoChildren && textContent.length > 0) || (hasRichChildren && !fills.length && borderWidth === 0) || isChildlessTextDiv) {
             const textColor = parseColor(inheritedStyles.color) || { r: 0.1, g: 0.1, b: 0.1, a: 1.0 };
+            const textColorVar = inheritedStyles.colorVar || (textColor.a === 1 ? colorToVarMap.get(colorToHexKey(textColor)) : null);
+            const textPaint = {
+                type: 'SOLID',
+                color: textColor,
+                opacity: textColor.a,
+                visible: true,
+                blendMode: 'NORMAL'
+            };
+            const cVar = createColorVar(textColorVar);
+            if (cVar) textPaint.colorVar = cVar;
+
             const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles.fontSize;
 
             const { styleName, postscript, cleanFamily } = parseFontStyle(
@@ -938,7 +1093,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     fontFamily: cleanFamily,
                     fontWeight: inheritedStyles.fontWeight,
                     fontStyle: inheritedStyles.fontStyle
-                }, resolveVar);
+                }, resolveVar, varMap, colorToVarMap, createColorVar);
                 displayCharacters = richResult.characters;
                 textData = {
                     characters: displayCharacters,
@@ -987,13 +1142,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 blendMode: blendMode,
                 transform: { m00: 1, m01: 0, m02: x, m10: 0, m11: 1, m12: y },
                 size: { x: textGeom.width, y: textGeom.height },
-                fillPaints: [{
-                    type: 'SOLID',
-                    color: textColor,
-                    opacity: textColor.a,
-                    visible: true,
-                    blendMode: 'NORMAL'
-                }],
+                fillPaints: [textPaint],
                 fontSize: fontSize,
                 fontName: {
                     family: cleanFamily,
@@ -1013,6 +1162,19 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     layoutSize: { x: textGeom.width, y: textGeom.height }
                 }
             };
+
+            const textConsumptionEntries = [];
+            const fsVar = getVarForProp('font-size', 'fontSize');
+            if (fsVar) {
+                textConsumptionEntries.push({
+                    nodeField: 21,
+                    variableField: 'FONT_SIZE',
+                    variableData: createFloatVar(fsVar)
+                });
+            }
+            if (textConsumptionEntries.length > 0) {
+                textNode.variableConsumptionMap = { entries: textConsumptionEntries };
+            }
 
             if (isAbsolute) {
                 textNode.stackPositioning = 'ABSOLUTE';
@@ -1196,6 +1358,19 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                 if (marginOffsets.right) inputFrame.stackChildMarginRight = marginOffsets.right;
                 if (marginOffsets.bottom) inputFrame.stackChildMarginBottom = marginOffsets.bottom;
                 if (marginOffsets.left) inputFrame.stackChildMarginLeft = marginOffsets.left;
+            }
+
+            const inputRadiusVar = getVarForProp('border-radius', 'borderRadius') || (borderRadius > 0 ? (radiusToVarMap.get(borderRadius) || floatToVarMap.get(borderRadius)) : null);
+            if (inputRadiusVar) {
+                inputFrame.variableConsumptionMap = {
+                    entries: [
+                        {
+                            nodeField: 20,
+                            variableField: 'CORNER_RADIUS',
+                            variableData: createFloatVar(inputRadiusVar)
+                        }
+                    ]
+                };
             }
 
             nodeChanges.push(inputFrame);
@@ -1549,6 +1724,91 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             } catch (_) {}
         }
 
+        // Assemble variable consumption map for frameNode
+        const consumptionEntries = [];
+        function addFloatConsumption(nodeField, variableField, varInfo) {
+            const vData = createFloatVar(varInfo);
+            if (vData) {
+                consumptionEntries.push({
+                    nodeField,
+                    variableField,
+                    variableData: vData
+                });
+            }
+        }
+
+        // 1. Corner Radius
+        if (hasIndependentCorners) {
+            const tlVar = getVarForProp('border-top-left-radius', 'borderTopLeftRadius') || (tlRadius > 0 ? (radiusToVarMap.get(tlRadius) || floatToVarMap.get(tlRadius)) : null);
+            const trVar = getVarForProp('border-top-right-radius', 'borderTopRightRadius') || (trRadius > 0 ? (radiusToVarMap.get(trRadius) || floatToVarMap.get(trRadius)) : null);
+            const brVar = getVarForProp('border-bottom-right-radius', 'borderBottomRightRadius') || (brRadius > 0 ? (radiusToVarMap.get(brRadius) || floatToVarMap.get(brRadius)) : null);
+            const blVar = getVarForProp('border-bottom-left-radius', 'borderBottomLeftRadius') || (blRadius > 0 ? (radiusToVarMap.get(blRadius) || floatToVarMap.get(blRadius)) : null);
+
+            if (tlRadius > 0) addFloatConsumption(145, 'RECTANGLE_TOP_LEFT_CORNER_RADIUS', tlVar);
+            if (trRadius > 0) addFloatConsumption(146, 'RECTANGLE_TOP_RIGHT_CORNER_RADIUS', trVar);
+            if (brRadius > 0) addFloatConsumption(148, 'RECTANGLE_BOTTOM_RIGHT_CORNER_RADIUS', brVar);
+            if (blRadius > 0) addFloatConsumption(147, 'RECTANGLE_BOTTOM_LEFT_CORNER_RADIUS', blVar);
+        } else {
+            const radiusVar = getVarForProp('border-radius', 'borderRadius') || (borderRadius > 0 ? (radiusToVarMap.get(borderRadius) || floatToVarMap.get(borderRadius)) : null);
+            if (borderRadius > 0) {
+                addFloatConsumption(20, 'CORNER_RADIUS', radiusVar);
+            }
+        }
+
+        // 2. Stroke Weight
+        if (hasIndependentBorders) {
+            const topWVar = getVarForProp('border-top-width', 'borderTopWidth') || (borderTopW > 0 ? floatToVarMap.get(borderTopW) : null);
+            const bottomWVar = getVarForProp('border-bottom-width', 'borderBottomWidth') || (borderBottomW > 0 ? floatToVarMap.get(borderBottomW) : null);
+            const leftWVar = getVarForProp('border-left-width', 'borderLeftWidth') || (borderLeftW > 0 ? floatToVarMap.get(borderLeftW) : null);
+            const rightWVar = getVarForProp('border-right-width', 'borderRightWidth') || (borderRightW > 0 ? floatToVarMap.get(borderRightW) : null);
+
+            if (borderTopW > 0) addFloatConsumption(295, 'BORDER_TOP_WEIGHT', topWVar);
+            if (borderBottomW > 0) addFloatConsumption(296, 'BORDER_BOTTOM_WEIGHT', bottomWVar);
+            if (borderLeftW > 0) addFloatConsumption(297, 'BORDER_LEFT_WEIGHT', leftWVar);
+            if (borderRightW > 0) addFloatConsumption(298, 'BORDER_RIGHT_WEIGHT', rightWVar);
+        } else {
+            const strokeWVar = getVarForProp('border-width', 'borderWidth') || (borderWidth > 0 ? floatToVarMap.get(borderWidth) : null);
+            if (borderWidth > 0) {
+                addFloatConsumption(26, 'STROKE_WEIGHT', strokeWVar);
+            }
+        }
+
+        // 3. Auto Layout Spacing (Gap) & Padding
+        if (frameNode.stackMode && frameNode.stackMode !== 'NONE') {
+            const gapVar = getVarForProp('gap', 'gap', 'column-gap', 'columnGap', 'row-gap', 'rowGap') || (gap > 0 ? (spaceToVarMap.get(gap) || floatToVarMap.get(gap)) : null);
+            if (gap > 0) {
+                addFloatConsumption(107, 'STACK_SPACING', gapVar);
+            }
+
+            if (frameNode.stackCounterSpacing && frameNode.stackCounterSpacing > 0) {
+                const counterGapVar = getVarForProp('row-gap', 'rowGap') || (spaceToVarMap.get(frameNode.stackCounterSpacing) || floatToVarMap.get(frameNode.stackCounterSpacing));
+                addFloatConsumption(324, 'STACK_COUNTER_SPACING', counterGapVar);
+            }
+
+            const paddingVar = getVarForProp('padding', 'padding');
+            const topPadVar = getVarForProp('padding-top', 'paddingTop') || paddingVar || (paddingTop > 0 ? (spaceToVarMap.get(paddingTop) || floatToVarMap.get(paddingTop)) : null);
+            const bottomPadVar = getVarForProp('padding-bottom', 'paddingBottom') || paddingVar || (paddingBottom > 0 ? (spaceToVarMap.get(paddingBottom) || floatToVarMap.get(paddingBottom)) : null);
+            const leftPadVar = getVarForProp('padding-left', 'paddingLeft') || paddingVar || (paddingLeft > 0 ? (spaceToVarMap.get(paddingLeft) || floatToVarMap.get(paddingLeft)) : null);
+            const rightPadVar = getVarForProp('padding-right', 'paddingRight') || paddingVar || (paddingRight > 0 ? (spaceToVarMap.get(paddingRight) || floatToVarMap.get(paddingRight)) : null);
+
+            if (paddingLeft > 0) addFloatConsumption(209, 'STACK_PADDING_LEFT', leftPadVar);
+            if (paddingTop > 0) addFloatConsumption(210, 'STACK_PADDING_TOP', topPadVar);
+            if (paddingRight > 0) addFloatConsumption(233, 'STACK_PADDING_RIGHT', rightPadVar);
+            if (paddingBottom > 0) addFloatConsumption(234, 'STACK_PADDING_BOTTOM', bottomPadVar);
+        }
+
+        // 4. Opacity
+        const opacityVar = getVarForProp('opacity', 'opacity');
+        if (opacityVar) {
+            addFloatConsumption(8, 'OPACITY', opacityVar);
+        }
+
+        if (consumptionEntries.length > 0) {
+            frameNode.variableConsumptionMap = {
+                entries: consumptionEntries
+            };
+        }
+
         nodeChanges.push(frameNode);
 
         // Recurse into children
@@ -1597,6 +1857,17 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     );
                     const textColor = parseColor(inheritedStyles.color) || { r: 1, g: 1, b: 1, a: 1 };
                     const textGeom = estimateTextDimensions(rawText, fontSize, 0, false, cleanFamily);
+                    const textColorVar = inheritedStyles.colorVar || (textColor.a === 1 ? colorToVarMap.get(colorToHexKey(textColor)) : null);
+                    const textPaint = {
+                        type: 'SOLID',
+                        color: textColor,
+                        opacity: textColor.a,
+                        visible: true,
+                        blendMode: 'NORMAL'
+                    };
+                    const cVar = createColorVar(textColorVar);
+                    if (cVar) textPaint.colorVar = cVar;
+
                     const childTextNode = {
                         guid: textGuid,
                         phase: 'CREATED',
@@ -1608,7 +1879,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                         blendMode: blendMode,
                         transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 },
                         size: { x: textGeom.width, y: textGeom.height },
-                        fillPaints: [{ type: 'SOLID', color: textColor, opacity: textColor.a, visible: true, blendMode: 'NORMAL' }],
+                        fillPaints: [textPaint],
                         fontSize: fontSize,
                         fontName: { family: cleanFamily, style: styleName, postscript: postscript },
                         textAlignHorizontal: 'LEFT',
@@ -1621,6 +1892,19 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                             layoutSize: { x: textGeom.width, y: textGeom.height }
                         }
                     };
+
+                    const textConsumptionEntries = [];
+                    const fsVar = getVarForProp('font-size', 'fontSize');
+                    if (fsVar) {
+                        textConsumptionEntries.push({
+                            nodeField: 21,
+                            variableField: 'FONT_SIZE',
+                            variableData: createFloatVar(fsVar)
+                        });
+                    }
+                    if (textConsumptionEntries.length > 0) {
+                        childTextNode.variableConsumptionMap = { entries: textConsumptionEntries };
+                    }
                     nodeChanges.push(childTextNode);
                     stats.textNodes++;
                     stats.totalNodes++;
@@ -1840,30 +2124,44 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
             if (hoverRuleBody) {
                 const bgMatch = hoverRuleBody.match(/(?:background-color|background)\s*:\s*([^;!]+)/i);
                 if (bgMatch) {
-                    const resolvedBg = resolveVar(bgMatch[1].trim(), element);
+                    const rawBg = bgMatch[1].trim();
+                    const resolvedBg = resolveVar(rawBg, element);
                     const parsedBg = parseColor(resolvedBg);
                     if (parsedBg) {
-                        hoverVariant.fillPaints = [{
+                        const hoverBgVarName = extractVarName(rawBg);
+                        const hoverBgVar = (hoverBgVarName && varMap.get(hoverBgVarName)) ||
+                            (parsedBg.a === 1 ? colorToVarMap.get(colorToHexKey(parsedBg)) : null);
+                        const hoverFill = {
                             type: 'SOLID',
                             color: { r: parsedBg.r, g: parsedBg.g, b: parsedBg.b, a: 1 },
                             opacity: parsedBg.a !== undefined ? parsedBg.a : 1,
                             visible: true,
                             blendMode: 'NORMAL'
-                        }];
+                        };
+                        const cVar = createColorVar(hoverBgVar);
+                        if (cVar) hoverFill.colorVar = cVar;
+                        hoverVariant.fillPaints = [hoverFill];
                     }
                 }
                 const borderMatch = hoverRuleBody.match(/(?:border-color|border)\s*:\s*([^;!]+)/i);
                 if (borderMatch) {
-                    const resolvedBorder = resolveVar(borderMatch[1].trim(), element);
+                    const rawBorder = borderMatch[1].trim();
+                    const resolvedBorder = resolveVar(rawBorder, element);
                     const parsedBorder = parseColor(resolvedBorder);
                     if (parsedBorder) {
-                        hoverVariant.strokePaints = [{
+                        const hoverBorderVarName = extractVarName(rawBorder);
+                        const hoverBorderVar = (hoverBorderVarName && varMap.get(hoverBorderVarName)) ||
+                            (parsedBorder.a === 1 ? colorToVarMap.get(colorToHexKey(parsedBorder)) : null);
+                        const hoverStroke = {
                             type: 'SOLID',
                             color: { r: parsedBorder.r, g: parsedBorder.g, b: parsedBorder.b, a: 1 },
                             opacity: parsedBorder.a !== undefined ? parsedBorder.a : 1,
                             visible: true,
                             blendMode: 'NORMAL'
-                        }];
+                        };
+                        const cVar = createColorVar(hoverBorderVar);
+                        if (cVar) hoverStroke.colorVar = cVar;
+                        hoverVariant.strokePaints = [hoverStroke];
                     }
                 }
             }
@@ -1883,16 +2181,23 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
                     if (hoverRuleBody && c.node.type === 'TEXT') {
                         const colorMatch = hoverRuleBody.match(/(?:^|[^-_])color\s*:\s*([^;!]+)/i);
                         if (colorMatch) {
-                            const resolvedColor = resolveVar(colorMatch[1].trim(), element);
+                            const rawColor = colorMatch[1].trim();
+                            const resolvedColor = resolveVar(rawColor, element);
                             const parsedColor = parseColor(resolvedColor);
                             if (parsedColor) {
-                                hovChild.fillPaints = [{
+                                const hoverColorVarName = extractVarName(rawColor);
+                                const hoverColorVar = (hoverColorVarName && varMap.get(hoverColorVarName)) ||
+                                    (parsedColor.a === 1 ? colorToVarMap.get(colorToHexKey(parsedColor)) : null);
+                                const textPaint = {
                                     type: 'SOLID',
                                     color: { r: parsedColor.r, g: parsedColor.g, b: parsedColor.b, a: 1 },
                                     opacity: parsedColor.a !== undefined ? parsedColor.a : 1,
                                     visible: true,
                                     blendMode: 'NORMAL'
-                                }];
+                                };
+                                const cVar = createColorVar(hoverColorVar);
+                                if (cVar) textPaint.colorVar = cVar;
+                                hovChild.fillPaints = [textPaint];
                             }
                         }
                     }
@@ -1933,7 +2238,7 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
     }
 
     if (variableChanges.length > 0) {
-        nodeChanges.push(...variableChanges);
+        nodeChanges.unshift(...variableChanges);
     }
 
     return {

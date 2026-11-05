@@ -1341,6 +1341,77 @@ async function runAllTests() {
         fs.unlinkSync(varFig);
     });
 
+    await itAsync('binds element properties (fills, strokes, cornerRadius, padding, gap) to native Figma variables', async () => {
+        const bindFig = path.resolve('test/test-vars-binding.fig');
+        const bindHtml = `<!DOCTYPE html><html><head><style>
+            :root {
+                --color-primary: #6366f1;
+                --color-border: #06b6d4;
+                --radius-sm: 8px;
+                --space-md: 16px;
+                --gap-sm: 12px;
+            }
+            .btn {
+                background-color: var(--color-primary);
+                border: 2px solid var(--color-border);
+                border-radius: var(--radius-sm);
+                padding: var(--space-md);
+                gap: var(--gap-sm);
+                display: flex;
+            }
+        </style></head><body><button class="btn">Click me</button></body></html>`;
+
+        await generateFigFile({
+            htmlContent: bindHtml,
+            outputPath: bindFig
+        });
+
+        assert(fs.existsSync(bindFig));
+        const figData = readFigFile(bindFig);
+
+        const variables = figData.nodeChanges.filter(n => n.type === 'VARIABLE');
+        const primaryVar = variables.find(v => v.name === 'color/primary');
+        const borderVar = variables.find(v => v.name === 'color/border');
+        const radiusVar = variables.find(v => v.name === 'radius/sm');
+        const spaceVar = variables.find(v => v.name === 'space/md');
+        const gapVar = variables.find(v => v.name === 'gap/sm');
+
+        assert(primaryVar, 'Should create color/primary variable');
+        assert(borderVar, 'Should create color/border variable');
+        assert(radiusVar, 'Should create radius/sm variable');
+        assert(spaceVar, 'Should create space/md variable');
+        assert(gapVar, 'Should create gap/sm variable');
+
+        const btnNode = figData.nodeChanges.find(n => n.name === 'btn');
+        assert(btnNode, 'Should find button node');
+
+        // Check fill colorVar
+        assert(btnNode.fillPaints && btnNode.fillPaints.length > 0, 'Button should have fillPaints');
+        assert(btnNode.fillPaints[0].colorVar, 'Button fillPaint should have colorVar binding');
+        assert.deepStrictEqual(btnNode.fillPaints[0].colorVar.value.alias.guid, primaryVar.guid);
+
+        // Check stroke colorVar
+        assert(btnNode.strokePaints && btnNode.strokePaints.length > 0, 'Button should have strokePaints');
+        assert(btnNode.strokePaints[0].colorVar, 'Button strokePaint should have colorVar binding');
+        assert.deepStrictEqual(btnNode.strokePaints[0].colorVar.value.alias.guid, borderVar.guid);
+
+        // Check variableConsumptionMap
+        assert(btnNode.variableConsumptionMap && btnNode.variableConsumptionMap.entries, 'Button should have variableConsumptionMap');
+        const radiusEntry = btnNode.variableConsumptionMap.entries.find(e => e.variableField === 'CORNER_RADIUS');
+        assert(radiusEntry, 'Button should bind CORNER_RADIUS');
+        assert.deepStrictEqual(radiusEntry.variableData.value.alias.guid, radiusVar.guid);
+
+        const padTopEntry = btnNode.variableConsumptionMap.entries.find(e => e.variableField === 'STACK_PADDING_TOP');
+        assert(padTopEntry, 'Button should bind STACK_PADDING_TOP');
+        assert.deepStrictEqual(padTopEntry.variableData.value.alias.guid, spaceVar.guid);
+
+        const gapEntry = btnNode.variableConsumptionMap.entries.find(e => e.variableField === 'STACK_SPACING');
+        assert(gapEntry, 'Button should bind STACK_SPACING');
+        assert.deepStrictEqual(gapEntry.variableData.value.alias.guid, gapVar.guid);
+
+        fs.unlinkSync(bindFig);
+    });
+
     await itAsync('decompiles native Figma variables and exports design tokens JSON via --tokens', async () => {
         const tokensPath = path.resolve('test/test-extracted-tokens.json');
         const res = await convertFigToHtml('fleader.fig', {
