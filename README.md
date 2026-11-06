@@ -3,9 +3,9 @@
 # 🎨 HTML to .fig & .fig to HTML
 ### Figma Bi-Directional Engine 2.0
 
-[![Version](https://img.shields.io/badge/version-1.4.0-6366f1.svg?style=for-the-badge)](package.json)
+[![Version](https://img.shields.io/badge/version-1.5.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 117 passed](https://img.shields.io/badge/tests-117%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 129 passed](https://img.shields.io/badge/tests-129%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -44,7 +44,7 @@ $ html-to-fig showcase.html showcase.fig
 
 ┌──────────────────────────────────────────┐
 │             HTML to Figma CLI            │
-│               v1.4.0                     │
+│               v1.5.0                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
 [██░░░░░░░░]  20% • Loading Kiwi schema...
@@ -74,7 +74,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 
 ┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
-│               v1.4.0                     │
+│               v1.5.0                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
 [██░░░░░░░░]  20% • Decoding Kiwi binary AST...
@@ -176,6 +176,20 @@ Open dist/index.html in any browser.
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
+- **🖼 Graphic Subtree Collapsing & Cumulative Baking Engine (v1.5.0)**:
+  - **Автоматическое схлопывание вырожденных графических цепочек**: устранение «мусорной» виртуальной вложенности слоев в Figma (`Group -> Group -> Mask Group -> Group -> Image`), порождаемой при сложном составлении иллюстраций и экспорте макетов.
+  - **Кумулятивная 2D-аффинная геометрия**: матричное перемножение цепочки 2D-трансформаций ($M_{\text{cumulative}} = M_1 \times M_2 \times \dots \times M_n$) с извлечением результирующего угла поворота $\theta = \text{atan2}(b, a)$, масштабирования и смещения.
+  - **Аппаратное запекание через Sharp**: поворот растра на вычисленный кумулятивный угол, наложение масок и центрирование под точные габариты холста с истинной альфа-прозрачностью (Retina @2x) в единый оптимизированный файл PNG/WebP без белых артефактов и обрезаний.
+  - **Схлопывание дерева DOM**: замена 5+ уровней вложенных виртуальных слоёв-обёрток на один чистый семантический тег `<img>` (или карточку с единственным `<img>`) с точными габаритами и без каскадного сбоя CSS Box Model (без паразитных паддингов, паразитного `flex: 1`, относительных сдвигов и вложенных `rotate`).
+- **🧭 Движок Smart Anchor & Constraint Resolution (v1.5.0)**:
+  - **Интеллектуальный выбор CSS-привязок `right` и `bottom`**: для абсолютно позиционированных элементов (`position: absolute`) автоматический переход от жестких `top` / `left` к `bottom` и `right`.
+  - **Приоритет дизайнерских Figma Constraints**: строгий учёт явных привязок к краям (`horizontalConstraint === 'MAX'` ➔ `right`, `verticalConstraint === 'MAX'` ➔ `bottom`).
+  - **Геометрическая близость к граням родителя**: если элемент расположен ближе к правой или нижней грани контейнера ($|\text{distRight}| < |\text{distLeft}|$ или $|\text{distBottom}| < |\text{distTop}|$), движок автоматически генерирует `right` / `bottom`, сохраняя адаптивное поведение при ресайзе родительского фрейма.
+  - **Адаптивные медиа-запросы**: автоматический сброс противоположных координат (`left: auto` / `right: auto`, `top: auto` / `bottom: auto`) при смене стороны привязки между брейкпоинтами.
+- **📦 Сохранение явных размеров в синтезированных Bento-колонках (v1.5.0)**:
+  - Корректная обработка `Fixed height` (например, `height: 200px`) у карточек внутри синтезированных вертикальных колонок (`Column`) в Bento-сетках.
+  - Перенос `layoutGrow: 1` с дочерних карточек на саму синтезированную колонку и назначение `layoutAlign: STRETCH`, что предотвращает паразитное превращение карточек во `flex: 1` по высоте.
+  - Защита нативных Auto Layout фреймов с фиксированной высотой от ошибочного снятия высоты через `isEqualHeightGroup`.
 - **📱 Figma Adaptive Multi-Breakpoint Engine (v1.4.0)**:
   - **Кросс-девайсная адаптивная верстка из связанных фреймов**: автоматическое объединение макетов разных экранов (например, Desktop `1440px`, Tablet `768px`, Mobile `375px`) в **единый канонический HTML-документ** без дублирования DOM-дерева.
   - **AST Reconciliation & Similarity Matching**: интеллектуальный скоринг нод по контенту, именам слоев, типам и положению в иерархии с автоматическим связыванием соответствующих элементов.
@@ -506,7 +520,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (117 тестов):
+Проект покрыт всесторонними автоматическими тестами (129 тестов):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -582,6 +596,18 @@ decompile();
   - Сквозная декомпиляция мульти-брейкпоинт проектов в единый канонический HTML-документ
   - Автоматическое запекание радиальных/линейных масок в растровые изображения через Sharp (`dest-in`) с истинным альфа-каналом и исключение артефактов `mix-blend-mode`
   - Поддержка явных тегов `[mask]`, `[маска]`, `#mask`, `/mask` для сохранения CSS `mask-image`
+- **Graphic Subtree Collapsing & Cumulative Baking Engine (v1.5.0)**:
+  - Математическое умножение 2D-матриц Figma Kiwi и кумулятивное накопление трансформаций
+  - Вычисление результирующего угла поворота $\theta = \text{atan2}(b, a)$, масштаба и трансляции
+  - Детекция вырожденных графических цепочек (`detectGraphicSubtreeChain`)
+  - Защита от ложных срабатываний: отклонение поддеревьев с текстом, кнопками или параллельным контентом
+  - Аппаратное запекание составного ассета через Sharp с поворотом, маской и масштабированием Retina 2x под точные габариты холста
+  - Схлопывание виртуальных слоёв в дереве DOM и генерация чистого семантического `<img>` без паразитных отступов и `flex`
+  - Декомпиляция аффинных вращений из матриц трансформации с сохранением координат дочерних элементов
+- **Bento & Smart Anchors Engine (v1.5.0)**:
+  - Сохранение явного `Fixed height` (200px) у карточек внутри синтезированных Bento-колонок
+  - Разрешение привязок `bottom`/`right` vs `top`/`left` на основе геометрической близости к граням и Figma Constraints (`MAX`)
+  - Автоматический сброс противоположных координат (`auto`) при смене стороны привязки в адаптивных медиа-запросах
 
 Запуск тестов:
 ```bash
@@ -608,14 +634,18 @@ html-to-fig/
 │   ├── schema.js           # Компилятор и кэш Kiwi схемы
 │   ├── decompiler/         # ДВИЖОК ОБРАТНОЙ КОНВЕРТАЦИИ (FIG -> HTML)
 │   │   ├── index.js        # Главный оркестратор декомпиляции
+│   │   ├── graphic-collapser.js # Кумулятивная аффинная геометрия и схлопывание поддеревьев (v1.5.0)
 │   │   ├── page-detector.js # Детекция страниц (теги, артборды, Canvas) и санитизация URL
+│   │   ├── breakpoint-detector.js # Детекция брейкпоинтов и группировка адаптивных страниц
+│   │   ├── ast-aligner.js  # AST Similarity Matching и сопоставление нод между экранами
 │   │   ├── geometry.js     # BoundingBox, 1D-проекции, Fuzzy Clustering и интервалы
 │   │   ├── container-detector.js # Обнаружение карточек-подложек и изолирование оверлеев
 │   │   ├── synthesizer.js  # Recursive XY-Cut, детекция сеток N x M и Auto Layout синтез
 │   │   ├── reader.js       # Чтение .fig ZIP, декомпрессия Kiwi и извлечение картинок
 │   │   ├── tree.js         # Восстановление иерархии сцены, инстансы компонентов и overrides
 │   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, дедупликация и транслитерация
-│   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS и маппинг MIME типов
+│   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS, Smart Anchors (v1.5.0)
+│   │   ├── responsive-css.js # Генерация адаптивных медиа-запросов и fluid clamp() формул
 │   │   ├── units.js        # Преобразование единиц (rem, em, vw, vh) и fluid-расчеты (clamp, min, max)
 │   │   ├── html.js         # Генерация семантического HTML5, форм и Rich Text
 │   │   ├── image-optimizer.js # Оптимизация картинок (Retina 2x, WebP/AVIF, srcset) и запекание масок
@@ -630,7 +660,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (117 тестов)
+    ├── run-tests.js        # Автоматический тестовый запуск (129 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
