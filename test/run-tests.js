@@ -2251,7 +2251,7 @@ async function runAllTests() {
 
         const sBg = computeNodeStyles(bgVector, parent);
         assert.strictEqual(sBg['position'], 'absolute');
-        assert.strictEqual(sBg['z-index'], '0', 'Background underlay (before in-flow) should have z-index: 0');
+        assert.strictEqual(sBg['z-index'], undefined, 'Background underlay (before in-flow) should have z-index: auto (omitted) to avoid isolating stacking context');
         assert.strictEqual(sBg['pointer-events'], 'none', 'Vector decoration should have pointer-events: none');
 
         const sCard = computeNodeStyles(inFlowCard, parent);
@@ -2419,7 +2419,15 @@ async function runAllTests() {
         assert.strictEqual(styles['overflow'], undefined, 'overflow: hidden must not be set when frameMaskDisabled is true');
     });
 
-    it('preserves underlay nodes before flow content in synthesizer and assigns z-index: 0 underlay vs z-index: 1 in-flow', () => {
+    it('preserves underlay nodes before flow content with z-index: auto to enable mix-blend-mode without isolating stacking context', () => {
+        const glowChild = {
+            name: 'Glow Circle',
+            type: 'ELLIPSE',
+            blendMode: 'SOFT_LIGHT',
+            size: { x: 269, y: 269 },
+            transform: { m00: 1, m01: 0, m02: 450, m10: 0, m11: 1, m12: 50 }
+        };
+
         const container = {
             type: 'FRAME',
             name: 'Card Container',
@@ -2429,7 +2437,8 @@ async function runAllTests() {
                     name: 'Underlay Background',
                     type: 'FRAME',
                     size: { x: 960, y: 700 },
-                    transform: { m00: 1, m01: 0, m02: 434, m10: 0, m11: 1, m12: -252 }
+                    transform: { m00: 1, m01: 0, m02: 434, m10: 0, m11: 1, m12: -252 },
+                    children: [glowChild]
                 },
                 {
                     name: 'Main Content',
@@ -2450,7 +2459,10 @@ async function runAllTests() {
 
         const sUnderlay = computeNodeStyles(container.children[0], container);
         assert.strictEqual(sUnderlay['position'], 'absolute');
-        assert.strictEqual(sUnderlay['z-index'], '0', 'Underlay should receive z-index: 0');
+        assert.strictEqual(sUnderlay['z-index'], undefined, 'Underlay should have z-index: auto (omitted) to avoid isolating stacking context');
+
+        const sGlow = computeNodeStyles(glowChild, container.children[0]);
+        assert.strictEqual(sGlow['mix-blend-mode'], 'soft-light', 'Inner child must retain mix-blend-mode: soft-light');
 
         const sContent = computeNodeStyles(container.children[1], container);
         assert.strictEqual(sContent['position'], 'relative');

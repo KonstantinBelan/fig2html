@@ -792,16 +792,22 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         // Correctly calculate layer in Figma relative to other elements
         if (node.isDecorativeOverlay || node.isDecorativeUnderlay || node.stackPositioning === 'ABSOLUTE' || isAbsolute) {
             if (node.isDecorativeUnderlay || (hasInFlow && childIndex < minInFlow)) {
-                // Underlay / Background: placed behind in-flow content in Figma
-                styles['z-index'] = String(Math.max(0, childIndex));
+                // Underlay / Background: placed behind in-flow content in Figma.
+                // In DOM, underlays are ordered before in-flow content, and in-flow has z-index: 1.
+                // By omitting z-index (z-index: auto), underlays stay under in-flow content (level 0 vs level 1)
+                // without establishing an isolating Stacking Context. This allows mix-blend-mode
+                // (luminosity, soft-light, screen, etc.) on or inside underlays to blend with the parent backdrop!
             } else if (!hasInFlow) {
                 // Freeform / non-auto-layout canvas: layer index based on Figma layer order (1, 2, 3...)
-                styles['z-index'] = String(Math.max(0, childIndex) + 1);
+                // For bottom layer (childIndex === 0), leave as auto to prevent isolating stacking context
+                if (childIndex > 0) {
+                    styles['z-index'] = String(childIndex + 1);
+                }
             } else if (childIndex > maxInFlow) {
                 // Overlay: placed above in-flow content in Figma
                 styles['z-index'] = String(10 + Math.max(0, childIndex));
-            } else {
-                styles['z-index'] = String(Math.max(0, childIndex));
+            } else if (childIndex > 0) {
+                styles['z-index'] = String(childIndex);
             }
         }
 
