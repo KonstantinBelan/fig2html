@@ -305,6 +305,13 @@ function synthesizeContainerLayout(containerNode, options = {}) {
             child.stackPositioning = 'ABSOLUTE';
             if (flowNodes.length === 0) {
                 child.isDecorativeUnderlay = true;
+                const markUnderlaySubtree = (n) => {
+                    n.isDecorativeUnderlay = true;
+                    if (Array.isArray(n.children)) {
+                        for (const c of n.children) markUnderlaySubtree(c);
+                    }
+                };
+                markUnderlaySubtree(child);
                 underlayNodes.push(child);
             } else {
                 child.isDecorativeOverlay = true;

@@ -769,10 +769,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     // In Figma, frameMaskDisabled === true means "Clip Content" was explicitly unchecked by the user!
     const isClipExplicitlyDisabled = node.frameMaskDisabled === true;
     const isMaskNode = hasMaskChild || (node.name && /mask(\s*group)?/i.test(node.name)) || node.mask === true || node.isMask === true;
+    const isUnderlayNode = Boolean(node.isDecorativeUnderlay || parentNode?.isDecorativeUnderlay);
 
-    if (!isClipExplicitlyDisabled && !node.isSynthesized && (node.clipsContent || node.frameMaskDisabled === false || isSlideOrCard || isMaskNode || (node.type === 'FRAME' && (node.cornerRadius || node.rectangleCornerRadiiIndependent) && node.children?.length))) {
+    if (!isClipExplicitlyDisabled && !isUnderlayNode && !node.isSynthesized && (node.clipsContent || node.frameMaskDisabled === false || isSlideOrCard || isMaskNode || (node.type === 'FRAME' && (node.cornerRadius || node.rectangleCornerRadiiIndependent) && node.children?.length))) {
         styles['overflow'] = 'hidden';
-    } else if (isMaskNode && !node.isSynthesized) {
+    } else if (isMaskNode && !isUnderlayNode && !node.isSynthesized) {
         styles['overflow'] = 'hidden';
     }
 
@@ -877,7 +878,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         // Layer z-index calculation:
         // Correctly calculate layer in Figma relative to other elements
         if (node.isDecorativeOverlay || node.isDecorativeUnderlay || node.stackPositioning === 'ABSOLUTE' || isAbsolute) {
-            if (node.isDecorativeUnderlay || (hasInFlow && childIndex < minInFlow)) {
+            const isUnderlay = Boolean(node.isDecorativeUnderlay || parentNode?.isDecorativeUnderlay);
+            if (isUnderlay || (hasInFlow && childIndex < minInFlow)) {
                 // Underlay / Background: placed behind in-flow content in Figma.
                 // In DOM, underlays are ordered before in-flow content, and in-flow has z-index: 1.
                 // By omitting z-index (z-index: auto), underlays stay under in-flow content (level 0 vs level 1)

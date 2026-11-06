@@ -2,7 +2,13 @@
 const crypto = require('crypto');
 const sharp = require('sharp');
 const { getExtensionForMime, getLinearGradientAngle, hasExplicitMaskTag } = require('./css');
-const { findAllGraphicChains, collapseGraphicSubtree } = require('./graphic-collapser');
+const {
+    findAllGraphicChains,
+    collapseGraphicSubtree,
+    multiplyAffineMatrices,
+    decomposeAffineMatrix,
+    identityMatrix
+} = require('./graphic-collapser');
 
 /**
  * Traverses root nodes to find all image fills and their target CSS dimensions
@@ -849,81 +855,147 @@ async function bakeGraphicChainAsset(chainInfo, rawImages, options = {}) {
     const canvasW = Math.max(1, Math.round(chainInfo.canvasWidth * scaleMultiplier));
     const canvasH = Math.max(1, Math.round(chainInfo.canvasHeight * scaleMultiplier));
 
-    const wLeaf = chainInfo.leaf.size?.x || chainInfo.canvasWidth;
-    const hLeaf = chainInfo.leaf.size?.y || chainInfo.canvasHeight;
-    const decomp = chainInfo.decomposition;
+    // Find the node in the chain that introduces rotation (if any)
+    let rotIndex = -1;
+    if (Array.isArray(chainInfo.chain)) {
+        for (let j = 0; j < chainInfo.chain.length; j++) {
+            const m = chainInfo.chain[j].transform;
+            if (m && (Math.abs(m.m01 || 0) > 0.001 || Math.abs(m.m10 || 0) > 0.001)) {
+                rotIndex = j;
+                break;
+            }
+        }
+    }
+    if (rotIndex === -1 && Array.isArray(chainInfo.chain) && chainInfo.chain.length > 0) {
+        rotIndex = chainInfo.chain.length - 1;
+    }
 
-    const wScaled = Math.max(1, Math.round(wLeaf * (decomp.scaleX || 1) * scaleMultiplier));
-    const hScaled = Math.max(1, Math.round(hLeaf * (decomp.scaleY || 1) * scaleMultiplier));
+    const rotNode = (rotIndex >= 0 && chainInfo.chain) ? chainInfo.chain[rotIndex] : chainInfo.leaf;
+    const leafNode = chainInfo.leaf;
 
-    // 1. Scale and rotate raster with transparent background
-    let rotatedBuf;
+    // Outer transform: from root down to rotNode
+    let mToRot = identityMatrix();
+    if (Array.isArray(chainInfo.chain)) {
+        for (let j = 0; j <= rotIndex; j++) {
+            mToRot = multiplyAffineMatrices(mToRot, chainInfo.chain[j].transform);
+        }
+    }
+
+    // Inner transform: from rotNode down to leaf
+    let mInner = identityMatrix();
+    if (Array.isArray(chainInfo.chain)) {
+        for (let j = rotIndex + 1; j < chainInfo.chain.length; j++) {
+            mInner = multiplyAffineMatrices(mInner, chainInfo.chain[j].transform);
+        }
+    }
+
+    const decompOuter = decomposeAffineMatrix(mToRot);
+    const decompInner = decomposeAffineMatrix(mInner);
+
+    const W = rotNode.size?.x || leafNode.size?.x || chainInfo.canvasWidth;
+    const H = rotNode.size?.y || leafNode.size?.y || chainInfo.canvasHeight;
+
+    // 4 corners of the rotated unit in root canvas coordinates
+    const corners = [
+        { x: 0, y: 0 },
+        { x: W, y: 0 },
+        { x: W, y: H },
+        { x: 0, y: H }
+    ].map(p => ({
+        x: mToRot.m00 * p.x + mToRot.m01 * p.y + mToRot.m02,
+        y: mToRot.m10 * p.x + mToRot.m11 * p.y + mToRot.m12
+    }));
+
+    const xMin = Math.min(...corners.map(c => c.x));
+    const yMin = Math.min(...corners.map(c => c.y));
+
+    const wRotUnit = Math.max(1, Math.round(W * scaleMultiplier));
+    const hRotUnit = Math.max(1, Math.round(H * scaleMultiplier));
+
+    const wLeaf = Math.max(1, Math.round((leafNode.size?.x || W) * (decompInner.scaleX || 1) * scaleMultiplier));
+    const hLeaf = Math.max(1, Math.round((leafNode.size?.y || H) * (decompInner.scaleY || 1) * scaleMultiplier));
+
+    const xInner = Math.round((mInner.m02 || 0) * scaleMultiplier);
+    const yInner = Math.round((mInner.m12 || 0) * scaleMultiplier);
+
+    let resizedLeaf;
     try {
-        rotatedBuf = await sharp(rawItem.buffer)
-            .resize(wScaled, hScaled, { fit: 'fill' })
-            .rotate(decomp.rotateDeg || 0, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        resizedLeaf = await sharp(rawItem.buffer)
+            .resize(wLeaf, hLeaf, { fit: 'fill' })
             .toBuffer();
     } catch (err) {
         return null;
     }
 
-    const metaRot = await sharp(rotatedBuf).metadata().catch(() => null);
-    if (!metaRot?.width || !metaRot?.height) return null;
+    // Composite leaf inside rotNode canvas
+    const leftCrop = Math.max(0, -xInner);
+    const topCrop = Math.max(0, -yInner);
+    const extractW = Math.min(wLeaf - leftCrop, wRotUnit - Math.max(0, xInner));
+    const extractH = Math.min(hLeaf - topCrop, hRotUnit - Math.max(0, yInner));
 
-    // 2. Center calculation in Root Canvas space
-    const m = chainInfo.cumulativeTransform;
-    const cxLeaf = wLeaf / 2;
-    const cyLeaf = hLeaf / 2;
-    const cxRoot = m.m00 * cxLeaf + m.m01 * cyLeaf + m.m02;
-    const cyRoot = m.m10 * cxLeaf + m.m11 * cyLeaf + m.m12;
-
-    const CX = cxRoot * scaleMultiplier;
-    const CY = cyRoot * scaleMultiplier;
-
-    const left = Math.round(CX - metaRot.width / 2);
-    const top = Math.round(CY - metaRot.height / 2);
-
-    const cx1 = Math.max(0, left);
-    const cy1 = Math.max(0, top);
-    const cx2 = Math.min(canvasW, left + metaRot.width);
-    const cy2 = Math.min(canvasH, top + metaRot.height);
-
-    const fw = cx2 - cx1;
-    const fh = cy2 - cy1;
-
-    let finalBuf;
-    if (fw <= 0 || fh <= 0) {
-        // Completely outside canvas boundary: create empty transparent canvas
-        finalBuf = await sharp({
-            create: {
-                width: canvasW,
-                height: canvasH,
-                channels: 4,
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
-            }
+    let rotUnitCanvas;
+    if (extractW <= 0 || extractH <= 0) {
+        rotUnitCanvas = await sharp({
+            create: { width: wRotUnit, height: hRotUnit, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
         }).png().toBuffer();
     } else {
-        const fx = cx1 - left;
-        const fy = cy1 - top;
+        const croppedLeaf = await sharp(resizedLeaf).extract({
+            left: leftCrop,
+            top: topCrop,
+            width: extractW,
+            height: extractH
+        }).toBuffer();
 
-        const extracted = await sharp(rotatedBuf).extract({
-            left: fx,
-            top: fy,
-            width: fw,
-            height: fh
+        rotUnitCanvas = await sharp({
+            create: { width: wRotUnit, height: hRotUnit, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
+        }).composite([{
+            input: croppedLeaf,
+            left: Math.max(0, xInner),
+            top: Math.max(0, yInner)
+        }]).png().toBuffer();
+    }
+
+    // Rotate rotUnitCanvas with transparent background
+    let rotated;
+    try {
+        rotated = await sharp(rotUnitCanvas)
+            .rotate(decompOuter.rotateDeg || 0, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+            .toBuffer();
+    } catch (err) {
+        return null;
+    }
+
+    const metaRot = await sharp(rotated).metadata().catch(() => null);
+    if (!metaRot?.width || !metaRot?.height) return null;
+
+    // Composite onto root canvas (canvasW x canvasH)
+    const posX = Math.round(xMin * scaleMultiplier);
+    const posY = Math.round(yMin * scaleMultiplier);
+
+    const rTopCrop = Math.max(0, -posY);
+    const rLeftCrop = Math.max(0, -posX);
+    const rExtractW = Math.min(metaRot.width - rLeftCrop, canvasW - Math.max(0, posX));
+    const rExtractH = Math.min(metaRot.height - rTopCrop, canvasH - Math.max(0, posY));
+
+    let finalBuf;
+    if (rExtractW <= 0 || rExtractH <= 0) {
+        finalBuf = await sharp({
+            create: { width: canvasW, height: canvasH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
+        }).png().toBuffer();
+    } else {
+        const rExtracted = await sharp(rotated).extract({
+            left: rLeftCrop,
+            top: rTopCrop,
+            width: rExtractW,
+            height: rExtractH
         }).toBuffer();
 
         finalBuf = await sharp({
-            create: {
-                width: canvasW,
-                height: canvasH,
-                channels: 4,
-                background: { r: 0, g: 0, b: 0, alpha: 0 }
-            }
+            create: { width: canvasW, height: canvasH, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } }
         }).composite([{
-            input: extracted,
-            left: cx1,
-            top: cy1
+            input: rExtracted,
+            left: Math.max(0, posX),
+            top: Math.max(0, posY)
         }]).png().toBuffer();
     }
 
