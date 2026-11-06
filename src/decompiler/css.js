@@ -141,7 +141,7 @@ function formatGradient(paint) {
     }
 
     if (paint.type === 'GRADIENT_RADIAL') {
-        return `radial-gradient(circle at center, ${stopStrings.join(', ')})`;
+        return `radial-gradient(50% 50% at 50% 50%, ${stopStrings.join(', ')})`;
     }
 
     return null;
@@ -389,12 +389,24 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             const isFillsBaked = Boolean(node.isImageFillsBaked || node.isMaskBaked);
 
             for (const fill of visibleFills) {
+                const isNormalBlend = !fill.blendMode || fill.blendMode === 'NORMAL' || fill.blendMode === 'PASS_THROUGH';
                 if (fill.type === 'SOLID') {
                     if (!isFillsBaked && !isNativeImg) {
+                        const isOpaqueSolid = isNormalBlend && (fill.opacity ?? 1) >= 0.999 && (fill.color?.a ?? 1) >= 0.999;
+                        if (isOpaqueSolid) {
+                            bgImages.length = 0;
+                        }
                         bgColor = formatColor(fill.color, fill.opacity);
                     }
                 } else if (fill.type === 'GRADIENT_LINEAR' || fill.type === 'GRADIENT_RADIAL') {
                     if (!isFillsBaked && !isNativeImg) {
+                        const isOpaqueGrad = isNormalBlend && (fill.opacity ?? 1) >= 0.999 &&
+                            Array.isArray(fill.stops) && fill.stops.length > 0 &&
+                            fill.stops.every(s => (s.color?.a ?? 1) >= 0.999);
+                        if (isOpaqueGrad) {
+                            bgImages.length = 0;
+                            bgColor = null;
+                        }
                         const grad = formatGradient(fill);
                         if (grad) bgImages.push(grad);
                     }
@@ -431,7 +443,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             }
 
             if (bgImages.length > 0 && !(isNativeImg && hasImageFill)) {
-                styles['background-image'] = bgImages.join(', ');
+                styles['background-image'] = bgImages.slice().reverse().join(', ');
             }
             if (bgColor && bgColor !== 'transparent' && !node.isMaskBaked && !node.isImageFillsBaked && !(isNativeImg && hasImageFill)) {
                 styles['background-color'] = bgColor;
@@ -910,6 +922,9 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
         if (node.size?.x) styles['width'] = fmtW(node.size.x);
         if (node.size?.y) styles['height'] = fmtH(node.size.y);
+        if ((isImg || isSvgVector) && styles['width']) {
+            styles['max-width'] = 'none';
+        }
     } else if (parentHasMask) {
         // Masked child filling its container
         styles['width'] = '100%';

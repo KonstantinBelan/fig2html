@@ -342,6 +342,27 @@ function generateSolidSvg(fill, w, h) {
 }
 
 /**
+ * Computes SVG <linearGradient> x1, y1, x2, y2 coordinates in objectBoundingBox space [0..1]
+ * from a Figma 2x3 gradient transform matrix so that scale, offset, and rotation are preserved.
+ * @param {object} transform
+ * @returns {{ x1: number, y1: number, x2: number, y2: number }}
+ */
+function getSvgLinearGradientCoords(transform) {
+    if (!transform) return { x1: 0, y1: 0, x2: 0, y2: 1 };
+    const m00 = transform.m00 ?? 1;
+    const m01 = transform.m01 ?? 0;
+    const m02 = transform.m02 ?? 0;
+    const l2 = m00 * m00 + m01 * m01;
+    if (l2 < 1e-6) return { x1: 0, y1: 0, x2: 0, y2: 1 };
+    return {
+        x1: Math.round(((-m02 * m00) / l2) * 10000) / 10000,
+        y1: Math.round(((-m02 * m01) / l2) * 10000) / 10000,
+        x2: Math.round((((1 - m02) * m00) / l2) * 10000) / 10000,
+        y2: Math.round((((1 - m02) * m01) / l2) * 10000) / 10000
+    };
+}
+
+/**
  * Generates an SVG buffer for a GRADIENT_LINEAR fill
  * @param {object} fill
  * @param {number} w
@@ -350,7 +371,7 @@ function generateSolidSvg(fill, w, h) {
  */
 function generateLinearGradientSvg(fill, w, h) {
     if (!fill || !fill.stops || fill.stops.length < 2) return null;
-    const angle = getLinearGradientAngle(fill.transform);
+    const { x1, y1, x2, y2 } = getSvgLinearGradientCoords(fill.transform);
     const stopsXml = fill.stops.map(s => {
         const pct = Math.round((s.position !== undefined ? s.position : 0) * 1000) / 10 + '%';
         const col = s.color || s.authoredColor || { r: 0, g: 0, b: 0, a: 1 };
@@ -364,7 +385,7 @@ function generateLinearGradientSvg(fill, w, h) {
 
     return Buffer.from(
         `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
-        `<defs><linearGradient id="g" gradientTransform="rotate(${angle - 90} 0.5 0.5)">` +
+        `<defs><linearGradient id="g" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">` +
         stopsXml +
         `</linearGradient></defs>` +
         `<rect width="${w}" height="${h}" fill="url(#g)" />` +
@@ -611,6 +632,76 @@ async function bakeImageFillsAndFilters(rawImages, rootNodes, options = {}) {
 }
 
 /**
+ * Generates an SVG alpha mask buffer for a Figma mask node
+ * @param {object} maskChild
+ * @param {number} w
+ * @param {number} h
+ * @param {number} [scaleMultiplier=2]
+ * @returns {Buffer|null}
+ */
+function generateMaskSvg(maskChild, w, h, scaleMultiplier = 2) {
+    if (!maskChild) return null;
+
+    const radPaint = maskChild.fillPaints?.find(f => f.type === 'GRADIENT_RADIAL' && f.visible !== false);
+    if (radPaint && radPaint.stops && radPaint.stops.length >= 2) {
+        const stopsXml = radPaint.stops.map(s => {
+            const pct = Math.round((s.position !== undefined ? s.position : 0) * 1000) / 10;
+            const a = s.color?.a !== undefined ? s.color.a : 1;
+            const op = Math.round(a * (radPaint.opacity ?? 1) * 1000) / 1000;
+            return `<stop offset="${pct}%" stop-color="white" stop-opacity="${op}" />`;
+        }).join('\n');
+
+        return Buffer.from(
+            `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+            `<defs><radialGradient id="m" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">` +
+            stopsXml +
+            `</radialGradient></defs>` +
+            `<rect width="${w}" height="${h}" fill="url(#m)" />` +
+            `</svg>`
+        );
+    }
+
+    const linPaint = maskChild.fillPaints?.find(f => f.type === 'GRADIENT_LINEAR' && f.visible !== false);
+    if (linPaint && linPaint.stops && linPaint.stops.length >= 2) {
+        const { x1, y1, x2, y2 } = getSvgLinearGradientCoords(linPaint.transform);
+        const stopsXml = linPaint.stops.map(s => {
+            const pct = Math.round((s.position !== undefined ? s.position : 0) * 1000) / 10;
+            const a = s.color?.a !== undefined ? s.color.a : 1;
+            const op = Math.round(a * (linPaint.opacity ?? 1) * 1000) / 1000;
+            return `<stop offset="${pct}%" stop-color="white" stop-opacity="${op}" />`;
+        }).join('\n');
+
+        return Buffer.from(
+            `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+            `<defs><linearGradient id="m" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">` +
+            stopsXml +
+            `</linearGradient></defs>` +
+            `<rect width="${w}" height="${h}" fill="url(#m)" />` +
+            `</svg>`
+        );
+    }
+
+    if (maskChild.type === 'ELLIPSE') {
+        return Buffer.from(
+            `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+            `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}" fill="white" />` +
+            `</svg>`
+        );
+    }
+
+    if (maskChild.cornerRadius) {
+        const r = Math.round(maskChild.cornerRadius * scaleMultiplier);
+        return Buffer.from(
+            `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+            `<rect width="${w}" height="${h}" rx="${r}" ry="${r}" fill="white" />` +
+            `</svg>`
+        );
+    }
+
+    return null;
+}
+
+/**
  * Detects mask containers without explicit [mask] / [маска] tag and bakes the mask into the image
  * using Sharp compositing (blend: 'dest-in'), producing a clean PNG with transparent alpha.
  *
@@ -626,6 +717,21 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
 
     let bakedCount = 0;
     const scaleMultiplier = typeof options.imageScale === 'number' && options.imageScale > 0 ? options.imageScale : 2;
+
+    // Collect nodes belonging to collapsible graphic chains so we don't prematurely
+    // center-crop their offset/rotated leaf images before bakeGraphicChainAsset runs.
+    const graphicChainNodes = new Set();
+    const graphicChains = findAllGraphicChains(rootNodes);
+    function markSubtree(n) {
+        if (!n || graphicChainNodes.has(n)) return;
+        graphicChainNodes.add(n);
+        if (Array.isArray(n.children)) {
+            for (const c of n.children) markSubtree(c);
+        }
+    }
+    for (const gc of graphicChains) {
+        markSubtree(gc.rootNode);
+    }
 
     function findMaskContainers(nodes) {
         const res = [];
@@ -651,68 +757,6 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
         return res;
     }
 
-    function generateMaskSvg(maskChild, w, h) {
-        if (!maskChild) return null;
-
-        const radPaint = maskChild.fillPaints?.find(f => f.type === 'GRADIENT_RADIAL' && f.visible !== false);
-        if (radPaint && radPaint.stops && radPaint.stops.length >= 2) {
-            const stopsXml = radPaint.stops.map(s => {
-                const pct = Math.round((s.position !== undefined ? s.position : 0) * 100);
-                const a = s.color?.a !== undefined ? s.color.a : 1;
-                const op = Math.round(a * (radPaint.opacity ?? 1) * 1000) / 1000;
-                return `<stop offset="${pct}%" stop-color="white" stop-opacity="${op}" />`;
-            }).join('\n');
-
-            return Buffer.from(
-                `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
-                `<defs><radialGradient id="m" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">` +
-                stopsXml +
-                `</radialGradient></defs>` +
-                `<rect width="${w}" height="${h}" fill="url(#m)" />` +
-                `</svg>`
-            );
-        }
-
-        const linPaint = maskChild.fillPaints?.find(f => f.type === 'GRADIENT_LINEAR' && f.visible !== false);
-        if (linPaint && linPaint.stops && linPaint.stops.length >= 2) {
-            const angle = getLinearGradientAngle(linPaint.transform);
-            const stopsXml = linPaint.stops.map(s => {
-                const pct = Math.round((s.position !== undefined ? s.position : 0) * 100);
-                const a = s.color?.a !== undefined ? s.color.a : 1;
-                const op = Math.round(a * (linPaint.opacity ?? 1) * 1000) / 1000;
-                return `<stop offset="${pct}%" stop-color="white" stop-opacity="${op}" />`;
-            }).join('\n');
-
-            return Buffer.from(
-                `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
-                `<defs><linearGradient id="m" gradientTransform="rotate(${angle - 90} 0.5 0.5)">` +
-                stopsXml +
-                `</linearGradient></defs>` +
-                `<rect width="${w}" height="${h}" fill="url(#m)" />` +
-                `</svg>`
-            );
-        }
-
-        if (maskChild.type === 'ELLIPSE') {
-            return Buffer.from(
-                `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
-                `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}" fill="white" />` +
-                `</svg>`
-            );
-        }
-
-        if (maskChild.cornerRadius) {
-            const r = Math.round(maskChild.cornerRadius * scaleMultiplier);
-            return Buffer.from(
-                `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
-                `<rect width="${w}" height="${h}" rx="${r}" ry="${r}" fill="white" />` +
-                `</svg>`
-            );
-        }
-
-        return null;
-    }
-
     const containers = findMaskContainers(rootNodes);
 
     const getRawImage = (hash) => {
@@ -734,6 +778,7 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
     };
 
     for (const container of containers) {
+        if (graphicChainNodes.has(container)) continue;
         if (hasExplicitMaskTag(container)) continue;
         const maskChild = container.children.find(c => c.mask === true || c.isMask === true);
         if (!maskChild || hasExplicitMaskTag(maskChild)) continue;
@@ -769,7 +814,7 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
                         maskRasterBuf = await sharp(mRaw.buffer).resize(targetW, targetH, { fit: 'cover' }).toBuffer();
                     }
                 } else {
-                    const svgBuf = generateMaskSvg(maskChild, targetW, targetH);
+                    const svgBuf = generateMaskSvg(maskChild, targetW, targetH, scaleMultiplier);
                     if (svgBuf) {
                         maskRasterBuf = await sharp(svgBuf).png().toBuffer();
                     }
@@ -921,7 +966,8 @@ async function bakeGraphicChainAsset(chainInfo, rawImages, options = {}) {
     let resizedLeaf;
     try {
         resizedLeaf = await sharp(rawItem.buffer)
-            .resize(wLeaf, hLeaf, { fit: 'fill' })
+            .resize(wLeaf, hLeaf, { fit: 'cover' })
+            .ensureAlpha()
             .toBuffer();
     } catch (err) {
         return null;
@@ -953,6 +999,46 @@ async function bakeGraphicChainAsset(chainInfo, rawImages, options = {}) {
             left: Math.max(0, xInner),
             top: Math.max(0, yInner)
         }]).png().toBuffer();
+    }
+
+    // Apply any masks in chainInfo.masks onto rotUnitCanvas (in rotNode coordinate space)
+    if (Array.isArray(chainInfo.masks) && chainInfo.masks.length > 0) {
+        const maskLayers = [];
+        for (const maskChild of chainInfo.masks) {
+            if (!maskChild || maskChild.isMaskBaked) continue;
+            try {
+                let maskRasterBuf = null;
+                const maskImgPaint = maskChild.fillPaints?.find(f => f.type === 'IMAGE' && f.image?.hash && f.visible !== false);
+                if (maskImgPaint) {
+                    const mHash = (typeof maskImgPaint.image.hash === 'string')
+                        ? maskImgPaint.image.hash.toLowerCase()
+                        : Buffer.from(maskImgPaint.image.hash).toString('hex').toLowerCase();
+                    const mRaw = getRawImage(mHash);
+                    if (mRaw?.buffer) {
+                        maskRasterBuf = await sharp(mRaw.buffer)
+                            .resize(wRotUnit, hRotUnit, { fit: 'cover' })
+                            .ensureAlpha()
+                            .toBuffer();
+                    }
+                } else {
+                    const svgBuf = generateMaskSvg(maskChild, wRotUnit, hRotUnit, scaleMultiplier);
+                    if (svgBuf) {
+                        maskRasterBuf = await sharp(svgBuf).png().toBuffer();
+                    }
+                }
+                if (maskRasterBuf) {
+                    maskLayers.push({ input: maskRasterBuf, blend: 'dest-in' });
+                }
+            } catch (err) {
+                // Ignore individual mask rasterization failure
+            }
+        }
+        if (maskLayers.length > 0) {
+            rotUnitCanvas = await sharp(rotUnitCanvas)
+                .composite(maskLayers)
+                .png()
+                .toBuffer();
+        }
     }
 
     // Rotate rotUnitCanvas with transparent background
