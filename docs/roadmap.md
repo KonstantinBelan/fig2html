@@ -1,348 +1,273 @@
-# 📱 Спецификация Figma Adaptive Multi-Breakpoint Engine (v1.4.0)
-## Кросс-девайсная адаптивная верстка из нескольких фреймов Figma в единый responsive HTML/CSS сайт
+# 🖼 Спецификация Enterprise Graphic Subtree Collapsing & Cumulative Baking Engine
+## Автоматическое схлопывание избыточных цепочек групп и кумулятивное запекание составной графики в единые ассеты
 
-> **Цель версии 1.4.0**: Разработка и внедрение **Adaptive Multi-Breakpoint Engine** — интеллектуального механизма, способного объединять несколько связанных экранных фреймов Figma (Desktop, Tablet, Mobile) в **одно каноническое адаптивное HTML-дерево** с единым оптимизированным CSS-файлом, использующим современные **CSS Media Queries** и бесшовную **Fluid интерполяцию (`clamp()`)**.
-
----
-
-## 1. Проблема и контекст
-
-### 1.1. Текущее положение дел
-В версии v1.3.0 проект `html-to-fig` научился экспортировать многостраничные сайты, но каждый экранный фрейм Figma обрабатывается как **отдельная независимая страница** (`index.html`, `about.html`, `mobile.html`).
-
-В реальной веб-разработке дизайнеры рисуют **один и тот же экран** под 2–4 разрешения:
-- **Desktop**: 1440px / 1920px (развернутая навигация, многоколоночные сетки, крупные заголовки)
-- **Tablet / Laptop**: 768px / 1024px (2-колоночные сетки, уменьшенные отступы)
-- **Mobile**: 375px / 390px (1-колоночный стек, гамбургер-меню, компактная типографика)
-
-### 1.2. Проблема существующих конвертеров
-Все существующие инструменты на рынке (Anima, Locofy, TeleportHQ и плагины Figma) при попытке экспортировать Desktop и Mobile сталкиваются с фундаментальной дилеммой:
-1. Либо генерируют **разные несвязанные HTML-страницы** (`desktop.html`, `mobile.html`), что делает невозможной публикацию единого адаптивного сайта;
-2. Либо дублируют все узлы внутри одного HTML-файла, скрывая целые экраны через `display: none !important`, что приводит к раздуванию DOM в 3 раза, ухудшению SEO, скачкам LCP/CLS и двойной загрузке изображений.
-
-### 1.3. Наше решение
-**Adaptive Multi-Breakpoint Engine v1.4.0** производит **семантическое слияние (Reconciliation)** деревьев разных брейкпоинтов:
-- Создается **ровно один семантический HTML-тег** для каждого логического элемента.
-- Стили десктопа берутся за базу (Desktop-first) либо стили мобайла (Mobile-first).
-- Различия в структуре оформляются через медиа-запросы `@media`.
-- Различия в числовых параметрах (размеры шрифтов, паддинги, гэпы) плавно интерполируются через математические функции `clamp()`.
-- Уникальные для брейкпоинтов элементы (например, десктопное меню vs бургер-кнопка) переключаются через чистый `display: none` / `display: flex`.
+> **Статус**: Архитектурная спецификация (Ready for Implementation)  
+> **Целевая версия**: `html-to-fig` v1.5.0  
+> **Область применения**: Декомпилятор Figma `.fig` ➔ HTML/CSS (`src/decompiler/`)
 
 ---
 
-## 2. Архитектура движка (Adaptive Pipeline)
+## 1. Проблема и бизнес-контекст
+
+### 1.1. Избыточная вложенность («Divitis») в макетах Figma
+В графических редакторах (в первую очередь Figma) дизайнеры часто организуют иллюстрации и сложные графические композиции через многоуровневые вложенные группы. В процессе работы над макетом дизайнер:
+1. Помещает фотографию в группу (`Group`);
+2. Создает векторный слой для маскирования и оборачивает их в группу маски (`Mask group`);
+3. Поворачивает полученную композицию (например, наклон бутылки на $-15^\circ$);
+4. Оборачивает повернутую маску в еще одну группу (`Group`) для позиционирования;
+5. Помещает всё это в экранный фрейм-карточку (`Frame`), имеющий свойства AutoLayout, паддинги и `overflow: hidden`.
+
+Пример реальной структуры из макета `test/demo/jetlife/jetlife.fig`:
+```
+Frame 116047416 (карточка товара / окно иллюстрации, 300×332px)
+  └── Group 116047490 (габариты 527×520px)
+        └── Mask group 5 (габариты 432×423px, transform: rotate(-15deg))
+              └── Group 116047492
+                    └── Gemini_Generated_Image... (исходный растр 1138×1138px)
+```
+
+### 1.2. Почему наивный перенос 1-в-1 в HTML/CSS ломает верстку
+Если декомпилятор транслирует каждый виртуальный слой Figma в отдельный `<div>`, возникает каскадный сбой рендеринга:
+
+1. **Конфликт CSS Box Model и Padding**:
+   Родительский `Frame 116047416` имеет `padding: 24px; display: flex; flex-direction: column; overflow: hidden;`. В спецификации CSS абсолютно позиционированный дочерний элемент фрейма с Flexbox/AutoLayout позиционируется относительно `padding-box`, что сдвигает все дочерние группы на **+24px** по X и Y.
+2. **Наложение стековых контекстов и сдвигов**:
+   Каждая промежуточная группа вносит свой локальный `transform`, `transform-origin`, `position: absolute` и отрицательные координаты (`translate(-68.5px, -83.3px)`).
+3. **Размытие и потеря точности**:
+   Многократный рантайм-рендеринг вложенных `rotate()` и `overflow: hidden` на GPU мобильных и десктопных браузеров приводит к субпиксельным неточностям и мылу.
+4. **Визуальный результат**:
+   В браузере наклонная бутылка оказывается смещенной, увеличенной и упирается в верхний край карточки, тогда как в Figma она аккуратно спозиционирована и отцентрирована внутри фрейма `300×332px`.
+
+### 1.3. Цель движка
+Создать специализированный модуль **Graphic Subtree Collapsing & Cumulative Baking**, который:
+1. Распознает «вырожденные» ветки в дереве слоев Figma, не несущие смысловой нагрузки разметки (в которых нет текста, кнопок или нескольких параллельных элементов интерфейса, а есть только обертки вокруг одного графического ассета);
+2. Математически аккумулирует все вложенные трансформации (повороты, масштабирования, смещения, маски) в единую кумулятивную 2D-матрицу относительно корневого графического контейнера;
+3. Запекает итоговую композицию через Sharp в **один высококачественный прозрачный PNG-ассет** (с поддержкой Retina `@1x`, `@2x`, `@3x`);
+4. Схлопывает 4–6 вложенных `<div>` в дереве DOM в **один чистый семантический тег `<img>`** (или компактный контейнер с `<img>`).
+
+---
+
+## 2. Архитектура движка (Pipeline)
 
 ```mermaid
 flowchart TD
-    A["Вход: Дерево .fig (Figma Kiwi AST)"] --> B["1. Breakpoint Detector & Grouping\n(Поиск связанных фреймов: Desktop, Tablet, Mobile)"]
-    B --> C["2. AST Tree Aligner & Matcher\n(Сопоставление нод: Similarity Scoring по Content, Name, Path)"]
-    C --> D["3. Canonical DOM Tree Builder\n(Сборка единого HTML-дерева без дублей нод)"]
-    D --> E["4. Hybrid Style Synthesizer\n(Вычисление дельт стилей, @media queries и fluid clamp)"]
-    E --> F["5. Code Generator\n(Финальный чистый HTML + DRY Responsive CSS)"]
+    A["Kiwi AST (Сцена Figma)"] --> B["1. Graphic Chain Detector\n(Поиск вырожденных цепочек Group -> Mask -> Image)"]
+    B --> C["2. Root Boundary Resolver\n(Определение корневых границ: Frame 300x332)"]
+    C --> D["3. Cumulative 2D Affine Calculator\n(Перемножение матриц трансформации M_total = M1 x M2 x ... x Mn)"]
+    D --> E["4. Sharp Canvas Composer & Baker\n(Поворот, маскирование, обрезка под холст 300x332, генерация Retina)"]
+    E --> F["5. AST Pruner & DOM Simplifier\n(Удаление пустых div-оберток, замена на чистый <img>)"]
+    F --> G["6. CSS Clean Generator\n(Семантичные стили без паразитных translate/padding/overflow)"]
 ```
 
 ---
 
-## 3. Детекция и группировка брейкпоинтов (Figma UX)
+## 3. Математика кумулятивных трансформаций (2D Affine Math)
 
-Движок поддерживает 3 взаимодополняющих уровня детекции, избавляя дизайнера от необходимости соблюдать строгие искусственные ограничения:
+В Figma каждый узел сцены хранит матрицу относительного расположения `relativeTransform` в виде массива `[ [a, c, tx], [b, d, ty] ]`, что соответствует матрице 2D-аффинного преобразования:
 
-### 3.1. Приоритет 1: Явные теги в именах фреймов
-Дизайнер может прямо указать тип устройства или ширину в квадратных скобках или через префикс `@`:
-- **По устройствам**:
-  - `Home [desktop]`, `Home [tablet]`, `Home [mobile]`
-  - `[page:index][desktop]`, `[page:index][mobile]`
-  - `Landing / Desktop`, `Landing / Mobile`
-- **По точной ширине экрана**:
-  - `Catalog @1440`, `Catalog @768`, `Catalog @375`
-  - `About [w:1440]`, `About [w:375]`
-
-### 3.2. Приоритет 2: Figma Sections (разделы)
-Если фреймы объединены в Figma Section (например, секция с именем `Home Page`), все дочерние артборды внутри секции автоматически считаются брейкпоинтами одной страницы.
-
-### 3.3. Приоритет 3: Автоматическая геометрическая кластеризация
-Если тегов нет:
-- Анализируются все экранные фреймы (`width >= 320px`, `height >= 400px`).
-- Фреймы с похожим контентом (совпадение текстов $\ge 60\%$) или одинаковым базовым именем (`Landing` и `Landing Mobile`) группируются в один экран.
-- Классификация по ширине:
-  - $\ge 1200\text{px}$ ➔ **Desktop**
-  - $768\text{px} \dots 1199\text{px}$ ➔ **Tablet**
-  - $< 768\text{px}$ ➔ **Mobile**
-
----
-
-## 4. Алгоритм согласования AST (Tree Reconciliation)
-
-Для объединения нескольких деревьев узлов в одно каноническое дерево используется алгоритм **AST Alignment**:
-
-```mermaid
-flowchart LR
-    subgraph D_Tree ["Desktop Tree"]
-        D1["Header"] --> D2["Logo"]
-        D1 --> D3["NavLinks"]
-        D1 --> D4["CTA Button"]
-    end
-
-    subgraph M_Tree ["Mobile Tree"]
-        M1["Header"] --> M2["Logo"]
-        M1 --> M5["BurgerButton"]
-        M1 --> M4["CTA Button"]
-    end
-
-    subgraph Matcher ["Reconciliation Matcher"]
-        D2 <--> |Score: 1.0| M2
-        D4 <--> |Score: 0.95| M4
-        D3 <--> |No Match| None1["Desktop-only"]
-        M5 <--> |No Match| None2["Mobile-only"]
-    end
-
-    subgraph Unified ["Unified DOM Tree"]
-        U1["Header"]
-        U1 --> U2["Logo (all screens)"]
-        U1 --> U3["NavLinks (desktop only)"]
-        U1 --> U5["BurgerButton (mobile only)"]
-        U1 --> U4["CTA Button (all screens)"]
-    end
-
-    D_Tree & M_Tree --> Matcher --> Unified
-```
-
-### 4.1. Формула схожести узлов (Similarity Score)
-
-Для каждой пары узлов $U_{desktop}$ и $U_{mobile}$ вычисляется коэффициент схожести:
-
-$$\text{Similarity}(A, B) = w_c \cdot S_{content} + w_n \cdot S_{name} + w_p \cdot S_{path} + w_t \cdot S_{type}$$
+$$M = \begin{pmatrix} a & c & t_x \\ b & d & t_y \\ 0 & 0 & 1 \end{pmatrix}$$
 
 Где:
-- $w_c = 0.40$ — **Content Score** (совпадение текста или хеша изображения).
-- $w_n = 0.30$ — **Name Score** (совпадение имени слоя в Figma: `cta-button`, `hero-title`).
-- $w_p = 0.20$ — **Path Score** (совпадение положения в дереве предков).
-- $w_t = 0.10$ — **Type Score** (совпадение типа ноды: TEXT, FRAME, INSTANCE).
+- $a = S_x \cdot \cos\theta$
+- $b = S_x \cdot \sin\theta$
+- $c = -S_y \cdot \sin\theta$
+- $d = S_y \cdot \cos\theta$
+- $t_x, t_y$ — линейный сдвиг (Translation) по осям X и Y.
 
-Если $\text{Similarity}(A, B) \ge 0.70$, узлы считаются **одним и тем же элементом** и объединяются в один HTML-тег.
+### 3.1. Кумулятивная композиция по цепочке предков
+Если листовое изображение $I$ находится внутри цепочки узлов $K_1 \to K_2 \to \dots \to K_n \to I$, то положение точки $(x, y)$ изображения в координатной системе корневого контейнера $K_1$ выражается произведением матриц:
 
----
+$$M_{\text{cumulative}} = M_{K_1 \to K_2} \times M_{K_2 \to K_3} \times \dots \times M_{K_n \to I}$$
 
-## 5. Обработка эксклюзивных элементов (Exclusive Elements)
+### 3.2. Разложение кумулятивной матрицы (Decomposition)
+Из итоговой матрицы $M_{\text{cumulative}} = \begin{pmatrix} a & c & t_x \\ b & d & t_y \\ 0 & 0 & 1 \end{pmatrix}$ извлекаются параметры для запекания:
+- **Угол поворота**:
+  $$\theta = \text{atan2}(b, a)$$
+- **Масштаб по осям**:
+  $$S_x = \sqrt{a^2 + b^2}, \quad S_y = \sqrt{c^2 + d^2}$$
+- **Смещение центра**:
+  $$T_x = t_x, \quad T_y = t_y$$
 
-В верстке часто встречаются элементы, существующие только на одном разрешении:
-- **Desktop-only**: десктопное горизонтальное меню, сложные сайдбары, декоративные фоновые 3D-иллюстрации.
-- **Mobile-only**: кнопка-гамбургер, мобильная шторка (drawer), нижний таб-бар (bottom navigation).
-
-### Механика работы:
-1. Элемент помещается в каноническое HTML-дерево в правильную позицию.
-2. Ему назначается семантический модификатор или утилитный класс (`.nav-desktop`, `.burger-btn`).
-3. В CSS генерируется переключение видимости:
-   ```css
-   /* Desktop-first база */
-   .nav-desktop {
-     display: flex;
-   }
-   .burger-btn {
-     display: none;
-   }
-
-   /* Переключение на экранах планшетов и мобилок */
-   @media (max-width: 768px) {
-     .nav-desktop {
-       display: none;
-     }
-     .burger-btn {
-       display: flex;
-     }
-   }
+### 3.3. Расчет холста и экстракции (Canvas & Bounding Box)
+Пусть корневой фрейм имеет размеры $W_{\text{root}} \times H_{\text{root}}$ (например, $300 \times 332$).
+1. Создается прозрачный холст целевого разрешения: $W = W_{\text{root}} \cdot \text{scale}$, $H = H_{\text{root}} \cdot \text{scale}$ (где $\text{scale} = 2$ для `@2x`).
+2. Исходный растр масштабируется с коэффициентом $S_x, S_y$ и поворачивается через Sharp:
+   ```javascript
+   sharp(imageBuffer)
+     .resize(Math.round(origW * Sx * scale), Math.round(origH * Sy * scale))
+     .rotate(thetaDegrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
    ```
+3. Вычисляется сдвиг повернутого изображения относительно верхнего левого угла корневого холста. Если повернутое изображение выходит за границы холста, Sharp производит наложение (`composite`) или извлечение фрагмента (`extract`), строго совпадающего с рамкой $W_{\text{root}} \times H_{\text{root}}$.
 
 ---
 
-## 6. Гибридный генератор стилей: Media Queries + Fluid clamp()
+## 4. Алгоритм детекции цепочек (Pattern Matching)
 
-Для достижения максимального качества верстки движок разделяет CSS-свойства на **дискретные** и **непрерывные**:
+Алгоритм должен строго отличать **вырожденные графические цепочки** от **структурной верстки**.
 
-### 6.1. Непрерывные свойства (Continuous / Fluid)
-Свойства, значения которых плавно меняются в зависимости от ширины экрана:
-- `font-size`, `line-height`, `letter-spacing`
-- `padding`, `margin`, `gap`
-- `border-radius`, `width`, `max-width`
+### 4.1. Критерии вырожденной графической цепочки (`isGraphicSubtreeChain`)
+Цепочка $N_{\text{root}} \to C_1 \to \dots \to C_k \to \text{Leaf}$ считается вырожденной графической веткой, если выполняются **все** условия:
 
-Для них движок использует математическую функцию `clamp()`:
-$$\text{clamp}(V_{min}, V_{slope} \cdot \text{vw} + V_{intercept}, V_{max})$$
+1. **Единственный визуальный контент**:
+   На каждом шаге от $N_{\text{root}}$ до $\text{Leaf}$ каждый промежуточный узел $C_i$ имеет ровно **одного** дочернего потомка (или двух, если один из них является маской `isMask: true`).
+2. **Отсутствие интерактивных и текстовых узлов**:
+   Ни в одном узле цепочки нет текста (`TEXT`), компонентов ввода (`INPUT`), ссылок или нескольких параллельных смысловых блоков.
+3. **Листовой узел — это растровое изображение**:
+   Конечный потомок $\text{Leaf}$ содержит заливку типа `IMAGE`.
+4. **Наличие паразитной сложности**:
+   Внутри цепочки присутствует хотя бы одно из условий:
+   - Слой маски (`isMask: true`);
+   - Поворот (`rotation != 0` или матрица с $b \neq 0, c \neq 0$);
+   - Глубина вложенности групп $\ge 2$.
 
-*Пример*: Заголовок 48px на Desktop (1440px) и 24px на Mobile (375px):
-```css
-.hero-title {
-  /* Никаких резких скачков при ресайзе окна — абсолютно плавная типографика */
-  font-size: clamp(24px, 1.5rem + 2.25vw, 48px);
-  padding-bottom: clamp(16px, 1rem + 1.5vw, 32px);
-}
-```
-
-### 6.2. Дискретные структурные свойства (Structural Changes)
-Свойства, которые не имеют промежуточных значений и определяют каркас раскладки:
-- `flex-direction` (`row` ➔ `column`)
-- `flex-wrap` (`nowrap` ➔ `wrap`)
-- `order` (смена визуального порядка текста и картинки)
-- `grid-template-columns` (`repeat(3, 1fr)` ➔ `1fr`)
-- `display` (`flex` ➔ `none`)
-
-Для них движок генерирует чистые и аккуратные медиа-запросы:
-```css
-.hero-container {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-}
-
-@media (max-width: 768px) {
-  .hero-container {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-```
+### 4.2. Определение границ схлопывания (Root Boundary)
+- **Вариант А (Фрейм является чистой графической карточкой)**:
+  Если у $N_{\text{root}}$ нет видимого фона (`fills` пусты), нет бордеров (`strokes`), нет текста, а размер фрейма совпадает с габаритами иллюстрации в сетке — сам $N_{\text{root}}$ заменяется на тег `<img>`.
+- **Вариант Б (Фрейм имеет собственный фон, бордер или тень)**:
+  Если у $N_{\text{root}}$ есть свой `background-color`, `border-radius`, тень или он участвует в родительской сетке AutoLayout — $N_{\text{root}}$ сохраняется как `<div class="card">`, а все его внутренние промежуточные группы схлопываются в **один вложенный тег** `<img class="card__image">`.
 
 ---
 
-## 7. Пример работы движка: Было и Стало
+## 5. До и После: Сравнение верстки
 
-### Входные данные (Figma)
-- Фрейм 1: `Home [desktop]` (1440×900)
-- Фрейм 2: `Home [mobile]` (375×812)
+### 5.1. До внедрения (текущий проблемный вывод)
 
-### Результат компиляции
-
-#### `index.html` (Единый DOM без дублей)
+#### HTML (`index.html`):
 ```html
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Home</title>
-  <link rel="stylesheet" href="css/style.css">
-</head>
-<body>
-  <header class="header">
-    <div class="logo">Acme Inc.</div>
-    <nav class="nav-links">
-      <a href="#features">Возможности</a>
-      <a href="#pricing">Тарифы</a>
-    </nav>
-    <button class="burger-btn" aria-label="Открыть меню">☰</button>
-  </header>
-
-  <main class="hero">
-    <div class="hero-content">
-      <h1 class="hero-title">Создавайте потрясающие сайты</h1>
-      <p class="hero-desc">Двусторонний компилятор HTML и Figma нового поколения.</p>
-      <button class="btn-primary">Попробовать бесплатно</button>
+<div class="frame-116047416-6">
+  <div class="group-116047490">
+    <div class="mask-group-5">
+      <div class="group-116047492">
+        <img src="img/de560becb4c73a37796330a5a59a75dc6ac08d7e.png" 
+             srcset="..." 
+             alt="Gemini_Generated_Image_c1xrnjc1xrnjc1xr 1" 
+             class="gemini_generated_image_c1xrnjc1xrnj">
+      </div>
     </div>
-    <div class="hero-image">
-      <img src="img/hero-mockup.png" alt="Mockup">
-    </div>
-  </main>
-</body>
-</html>
+  </div>
+</div>
 ```
 
-#### `css/style.css` (Fluid + Media Queries)
+#### CSS (`style.css`):
 ```css
-/* Базовые переменные и fluid типографика */
-:root {
-  --color-primary: #6366f1;
-  --color-bg: #0f172a;
-  --color-text: #ffffff;
-}
-
-.header {
+.frame-116047416-6 {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: clamp(16px, 1rem + 1.5vw, 32px);
+  flex-direction: column;
+  padding: 24px;
+  position: absolute;
+  left: 360px;
+  top: 0px;
+  width: 300px;
+  height: 332px;
+  overflow: hidden;
 }
-
-.nav-links {
-  display: flex;
-  gap: clamp(16px, 1rem + 1vw, 32px);
+.group-116047490 {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 527px;
+  height: 520px;
 }
-
-.burger-btn {
-  display: none;
+.mask-group-5 {
+  position: absolute;
+  transform: rotate(-15deg) translate(-68.5px, -83.3px);
+  width: 432px;
+  height: 423px;
 }
-
-.hero {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: clamp(24px, 1.5rem + 2.5vw, 64px);
-  padding: clamp(24px, 1.5rem + 3.5vw, 80px);
-}
-
-.hero-title {
-  font-size: clamp(28px, 1.75rem + 2.25vw, 56px);
-  line-height: 1.15;
-}
-
-/* Дискретные медиа-запросы для мобильных экранов */
-@media (max-width: 768px) {
-  .nav-links {
-    display: none;
-  }
-  .burger-btn {
-    display: flex;
-  }
-  .hero {
-    flex-direction: column-reverse;
-    align-items: stretch;
-  }
+.gemini_generated_image_c1xrnjc1xrnj {
+  position: absolute;
+  width: 1138px;
+  height: 1138px;
+  max-width: none;
 }
 ```
+*Результат*: 5 уровней DOM, смещение из-за `padding: 24px`, обрезание верхушки бутылки.
 
 ---
 
-## 8. CLI интерфейс
+### 5.2. После внедрения движка (целевой результат)
 
-```bash
-# Автоматическое определение брейкпоинтов и склейка в единый responsive сайт
-node cli.js --reverse design.fig --responsive
-
-# Явное указание целевых брейкпоинтов
-node cli.js --reverse design.fig --responsive --breakpoints 1440,1024,768,375
-
-# Выбор подхода: Desktop-first (max-width, по умолчанию) или Mobile-first (min-width)
-node cli.js --reverse design.fig --responsive --mobile-first
-
-# Отключение адаптивного слияния (экспорт каждого фрейма отдельной HTML-страницей)
-node cli.js --reverse design.fig --no-responsive
+#### HTML (`index.html`):
+```html
+<img src="img/vitamins-bottle.png" 
+     srcset="img/vitamins-bottle-300w.png 300w, img/vitamins-bottle-600w.png 600w" 
+     sizes="300px" 
+     alt="Витамины и добавки" 
+     class="frame-116047416-6">
 ```
+
+#### CSS (`style.css`):
+```css
+.frame-116047416-6 {
+  position: absolute;
+  left: 360px;
+  top: 0px;
+  width: 300px;
+  height: 332px;
+  object-fit: contain;
+  pointer-events: none;
+}
+```
+*Результат*:
+- 1 семантический тег `<img>` вместо 5 вложенных контейнеров;
+- 0% искажений и смещений — позиция пиксель-в-пиксель соответствует макету Figma;
+- Отсутствие рантайм-нагрузки на GPU браузера;
+- Идеальная четкость на Retina экранах.
 
 ---
 
-## 9. Поэтапный план реализации (Roadmap)
+## 6. Граничные случаи и отказоустойчивость (Edge Cases)
 
-### Этап 1: Breakpoint & Group Detector
-- Модуль: `src/decompiler/breakpoint-detector.js`
-- Распознавание тегов: `[desktop]`, `[tablet]`, `[mobile]`, `@1440`, `@768`, `@375`.
-- Группировка артбордов по каноническим страницам.
-- Создание структур метаданных брейкпоинтов для каждой страницы.
+| Граничный случай | Поведение алгоритма |
+|---|---|
+| Внутри группы есть текст (`TEXT`) или кнопка | **Не схлопывать**. Цепочка не считается вырожденной, верстается стандартными вложенными `<div>`. |
+| Группа содержит 2 и более не-масочных слоя | **Не схлопывать**. Это многослойная композиция интерфейса. |
+| Слой маски векторный (звезда, многоугольник, кривые Безье) | Векторная маска растеризуется через SVG-буфер и накладывается через Sharp `composite` с оператором `dest-in` перед обрезкой. |
+| Контейнер $N_{\text{root}}$ имеет градиентный фон или тень `box-shadow` | $N_{\text{root}}$ сохраняется как внешний `<div>` со своими стилями, а схлопывание происходит для его внутренних групп, помещая внутрь один чистый `<img>`. |
+| Изображение имеет свойства `paintFilter` (контраст/экспозиция) или мульти-заливки | Фильтры и заливки применяются первым шагом через существующий `bakeImageFillsAndFilters`, после чего результирующий буфер поступает в кумулятивное запекание. |
 
-### Этап 2: AST Reconciliation & Tree Aligner
-- Модуль: `src/decompiler/ast-aligner.js`
-- Реализация скоринга схожести (`SimilarityScore`).
-- Сопоставление узлов между базовым и адаптивными деревьями.
-- Выделение общих элементов и изоляция `desktop-only` / `mobile-only` узлов.
-- Формирование единого унифицированного дерева элементов.
+---
 
-### Этап 3: Responsive CSS Synthesizer
-- Модуль: `src/decompiler/responsive-css.js`
-- Вычисление разницы стилей (CSS Diffing) между брейкпоинтами.
-- Генерация медиа-запросов `@media (max-width: ...)`.
-- Интеграция с существующим Fluid Engine (`clamp()`) для численных свойств.
-- Устранение дублирующихся стилей.
+## 7. Пошаговый план реализации (Phased Implementation Plan)
 
-### Этап 4: Интеграция с CLI и Тестирование
-- Обновление `src/decompiler/index.js` и CLI аргументов (`--responsive`, `--breakpoints`, `--mobile-first`).
-- Разработка полного набора интеграционных и модульных тестов в `test/run-tests.js`.
-- Создание демо-файла Figma с несколькими брейкпоинтами для валидации.
-- Обновление документации `README.md` и версионирование v1.4.0.
+### Фаза 1: Модуль аффинной геометрии и детекции (`src/decompiler/graphic-collapser.js`)
+1. Создать функции перемножения 2D-аффинных матриц:
+   - `multiplyAffineMatrices(m1, m2)`
+   - `decomposeAffineMatrix(m)` ➔ `{ rotateDeg, scaleX, scaleY, translateX, translateY }`
+2. Реализовать предикат `detectGraphicSubtreeChain(node)` для обхода AST Kiwi:
+   - Поиск цепочек `FRAME/GROUP -> ... -> IMAGE`.
+   - Проверка отсутствия семантических потомков (`TEXT`, интерактивные узлы).
+   - Вычисление корневых границ (`boundaryBox: { width, height, x, y }`).
+
+### Фаза 2: Пайплайн композиции и запекания в Sharp
+1. Добавить функцию `bakeGraphicChainAsset(chainInfo, rawImages, options)` в `src/decompiler/image-optimizer.js`:
+   - Применение масштаба и угла поворота к буферу исходного изображения;
+   - Растеризация маски (если есть);
+   - Точная обрезка / экстракция под размеры корневого холста ($W \times H$);
+   - Генерация Retina-версий (`@1x`, `@2x`);
+   - Сохранение запеченного PNG-буфера в `rawImages` с новым хешем.
+
+### Фаза 3: Схлопывание в AST (DOM Tree Simplification)
+1. В `src/decompiler/tree.js` или перед этапом генерации HTML:
+   - Заменять цепочку промежуточных узлов на единый узел с типом `IMAGE` (или обновлять корневой узел, назначая ему флаг `isCollapsedGraphicRoot = true`);
+   - Удалять из дерева дочерние псевдо-группы, предотвращая генерацию пустых `<div>`.
+
+### Фаза 4: Синхронизация генератора CSS (`src/decompiler/css.js`)
+1. Для схлопнутых узлов (`isCollapsedGraphicRoot`):
+   - Подавлять генерацию внутренних Flex/Padding свойств;
+   - Задавать габариты `width`, `height`, `object-fit: contain`;
+   - Исключать генерацию лишних селекторов для удаленных классов групп.
+
+### Фаза 5: Валидация и тестирование
+1. Запуск полного регрессионного сьюта:
+   ```bash
+   node test/run-tests.js
+   ```
+   Все 119 существующих тестов должны проходить успешно (`119/119 passed`).
+2. Добавление специализированного теста на схлопывание:
+   - Тест на вычисление матрицы поворота $-15^\circ$;
+   - Тест на определение вырожденной цепочки групп;
+   - Тест на сохранение узлов с текстом (защита от ложных срабатываний).
+3. Пересборка макета `test/demo/jetlife/jetlife.fig`:
+   - Проверка карточки `.frame-116047416-6` в `test/demo/jetlife/index.html`;
+   - Визуальное подтверждение совпадения со Скрином 3 из Figma.
