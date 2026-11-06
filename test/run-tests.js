@@ -3611,6 +3611,131 @@ async function runAllTests() {
         assert.strictEqual(sImg['height'], '762px', 'Image must preserve true height');
     });
 
+    it('preserves explicit Fixed height (200px) on stacked cards inside synthesized Bento columns', () => {
+        const bentoGrid = {
+            type: 'FRAME',
+            name: 'Frame 116047436',
+            size: { x: 1344, y: 424 },
+            stackMode: 'GRID',
+            children: [
+                {
+                    type: 'FRAME',
+                    name: 'Frame 116047435',
+                    size: { x: 432, y: 424 },
+                    transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 },
+                    stackMode: 'VERTICAL',
+                    stackPrimarySizing: 'FIXED'
+                },
+                {
+                    type: 'FRAME',
+                    name: 'Frame 116047449',
+                    size: { x: 432, y: 200 },
+                    transform: { m00: 1, m01: 0, m02: 456, m10: 0, m11: 1, m12: 0 },
+                    stackMode: 'VERTICAL',
+                    stackPrimarySizing: 'FIXED',
+                    stackChildPrimaryGrow: 1
+                },
+                {
+                    type: 'FRAME',
+                    name: 'Frame 116047452',
+                    size: { x: 432, y: 200 },
+                    transform: { m00: 1, m01: 0, m02: 456, m10: 0, m11: 1, m12: 224 },
+                    stackMode: 'VERTICAL',
+                    stackPrimarySizing: 'FIXED',
+                    stackChildPrimaryGrow: 1
+                },
+                {
+                    type: 'FRAME',
+                    name: 'Frame 116047451',
+                    size: { x: 432, y: 200 },
+                    transform: { m00: 1, m01: 0, m02: 912, m10: 0, m11: 1, m12: 0 },
+                    stackMode: 'VERTICAL',
+                    stackPrimarySizing: 'FIXED'
+                },
+                {
+                    type: 'FRAME',
+                    name: 'Frame 116047453',
+                    size: { x: 432, y: 200 },
+                    transform: { m00: 1, m01: 0, m02: 912, m10: 0, m11: 1, m12: 224 },
+                    stackMode: 'VERTICAL',
+                    stackPrimarySizing: 'FIXED'
+                }
+            ]
+        };
+
+        synthesizeContainerLayout(bentoGrid);
+        assert.strictEqual(bentoGrid.children.length, 3, 'Should form 3 horizontal bands (1 card + 2 columns)');
+        const col1 = bentoGrid.children[1];
+        assert.strictEqual(col1.name, 'Column');
+        assert.strictEqual(col1.isEqualWidthGroup, true, 'Synthesized Column should get equal-width row flex');
+
+        const card449 = col1.children[0];
+        const card452 = col1.children[1];
+        assert.strictEqual(card449.isEqualHeightGroup, undefined, 'Stacked card inside Column must not be marked isEqualHeightGroup');
+        assert.strictEqual(card449.layoutGrow, undefined, 'Stacked card inside Column must not inherit row layoutGrow');
+
+        const s449 = computeNodeStyles(card449, col1);
+        const s452 = computeNodeStyles(card452, col1);
+        assert.strictEqual(s449['height'], '200px', 'Frame 116047449 must preserve height: 200px');
+        assert.strictEqual(s452['height'], '200px', 'Frame 116047452 must preserve height: 200px');
+    });
+
+    it('resolves smart absolute anchors (bottom/right vs top/left) based on edge proximity and constraints', () => {
+        const parentCard = {
+            type: 'FRAME',
+            name: 'Frame 116047454',
+            size: { x: 432, y: 618 },
+            stackMode: 'VERTICAL'
+        };
+
+        // 1. Bottom-anchored illustration: top=226, height=392 inside 618px card -> bottom: 0px, left: 0px
+        const bottomDecor = {
+            type: 'FRAME',
+            name: 'Frame 116047495',
+            stackPositioning: 'ABSOLUTE',
+            size: { x: 432, y: 392 },
+            transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 226 }
+        };
+        const sBottom = computeNodeStyles(bottomDecor, parentCard);
+        assert.strictEqual(sBottom['position'], 'absolute');
+        assert.strictEqual(sBottom['left'], '0px', 'Full-width child at x=0 should keep left: 0px');
+        assert.strictEqual(sBottom['bottom'], '0px', 'Bottom-flush child (226 + 392 = 618) should use bottom: 0px');
+        assert.strictEqual(sBottom['top'], undefined, 'top should be omitted when bottom is used');
+
+        // 2. Right-anchored product image: left=360, width=300 inside 660x330 card -> right: 0px, top: 0px
+        const productCard = {
+            type: 'FRAME',
+            name: 'Frame 116047481',
+            size: { x: 660, y: 330 },
+            stackMode: 'VERTICAL'
+        };
+        const rightImg = {
+            type: 'FRAME',
+            name: 'Frame 116047416',
+            isCollapsedGraphicRoot: true,
+            stackPositioning: 'ABSOLUTE',
+            size: { x: 300, y: 332 },
+            transform: { m00: 1, m01: 0, m02: 360, m10: 0, m11: 1, m12: 0 }
+        };
+        const sRight = computeNodeStyles(rightImg, productCard);
+        assert.strictEqual(sRight['right'], '0px', 'Right-flush child (360 + 300 = 660) should use right: 0px');
+        assert.strictEqual(sRight['left'], undefined, 'left should be omitted when right is used');
+        assert.strictEqual(sRight['top'], '0px', 'Top-flush child at y=0 should keep top: 0px');
+
+        // 3. Top-right badge with explicit MAX horizontalConstraint: left=376, width=36 inside 432x623 -> right: 20px, top: 20px
+        const badge = {
+            type: 'FRAME',
+            name: 'Badge',
+            stackPositioning: 'ABSOLUTE',
+            horizontalConstraint: 'MAX',
+            size: { x: 36, y: 36 },
+            transform: { m00: 1, m01: 0, m02: 376, m10: 0, m11: 1, m12: 20 }
+        };
+        const sBadge = computeNodeStyles(badge, { type: 'FRAME', size: { x: 432, y: 623 }, stackMode: 'VERTICAL' });
+        assert.strictEqual(sBadge['right'], '20px');
+        assert.strictEqual(sBadge['top'], '20px');
+    });
+
     // 35. Graphic Subtree Collapsing & Cumulative Baking Engine
     console.log('\x1b[1m35. Graphic Subtree Collapsing & Cumulative Baking Engine Tests\x1b[0m');
     await runGraphicCollapserTests({ it, itAsync });

@@ -405,6 +405,18 @@ function synthesizeResponsiveStyles({
                     if (baseStyles['width'] && !vStyles['width'] && vStyles['align-self'] === 'stretch') {
                         diffStyles['width'] = '100%';
                     }
+                    if (baseStyles['left'] && !vStyles['left'] && vStyles['right']) {
+                        diffStyles['left'] = 'auto';
+                    }
+                    if (baseStyles['right'] && !vStyles['right'] && vStyles['left']) {
+                        diffStyles['right'] = 'auto';
+                    }
+                    if (baseStyles['top'] && !vStyles['top'] && vStyles['bottom']) {
+                        diffStyles['top'] = 'auto';
+                    }
+                    if (baseStyles['bottom'] && !vStyles['bottom'] && vStyles['top']) {
+                        diffStyles['bottom'] = 'auto';
+                    }
 
                     if (Object.keys(diffStyles).length > 0) {
                         stylesheetManager.addMediaRule(mq, `.${primaryClass}`, diffStyles);

@@ -321,6 +321,75 @@ function isVectorContainer(node) {
 }
 
 /**
+ * Resolves smart horizontal (left vs right) and vertical (top vs bottom) anchoring
+ * for absolutely positioned elements based on Figma constraints and nearest-edge proximity.
+ *
+ * @param {object} node
+ * @param {object} parentNode
+ * @param {object} [context={}]
+ * @param {boolean} [context.parentHasMask=false]
+ * @param {boolean} [context.hasTransform=false]
+ * @returns {{ horizontalProp: 'left'|'right', horizontalVal: number, verticalProp: 'top'|'bottom', verticalVal: number }}
+ */
+function resolveSmartAbsoluteAnchors(node, parentNode, context = {}) {
+    const rawX = node?.transform?.m02 || 0;
+    const rawY = node?.transform?.m12 || 0;
+    const posX = Math.round(rawX * 10) / 10;
+    const posY = Math.round(rawY * 10) / 10;
+
+    const parentW = parentNode?.size?.x || 0;
+    const parentH = parentNode?.size?.y || 0;
+    const nodeW = node?.size?.x || 0;
+    const nodeH = node?.size?.y || 0;
+
+    const { parentHasMask = false, hasTransform = false } = context;
+    const hConstraint = node?.horizontalConstraint || node?.constraints?.horizontal;
+    const vConstraint = node?.verticalConstraint || node?.constraints?.vertical;
+
+    let horizontalProp = 'left';
+    let horizontalVal = posX;
+    let verticalProp = 'top';
+    let verticalVal = posY;
+
+    const canEvaluateProximity = Boolean(
+        parentNode &&
+        parentNode.type !== 'CANVAS' &&
+        (!hasTransform || node?.isCollapsedGraphicRoot)
+    );
+
+    // 1. Horizontal anchor resolution (left vs right)
+    if (canEvaluateProximity && parentW > 0 && nodeW > 0) {
+        const distRight = Math.round((parentW - (rawX + nodeW)) * 10) / 10;
+        if (hConstraint === 'MAX') {
+            horizontalProp = 'right';
+            horizontalVal = distRight;
+        } else if (!parentHasMask && hConstraint !== 'SCALE' && posX > 0 && Math.abs(distRight) < Math.abs(posX)) {
+            horizontalProp = 'right';
+            horizontalVal = distRight;
+        }
+    }
+
+    // 2. Vertical anchor resolution (top vs bottom)
+    if (canEvaluateProximity && parentH > 0 && nodeH > 0) {
+        const distBottom = Math.round((parentH - (rawY + nodeH)) * 10) / 10;
+        if (vConstraint === 'MAX') {
+            verticalProp = 'bottom';
+            verticalVal = distBottom;
+        } else if (!parentHasMask && vConstraint !== 'SCALE' && posY > 0 && Math.abs(distBottom) < Math.abs(posY)) {
+            verticalProp = 'bottom';
+            verticalVal = distBottom;
+        }
+    }
+
+    return {
+        horizontalProp,
+        horizontalVal,
+        verticalProp,
+        verticalVal
+    };
+}
+
+/**
  * Generates an object of CSS styles for a Figma node
  * @param {object} node
  * @param {object} parentNode
@@ -873,18 +942,22 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     if (isAbsolute && parentNode) {
         styles['position'] = 'absolute';
-        const posX = Math.round((node.transform?.m02 || 0) * 10) / 10;
-        const posY = Math.round((node.transform?.m12 || 0) * 10) / 10;
+        const {
+            horizontalProp,
+            horizontalVal,
+            verticalProp,
+            verticalVal
+        } = resolveSmartAbsoluteAnchors(node, parentNode, { parentHasMask, hasTransform });
 
         if (isFluid) {
-            styles['left'] = toVw(posX, cw);
-            styles['top'] = toVh(posY, ch);
+            styles[horizontalProp] = toVw(horizontalVal, cw);
+            styles[verticalProp] = toVh(verticalVal, ch);
         } else if (isRelative) {
-            styles['left'] = toRem(posX);
-            styles['top'] = toRem(posY);
+            styles[horizontalProp] = toRem(horizontalVal);
+            styles[verticalProp] = toRem(verticalVal);
         } else {
-            styles['left'] = `${posX}px`;
-            styles['top'] = `${posY}px`;
+            styles[horizontalProp] = `${horizontalVal}px`;
+            styles[verticalProp] = `${verticalVal}px`;
         }
 
         // Layer z-index calculation:
@@ -1249,6 +1322,7 @@ module.exports = {
     formatPaintFilter,
     parseFontWeightAndStyle,
     computeNodeStyles,
+    resolveSmartAbsoluteAnchors,
     toStyleString,
     hasExplicitMaskTag
 };

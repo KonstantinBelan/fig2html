@@ -349,6 +349,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         const pb = containerH > 0 ? Math.max(0, Math.round(containerH - childBox.yMax)) : 0;
 
         containerNode.stackMode = 'VERTICAL';
+        if (!containerNode.isSynthesized) containerNode.isSynthesizedLayout = true;
         containerNode.stackVerticalPadding = pt;
         containerNode.stackHorizontalPadding = pl;
         containerNode.stackPaddingRight = pr;
@@ -384,6 +385,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         const pb = containerH > 0 ? Math.max(0, Math.round(containerH - gridBounds.yMax)) : 0;
 
         containerNode.isGrid = true;
+        if (!containerNode.isSynthesized) containerNode.isSynthesizedLayout = true;
         containerNode.gridColumns = gridInfo.columns;
         containerNode.gridRows = gridInfo.rows;
         containerNode.stackMode = 'HORIZONTAL';
@@ -439,6 +441,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         const pb = containerH > 0 ? Math.max(0, Math.round(containerH - flowBounds.yMax)) : 0;
 
         containerNode.stackMode = 'VERTICAL';
+        if (!containerNode.isSynthesized) containerNode.isSynthesizedLayout = true;
         containerNode.stackVerticalPadding = pt;
         containerNode.stackHorizontalPadding = pl;
         containerNode.stackPaddingRight = pr;
@@ -575,6 +578,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         const pb = containerH > 0 ? Math.max(0, Math.round(containerH - flowBounds.yMax)) : 0;
 
         containerNode.stackMode = 'HORIZONTAL';
+        if (!containerNode.isSynthesized) containerNode.isSynthesizedLayout = true;
         containerNode.stackVerticalPadding = pt;
         containerNode.stackHorizontalPadding = pl;
         containerNode.stackPaddingRight = pr;
@@ -588,59 +592,6 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                 node.isButton = true;
                 node.stackPrimarySizing = 'RESIZE_TO_FIT';
                 node.stackCounterSizing = 'RESIZE_TO_FIT';
-            }
-        }
-
-        // Analyze child widths and heights for equal sizing / flex distribution
-        const nonBtnNodes = flowNodes.filter(n => !n.isButton);
-        if (nonBtnNodes.length >= 2) {
-            const widths = nonBtnNodes.map(n => n.size?.x || n.width || 0).filter(w => w > 0);
-            const widthClusters = clusterValues(widths, epsilon);
-            const heights = nonBtnNodes.map(n => n.size?.y || n.height || 0).filter(h => h > 0);
-            const heightClusters = clusterValues(heights, epsilon);
-
-            // 1. Equal-width distribution
-            if (widthClusters.length === 1) {
-                // All items in the row have equal width
-                for (const n of nonBtnNodes) {
-                    n.layoutGrow = 1;
-                    n.stackChildPrimaryGrow = 1.0;
-                    n.isEqualWidthGroup = true;
-                }
-            } else if (widthClusters.length > 1) {
-                // Multiple width clusters: items in dominant cluster get flex: 1, others keep fixed width
-                widthClusters.sort((a, b) => b.values.length - a.values.length);
-                const largestCluster = widthClusters[0];
-                if (largestCluster.values.length >= 2) {
-                    for (const n of nonBtnNodes) {
-                        const nw = n.size?.x || n.width || 0;
-                        if (fuzzyEqual(nw, largestCluster.median, epsilon)) {
-                            n.layoutGrow = 1;
-                            n.stackChildPrimaryGrow = 1.0;
-                            n.isEqualWidthGroup = true;
-                        }
-                    }
-                }
-            }
-
-            // 2. Equal-height distribution
-            if (heightClusters.length === 1) {
-                // All items in the row have equal height
-                for (const n of nonBtnNodes) {
-                    n.isEqualHeightGroup = true;
-                }
-            } else if (heightClusters.length > 1) {
-                // Some items have equal height, some have different heights
-                heightClusters.sort((a, b) => b.values.length - a.values.length);
-                const largestHeightCluster = heightClusters[0];
-                if (largestHeightCluster.values.length >= 2) {
-                    for (const n of nonBtnNodes) {
-                        const nh = n.size?.y || n.height || 0;
-                        if (fuzzyEqual(nh, largestHeightCluster.median, epsilon)) {
-                            n.isEqualHeightGroup = true;
-                        }
-                    }
-                }
             }
         }
 
@@ -767,6 +718,15 @@ function synthesizeContainerLayout(containerNode, options = {}) {
 
                 for (const node of band.nodes) {
                     adjustCoordinatesRelativeToContainer(node, colBounds.xMin, colBounds.yMin);
+                    if (node.stackChildPrimaryGrow === 1 || node.layoutGrow === 1) {
+                        colFrame.stackChildPrimaryGrow = 1;
+                        colFrame.layoutGrow = 1;
+                        delete node.stackChildPrimaryGrow;
+                        delete node.layoutGrow;
+                        if (!node.isButton) {
+                            node.layoutAlign = 'STRETCH';
+                        }
+                    }
                 }
 
                 synthesizeContainerLayout(colFrame, options);
@@ -774,6 +734,64 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                     colFrame.name = 'Row';
                 }
                 newChildren.push(colFrame);
+            }
+        }
+
+        // Analyze direct row children (newChildren) for equal width/height distribution
+        const nonBtnNodes = newChildren.filter(n => !n.isButton);
+        if (nonBtnNodes.length >= 2) {
+            const widths = nonBtnNodes.map(n => n.size?.x || n.width || 0).filter(w => w > 0);
+            const widthClusters = clusterValues(widths, epsilon);
+            const heights = nonBtnNodes.map(n => n.size?.y || n.height || 0).filter(h => h > 0);
+            const heightClusters = clusterValues(heights, epsilon);
+
+            // 1. Equal-width distribution across direct row items (including synthesized Columns)
+            if (widthClusters.length === 1) {
+                for (const n of nonBtnNodes) {
+                    n.layoutGrow = 1;
+                    n.stackChildPrimaryGrow = 1.0;
+                    n.isEqualWidthGroup = true;
+                }
+            } else if (widthClusters.length > 1) {
+                widthClusters.sort((a, b) => b.values.length - a.values.length);
+                const largestCluster = widthClusters[0];
+                if (largestCluster.values.length >= 2) {
+                    for (const n of nonBtnNodes) {
+                        const nw = n.size?.x || n.width || 0;
+                        if (fuzzyEqual(nw, largestCluster.median, epsilon)) {
+                            n.layoutGrow = 1;
+                            n.stackChildPrimaryGrow = 1.0;
+                            n.isEqualWidthGroup = true;
+                        }
+                    }
+                }
+            }
+
+            // 2. Equal-height distribution (only for nodes without explicit Figma Fixed height)
+            const canOmitFixedHeight = (n) => {
+                if (n.isSynthesized || n.isSynthesizedLayout) return true;
+                if (n.stackMode === 'VERTICAL' && n.stackPrimarySizing === 'FIXED') return false;
+                if (n.stackMode === 'HORIZONTAL' && n.stackCounterSizing === 'FIXED') return false;
+                return true;
+            };
+
+            if (heightClusters.length === 1) {
+                for (const n of nonBtnNodes) {
+                    if (canOmitFixedHeight(n)) {
+                        n.isEqualHeightGroup = true;
+                    }
+                }
+            } else if (heightClusters.length > 1) {
+                heightClusters.sort((a, b) => b.values.length - a.values.length);
+                const largestHeightCluster = heightClusters[0];
+                if (largestHeightCluster.values.length >= 2) {
+                    for (const n of nonBtnNodes) {
+                        const nh = n.size?.y || n.height || 0;
+                        if (fuzzyEqual(nh, largestHeightCluster.median, epsilon) && canOmitFixedHeight(n)) {
+                            n.isEqualHeightGroup = true;
+                        }
+                    }
+                }
             }
         }
 
