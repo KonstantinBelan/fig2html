@@ -349,9 +349,9 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
         for (const targetImageNode of images) {
             const targetPaint = targetImageNode.fillPaints.find(f => f.type === 'IMAGE' && f.image?.hash);
             if (!targetPaint) continue;
-            const targetHash = Buffer.isBuffer(targetPaint.image.hash)
-                ? targetPaint.image.hash.toString('hex').toLowerCase()
-                : String(targetPaint.image.hash).toLowerCase();
+            const targetHash = (typeof targetPaint.image.hash === 'string')
+                ? targetPaint.image.hash.toLowerCase()
+                : Buffer.from(targetPaint.image.hash).toString('hex').toLowerCase();
             const targetRaw = getRawImage(targetHash);
             if (!targetRaw?.buffer) continue;
 
@@ -365,9 +365,9 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
                 // Check if mask has its own image fill (e.g. PNG alpha mask)
                 const maskImgPaint = maskChild.fillPaints?.find(f => f.type === 'IMAGE' && f.image?.hash && f.visible !== false);
                 if (maskImgPaint) {
-                    const mHash = Buffer.isBuffer(maskImgPaint.image.hash)
-                        ? maskImgPaint.image.hash.toString('hex').toLowerCase()
-                        : String(maskImgPaint.image.hash).toLowerCase();
+                    const mHash = (typeof maskImgPaint.image.hash === 'string')
+                        ? maskImgPaint.image.hash.toLowerCase()
+                        : Buffer.from(maskImgPaint.image.hash).toString('hex').toLowerCase();
                     const mRaw = getRawImage(mHash);
                     if (mRaw?.buffer) {
                         maskRasterBuf = await sharp(mRaw.buffer).resize(targetW, targetH, { fit: 'cover' }).toBuffer();
@@ -395,9 +395,9 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
                 setRawImage(bakedHashHex, { buffer: bakedBuf, mime: 'image/png' });
 
                 // Update target node image fill
-                targetPaint.image.hash = Buffer.isBuffer(targetPaint.image.hash)
-                    ? Buffer.from(bakedHashHex, 'hex')
-                    : bakedHashHex;
+                targetPaint.image.hash = (typeof targetPaint.image.hash === 'string')
+                    ? bakedHashHex
+                    : Buffer.from(bakedHashHex, 'hex');
                 targetImageNode.isMaskBaked = true;
                 container.isMaskBaked = true;
                 maskChild.isMaskBaked = true;

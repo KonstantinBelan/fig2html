@@ -700,7 +700,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         const maskChild = node.children.find(c => c.mask === true || c.isMask === true);
         const hasExplicitTag = hasExplicitMaskTag(node) || hasExplicitMaskTag(maskChild);
 
-        if (maskChild && (hasExplicitTag || !node.isMaskBaked)) {
+        if (maskChild) {
             // 1. Shape border-radius
             if (!styles['border-radius']) {
                 if (maskChild.type === 'ELLIPSE') {
@@ -710,38 +710,44 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                 }
             }
 
-            // 2. Gradient masks (GRADIENT_RADIAL, GRADIENT_LINEAR)
-            const gradPaint = Array.isArray(maskChild.fillPaints) && maskChild.fillPaints.find(f => f.visible !== false && (f.type === 'GRADIENT_RADIAL' || f.type === 'GRADIENT_LINEAR'));
-            if (gradPaint) {
-                const gradCss = formatGradient(gradPaint);
-                if (gradCss) {
-                    styles['-webkit-mask-image'] = gradCss;
-                    styles['mask-image'] = gradCss;
-                    styles['-webkit-mask-size'] = '100% 100%';
-                    styles['mask-size'] = '100% 100%';
-                    styles['-webkit-mask-repeat'] = 'no-repeat';
-                    styles['mask-repeat'] = 'no-repeat';
+            // 2. CSS mask-image is ONLY generated when explicitly requested via [mask] / [маска] / #mask tag.
+            // Automatic Figma names like "Mask group" or untagged groups have masks baked directly into image assets.
+            if (hasExplicitTag) {
+                // Gradient masks (GRADIENT_RADIAL, GRADIENT_LINEAR)
+                const gradPaint = Array.isArray(maskChild.fillPaints) && maskChild.fillPaints.find(f => f.visible !== false && (f.type === 'GRADIENT_RADIAL' || f.type === 'GRADIENT_LINEAR'));
+                if (gradPaint) {
+                    const gradCss = formatGradient(gradPaint);
+                    if (gradCss) {
+                        styles['-webkit-mask-image'] = gradCss;
+                        styles['mask-image'] = gradCss;
+                        styles['-webkit-mask-size'] = '100% 100%';
+                        styles['mask-size'] = '100% 100%';
+                        styles['-webkit-mask-repeat'] = 'no-repeat';
+                        styles['mask-repeat'] = 'no-repeat';
+                    }
                 }
-            }
 
-            // 3. Image masks
-            const imgPaint = Array.isArray(maskChild.fillPaints) && maskChild.fillPaints.find(f => f.visible !== false && f.type === 'IMAGE' && f.image?.hash);
-            if (imgPaint) {
-                const hashHex = Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase();
-                const imgObj = imageRegistry?.get(hashHex);
-                if (imgObj) {
-                    const ext = imgObj.ext || getExtensionForMime(imgObj.mime);
-                    const prefix = options.cssAssetUrlPrefix || options.assetUrlPrefix || (options.extractCss ? '../img/' : 'img/');
-                    const mainFile = imgObj.mainFileName || `${hashHex}.${ext}`;
-                    const imgUrl = options.inlineImages !== false
-                        ? (imgObj.mainBase64 || imgObj.base64)
-                        : `${prefix}${mainFile}`;
-                    styles['-webkit-mask-image'] = `url('${imgUrl}')`;
-                    styles['mask-image'] = `url('${imgUrl}')`;
-                    styles['-webkit-mask-size'] = '100% 100%';
-                    styles['mask-size'] = '100% 100%';
-                    styles['-webkit-mask-repeat'] = 'no-repeat';
-                    styles['mask-repeat'] = 'no-repeat';
+                // Image masks
+                const imgPaint = Array.isArray(maskChild.fillPaints) && maskChild.fillPaints.find(f => f.visible !== false && f.type === 'IMAGE' && f.image?.hash);
+                if (imgPaint) {
+                    const hashHex = (typeof imgPaint.image.hash === 'string')
+                        ? imgPaint.image.hash.toLowerCase()
+                        : Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase();
+                    const imgObj = imageRegistry?.get(hashHex);
+                    if (imgObj) {
+                        const ext = imgObj.ext || getExtensionForMime(imgObj.mime);
+                        const prefix = options.cssAssetUrlPrefix || options.assetUrlPrefix || (options.extractCss ? '../img/' : 'img/');
+                        const mainFile = imgObj.mainFileName || `${hashHex}.${ext}`;
+                        const imgUrl = options.inlineImages !== false
+                            ? (imgObj.mainBase64 || imgObj.base64)
+                            : `${prefix}${mainFile}`;
+                        styles['-webkit-mask-image'] = `url('${imgUrl}')`;
+                        styles['mask-image'] = `url('${imgUrl}')`;
+                        styles['-webkit-mask-size'] = '100% 100%';
+                        styles['mask-size'] = '100% 100%';
+                        styles['-webkit-mask-repeat'] = 'no-repeat';
+                        styles['mask-repeat'] = 'no-repeat';
+                    }
                 }
             }
 

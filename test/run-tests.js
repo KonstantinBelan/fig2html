@@ -2469,10 +2469,10 @@ async function runAllTests() {
         assert.strictEqual(sContent['z-index'], '1', 'In-flow content with underlay should receive z-index: 1');
     });
 
-    it('applies gradient mask-image and -webkit-mask-image to container when maskChild has gradient fill', () => {
-        const maskGroup = {
+    it('applies gradient mask-image and -webkit-mask-image to container only when explicitly tagged with [mask]', () => {
+        const maskGroupTagged = {
             type: 'FRAME',
-            name: 'Group 116047498',
+            name: 'Group 116047498 [mask]',
             size: { x: 414, y: 326 },
             children: [
                 {
@@ -2500,12 +2500,21 @@ async function runAllTests() {
             ]
         };
 
-        const styles = computeNodeStyles(maskGroup, null);
-        assert(styles['mask-image'] && styles['mask-image'].includes('radial-gradient'), 'mask-image should be radial-gradient');
-        assert(styles['-webkit-mask-image'] && styles['-webkit-mask-image'].includes('radial-gradient'), '-webkit-mask-image should be radial-gradient');
-        assert.strictEqual(styles['mask-size'], '100% 100%');
-        assert.strictEqual(styles['-webkit-mask-size'], '100% 100%');
-        assert.strictEqual(styles['overflow'], 'hidden');
+        const stylesTagged = computeNodeStyles(maskGroupTagged, null);
+        assert(stylesTagged['mask-image'] && stylesTagged['mask-image'].includes('radial-gradient'), 'mask-image should be radial-gradient with [mask] tag');
+        assert(stylesTagged['-webkit-mask-image'] && stylesTagged['-webkit-mask-image'].includes('radial-gradient'), '-webkit-mask-image should be radial-gradient with [mask] tag');
+        assert.strictEqual(stylesTagged['mask-size'], '100% 100%');
+        assert.strictEqual(stylesTagged['-webkit-mask-size'], '100% 100%');
+        assert.strictEqual(stylesTagged['overflow'], 'hidden');
+
+        // Without explicit tag (e.g. automatic Figma "Mask group"), CSS mask-image must NOT be set
+        const maskGroupUntagged = {
+            ...maskGroupTagged,
+            name: 'Mask group'
+        };
+        const stylesUntagged = computeNodeStyles(maskGroupUntagged, null);
+        assert.strictEqual(stylesUntagged['mask-image'], undefined, 'mask-image must not be set without [mask] tag');
+        assert.strictEqual(stylesUntagged['-webkit-mask-image'], undefined, '-webkit-mask-image must not be set without [mask] tag');
     });
 
     // 11. Figma Multi-Page Import Engine (v1.3.0) Tests
