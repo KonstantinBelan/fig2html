@@ -262,7 +262,9 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
 
     if ((node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && hasImageFill && hasNoChildren) {
         const imgPaint = node.fillPaints.find(f => f.type === 'IMAGE' && f.visible !== false);
-        const hashHex = imgPaint?.image?.hash ? Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase() : null;
+        const hashHex = imgPaint?.image?.hash
+            ? (typeof imgPaint.image.hash === 'string' ? imgPaint.image.hash.toLowerCase() : Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase())
+            : null;
         const imgObj = hashHex ? imageRegistry.get(hashHex) : null;
 
         if (imgObj) {

@@ -319,18 +319,27 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             const bgImages = [];
             let bgColor = null;
 
+            const isNativeImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0);
+            const hasImageFill = visibleFills.some(f => f.type === 'IMAGE' && f.image?.hash);
+            const isFillsBaked = Boolean(node.isImageFillsBaked || node.isMaskBaked);
+
             for (const fill of visibleFills) {
                 if (fill.type === 'SOLID') {
-                    bgColor = formatColor(fill.color, fill.opacity);
+                    if (!isFillsBaked && !isNativeImg) {
+                        bgColor = formatColor(fill.color, fill.opacity);
+                    }
                 } else if (fill.type === 'GRADIENT_LINEAR' || fill.type === 'GRADIENT_RADIAL') {
-                    const grad = formatGradient(fill);
-                    if (grad) bgImages.push(grad);
+                    if (!isFillsBaked && !isNativeImg) {
+                        const grad = formatGradient(fill);
+                        if (grad) bgImages.push(grad);
+                    }
                 } else if (fill.type === 'IMAGE' && fill.image?.hash) {
-                    const isNativeImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0);
                     if (isNativeImg) {
                         styles['object-fit'] = fill.imageScaleMode === 'FIT' ? 'contain' : 'cover';
                     } else {
-                        const hashHex = Buffer.from(fill.image.hash).toString('hex').toLowerCase();
+                        const hashHex = (typeof fill.image.hash === 'string')
+                            ? fill.image.hash.toLowerCase()
+                            : Buffer.from(fill.image.hash).toString('hex').toLowerCase();
                         const imgObj = imageRegistry.get(hashHex);
                         if (imgObj) {
                             const ext = imgObj.ext || getExtensionForMime(imgObj.mime);
@@ -356,10 +365,10 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                 }
             }
 
-            if (bgImages.length > 0) {
+            if (bgImages.length > 0 && !(isNativeImg && hasImageFill)) {
                 styles['background-image'] = bgImages.join(', ');
             }
-            if (bgColor && bgColor !== 'transparent' && !node.isMaskBaked) {
+            if (bgColor && bgColor !== 'transparent' && !node.isMaskBaked && !node.isImageFillsBaked && !(isNativeImg && hasImageFill)) {
                 styles['background-color'] = bgColor;
             }
         }
@@ -421,7 +430,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     // 4b. Image Paint Adjustments (Exposure, Contrast, Saturation, Temperature, Tint)
     let paintFilterStr = null;
-    if (Array.isArray(node.fillPaints)) {
+    const shouldOmitPaintFilter = Boolean(node.isImageFillsBaked || node.isMaskBaked);
+    if (!shouldOmitPaintFilter && Array.isArray(node.fillPaints)) {
         for (const paint of node.fillPaints) {
             if (paint && paint.visible !== false && paint.paintFilter) {
                 paintFilterStr = formatPaintFilter(paint.paintFilter);

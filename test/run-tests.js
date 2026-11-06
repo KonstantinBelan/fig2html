@@ -42,7 +42,7 @@ const {
     getExtensionForMime,
     hasExplicitMaskTag
 } = require('../src/decompiler/css');
-const { bakeMasksIntoImages } = require('../src/decompiler/image-optimizer');
+const { bakeMasksIntoImages, bakeImageFillsAndFilters } = require('../src/decompiler/image-optimizer');
 const {
     StylesheetManager,
     toBaseClassName
@@ -3448,6 +3448,87 @@ async function runAllTests() {
 
         const secondPassBaked = await bakeMasksIntoImages(rawImages, [taggedMaskContainer], {});
         assert.strictEqual(secondPassBaked, 0, 'Should not bake container with [mask] tag');
+    });
+
+    await itAsync('bakeImageFillsAndFilters bakes gradient overlays, solid underlays and paintFilter directly into image assets', async () => {
+        const baseBuf = await sharp({
+            create: { width: 100, height: 100, channels: 3, background: { r: 100, g: 100, b: 100 } }
+        }).jpeg().toBuffer();
+
+        const fakeHash = 'fake-img-hash-5678';
+        const rawImages = new Map();
+        rawImages.set(fakeHash, { buffer: baseBuf, mime: 'image/jpeg' });
+
+        const node = {
+            type: 'RECTANGLE',
+            name: 'Photo With Overlay',
+            size: { x: 100, y: 100 },
+            fillPaints: [
+                {
+                    type: 'SOLID',
+                    visible: true,
+                    color: { r: 1, g: 1, b: 1, a: 1 },
+                    blendMode: 'NORMAL'
+                },
+                {
+                    type: 'IMAGE',
+                    visible: true,
+                    image: { hash: fakeHash },
+                    blendMode: 'NORMAL',
+                    paintFilter: { exposure: 0.05, contrast: 0.05 }
+                },
+                {
+                    type: 'GRADIENT_LINEAR',
+                    visible: true,
+                    opacity: 0.3,
+                    blendMode: 'LINEAR_DODGE',
+                    stops: [
+                        { color: { r: 0, g: 1, b: 0, a: 0 }, position: 0 },
+                        { color: { r: 0, g: 1, b: 0, a: 1 }, position: 1 }
+                    ],
+                    transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
+                }
+            ]
+        };
+
+        const baked = await bakeImageFillsAndFilters(rawImages, [node], { imageScale: 2 });
+        assert.strictEqual(baked, 1, 'Should bake 1 node');
+        assert.strictEqual(node.isImageFillsBaked, true, 'isImageFillsBaked should be true');
+        assert.notStrictEqual(node.fillPaints[1].image.hash, fakeHash, 'Hash should be updated');
+
+        const newHash = typeof node.fillPaints[1].image.hash === 'string'
+            ? node.fillPaints[1].image.hash
+            : Buffer.from(node.fillPaints[1].image.hash).toString('hex');
+        assert(rawImages.has(newHash), 'New hash must exist in rawImages');
+
+        const bakedImg = rawImages.get(newHash);
+        const meta = await sharp(bakedImg.buffer).metadata();
+        assert.strictEqual(meta.width, 200, 'Width should be 200px (2x retina)');
+        assert.strictEqual(meta.height, 200, 'Height should be 200px (2x retina)');
+
+        const imageRegistry = new Map();
+        imageRegistry.set(newHash, { mainFileName: newHash + '.png', mainBase64: 'data:image/png;base64,...' });
+        const styles = computeNodeStyles(node, null, imageRegistry, {});
+        assert.strictEqual(styles['background-image'], undefined, 'No background-image in CSS');
+        assert.strictEqual(styles['background-color'], undefined, 'No background-color in CSS');
+        assert.strictEqual(styles['filter'], undefined, 'No filter in CSS');
+
+        // Verify single independent image keeps CSS filter for backward compatibility
+        const singleNode = {
+            type: 'RECTANGLE',
+            name: 'Single Photo',
+            size: { x: 100, y: 100 },
+            fillPaints: [{
+                type: 'IMAGE',
+                visible: true,
+                image: { hash: fakeHash },
+                paintFilter: { exposure: 0.1 }
+            }]
+        };
+        const singleBaked = await bakeImageFillsAndFilters(rawImages, [singleNode], { imageScale: 2 });
+        assert.strictEqual(singleBaked, 0, 'Single independent image should not be baked');
+        const singleStyles = computeNodeStyles(singleNode, null, rawImages, {});
+        assert.strictEqual(singleStyles['filter'], 'brightness(1.1)', 'Should retain filter in CSS');
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);

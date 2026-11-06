@@ -17,7 +17,9 @@ function collectImageUsages(rootNodes) {
         if (Array.isArray(node.fillPaints)) {
             for (const f of node.fillPaints) {
                 if (f.type === 'IMAGE' && f.visible !== false && f.image?.hash) {
-                    const hashHex = Buffer.from(f.image.hash).toString('hex').toLowerCase();
+                    const hashHex = (typeof f.image.hash === 'string')
+                        ? f.image.hash.toLowerCase()
+                        : Buffer.from(f.image.hash).toString('hex').toLowerCase();
                     const isMask = node.mask === true || node.isMask === true;
                     const isImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0) && !isMask;
                     const cssW = Math.round(node.size?.x || 0);
@@ -212,6 +214,393 @@ async function optimizeBuffer(inputBuffer, options = {}) {
             height: targetHeight || 100
         };
     }
+}
+
+/**
+ * Maps Figma blend mode string to Sharp blend mode string
+ * @param {string} blendMode
+ * @returns {string} Sharp blend mode ('over', 'add', 'multiply', 'screen', etc.)
+ */
+function mapFigmaBlendModeToSharp(blendMode) {
+    if (!blendMode) return 'over';
+    switch (blendMode.toUpperCase()) {
+        case 'NORMAL':
+        case 'PASS_THROUGH':
+            return 'over';
+        case 'LINEAR_DODGE':
+            return 'add';
+        case 'MULTIPLY':
+            return 'multiply';
+        case 'SCREEN':
+            return 'screen';
+        case 'OVERLAY':
+            return 'overlay';
+        case 'COLOR_DODGE':
+            return 'color-dodge';
+        case 'COLOR_BURN':
+            return 'color-burn';
+        case 'DARKEN':
+            return 'darken';
+        case 'LIGHTEN':
+            return 'lighten';
+        case 'HARD_LIGHT':
+            return 'hard-light';
+        case 'SOFT_LIGHT':
+            return 'soft-light';
+        case 'DIFFERENCE':
+            return 'difference';
+        case 'EXCLUSION':
+            return 'exclusion';
+        default:
+            return 'over';
+    }
+}
+
+/**
+ * Checks if a paintFilter object contains non-trivial adjustments
+ * @param {object} pf
+ * @returns {boolean}
+ */
+function hasNonTrivialPaintFilter(pf) {
+    if (!pf || typeof pf !== 'object') return false;
+    const exposure = pf.exposure || 0;
+    const contrast = pf.contrast || 0;
+    const sat = (pf.vibrance !== undefined ? pf.vibrance : pf.saturation) || 0;
+    const temp = pf.temperature || 0;
+    const tint = pf.tint || 0;
+    return Math.abs(exposure) > 0.01 ||
+           Math.abs(contrast) > 0.01 ||
+           Math.abs(sat) > 0.01 ||
+           Math.abs(temp) > 0.01 ||
+           Math.abs(tint) > 0.01;
+}
+
+/**
+ * Applies Figma paintFilter adjustments (exposure, contrast, saturation, temperature, tint) to Sharp pipeline
+ * @param {sharp.Sharp} pipeline
+ * @param {object} paintFilter
+ * @returns {sharp.Sharp}
+ */
+function applyPaintFilterToPipeline(pipeline, paintFilter) {
+    if (!paintFilter || typeof paintFilter !== 'object') return pipeline;
+
+    const exposure = paintFilter.exposure || 0;
+    const contrast = paintFilter.contrast || 0;
+    const sat = (paintFilter.vibrance !== undefined ? paintFilter.vibrance : paintFilter.saturation) || 0;
+    const temp = paintFilter.temperature || 0;
+    const tint = paintFilter.tint || 0;
+
+    const brightnessVal = Math.max(0, 1 + exposure);
+    const saturationVal = sat <= -0.99 ? 0 : Math.max(0, 1 + sat);
+    const hueShift = Math.round((tint * 45) + (temp < 0 ? temp * 30 : 0));
+
+    const needsModulate = Math.abs(exposure) > 0.01 || Math.abs(sat) > 0.01 || Math.abs(hueShift) > 0;
+    if (needsModulate) {
+        pipeline = pipeline.modulate({
+            brightness: brightnessVal,
+            saturation: saturationVal,
+            hue: hueShift
+        });
+    }
+
+    if (Math.abs(contrast) > 0.01) {
+        const contrastFactor = Math.max(0.01, 1 + contrast);
+        const offset = 128 * (1 - contrastFactor);
+        pipeline = pipeline.linear(contrastFactor, offset);
+    }
+
+    return pipeline;
+}
+
+/**
+ * Generates an SVG buffer for a SOLID fill
+ * @param {object} fill
+ * @param {number} w
+ * @param {number} h
+ * @returns {Buffer|null}
+ */
+function generateSolidSvg(fill, w, h) {
+    if (!fill) return null;
+    const col = fill.color || fill.authoredColor || { r: 0, g: 0, b: 0, a: 1 };
+    const r = Math.round((col.r || 0) * 255);
+    const g = Math.round((col.g || 0) * 255);
+    const b = Math.round((col.b || 0) * 255);
+    const a = (col.a !== undefined ? col.a : 1);
+    const op = Math.round(a * (fill.opacity ?? 1) * 1000) / 1000;
+    return Buffer.from(
+        `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+        `<rect width="${w}" height="${h}" fill="rgb(${r}, ${g}, ${b})" fill-opacity="${op}" />` +
+        `</svg>`
+    );
+}
+
+/**
+ * Generates an SVG buffer for a GRADIENT_LINEAR fill
+ * @param {object} fill
+ * @param {number} w
+ * @param {number} h
+ * @returns {Buffer|null}
+ */
+function generateLinearGradientSvg(fill, w, h) {
+    if (!fill || !fill.stops || fill.stops.length < 2) return null;
+    const angle = getLinearGradientAngle(fill.transform);
+    const stopsXml = fill.stops.map(s => {
+        const pct = Math.round((s.position !== undefined ? s.position : 0) * 1000) / 10 + '%';
+        const col = s.color || s.authoredColor || { r: 0, g: 0, b: 0, a: 1 };
+        const r = Math.round((col.r || 0) * 255);
+        const g = Math.round((col.g || 0) * 255);
+        const b = Math.round((col.b || 0) * 255);
+        const a = (col.a !== undefined ? col.a : 1);
+        const op = Math.round(a * (fill.opacity ?? 1) * 1000) / 1000;
+        return `<stop offset="${pct}" stop-color="rgb(${r}, ${g}, ${b})" stop-opacity="${op}" />`;
+    }).join('\n');
+
+    return Buffer.from(
+        `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+        `<defs><linearGradient id="g" gradientTransform="rotate(${angle - 90} 0.5 0.5)">` +
+        stopsXml +
+        `</linearGradient></defs>` +
+        `<rect width="${w}" height="${h}" fill="url(#g)" />` +
+        `</svg>`
+    );
+}
+
+/**
+ * Generates an SVG buffer for a GRADIENT_RADIAL fill
+ * @param {object} fill
+ * @param {number} w
+ * @param {number} h
+ * @returns {Buffer|null}
+ */
+function generateRadialGradientSvg(fill, w, h) {
+    if (!fill || !fill.stops || fill.stops.length < 2) return null;
+    const stopsXml = fill.stops.map(s => {
+        const pct = Math.round((s.position !== undefined ? s.position : 0) * 1000) / 10 + '%';
+        const col = s.color || s.authoredColor || { r: 0, g: 0, b: 0, a: 1 };
+        const r = Math.round((col.r || 0) * 255);
+        const g = Math.round((col.g || 0) * 255);
+        const b = Math.round((col.b || 0) * 255);
+        const a = (col.a !== undefined ? col.a : 1);
+        const op = Math.round(a * (fill.opacity ?? 1) * 1000) / 1000;
+        return `<stop offset="${pct}" stop-color="rgb(${r}, ${g}, ${b})" stop-opacity="${op}" />`;
+    }).join('\n');
+
+    return Buffer.from(
+        `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+        `<defs><radialGradient id="g" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">` +
+        stopsXml +
+        `</radialGradient></defs>` +
+        `<rect width="${w}" height="${h}" fill="url(#g)" />` +
+        `</svg>`
+    );
+}
+
+/**
+ * Collects all image nodes that belong to mask containers (excluding explicit [mask] tags)
+ * @param {Array<object>} rootNodes
+ * @returns {Set<object>}
+ */
+function collectMaskedImageNodes(rootNodes) {
+    const maskedNodes = new Set();
+    function findMaskContainers(nodes) {
+        const res = [];
+        for (const n of nodes) {
+            if (n.children && n.children.some(c => c.mask === true || c.isMask === true)) {
+                res.push(n);
+            }
+            if (n.children) res.push(...findMaskContainers(n.children));
+        }
+        return res;
+    }
+
+    function findImagesInSubtree(node) {
+        const res = [];
+        if (node.fillPaints?.some(f => f.type === 'IMAGE' && f.image?.hash && f.visible !== false)) {
+            res.push(node);
+        }
+        if (node.children) {
+            for (const c of node.children) {
+                res.push(...findImagesInSubtree(c));
+            }
+        }
+        return res;
+    }
+
+    const containers = findMaskContainers(rootNodes);
+    for (const container of containers) {
+        if (hasExplicitMaskTag(container)) continue;
+        const maskChild = container.children.find(c => c.mask === true || c.isMask === true);
+        if (!maskChild || hasExplicitMaskTag(maskChild)) continue;
+
+        const siblings = container.children.filter(c => c !== maskChild);
+        const images = siblings.flatMap(s => findImagesInSubtree(s));
+        for (const img of images) {
+            maskedNodes.add(img);
+        }
+    }
+    return maskedNodes;
+}
+
+/**
+ * Bakes multi-fills (SOLID underlays, GRADIENT overlays with blend modes) and color correction
+ * filters (paintFilter) directly into image assets using Sharp compositing.
+ *
+ * @param {Map<string, { buffer: Buffer, mime: string }>|object} rawImages
+ * @param {Array<object>} rootNodes
+ * @param {object} [options={}]
+ * @returns {Promise<number>} Count of baked image nodes
+ */
+async function bakeImageFillsAndFilters(rawImages, rootNodes, options = {}) {
+    const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
+    if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
+        return 0;
+    }
+
+    let bakedCount = 0;
+    const scaleMultiplier = typeof options.imageScale === 'number' && options.imageScale > 0 ? options.imageScale : 2;
+
+    const getRawImage = (hash) => {
+        if (!rawImages) return null;
+        if (typeof rawImages.get === 'function') return rawImages.get(hash);
+        const item = rawImages[hash];
+        if (!item) return null;
+        if (Buffer.isBuffer(item)) return { buffer: item, mime: 'image/png' };
+        return item;
+    };
+
+    const setRawImage = (hash, item) => {
+        if (!rawImages) return;
+        if (typeof rawImages.set === 'function') {
+            rawImages.set(hash, item);
+        } else {
+            rawImages[hash] = item;
+        }
+    };
+
+    const maskedNodes = collectMaskedImageNodes(rootNodes);
+    const candidates = [];
+
+    function traverse(node) {
+        if (!node || node.visible === false) return;
+        if (Array.isArray(node.fillPaints) && node.fillPaints.length > 0) {
+            const visibleFills = node.fillPaints.filter(f => f.visible !== false);
+            const imgPaint = visibleFills.find(f => f.type === 'IMAGE' && f.image?.hash);
+            if (imgPaint) {
+                const hasMultiFills = visibleFills.length > 1;
+                const isMasked = maskedNodes.has(node) || node.mask === true || node.isMask === true;
+                const hasPf = visibleFills.some(f => hasNonTrivialPaintFilter(f.paintFilter));
+
+                if (hasMultiFills || (isMasked && hasPf)) {
+                    candidates.push({ node, imgPaint, visibleFills });
+                }
+            }
+        }
+        if (node.children) {
+            for (const child of node.children) {
+                traverse(child);
+            }
+        }
+    }
+
+    for (const r of rootNodes) {
+        traverse(r);
+    }
+
+    for (const { node, imgPaint, visibleFills } of candidates) {
+        const rawHash = (typeof imgPaint.image.hash === 'string')
+            ? imgPaint.image.hash.toLowerCase()
+            : Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase();
+        const rawItem = getRawImage(rawHash);
+        if (!rawItem?.buffer) continue;
+
+        const cssW = Math.round(node.size?.x || 100);
+        const cssH = Math.round(node.size?.y || 100);
+        const targetW = Math.max(1, Math.round(cssW * scaleMultiplier));
+        const targetH = Math.max(1, Math.round(cssH * scaleMultiplier));
+
+        try {
+            const layers = [];
+
+            for (const fill of visibleFills) {
+                const blend = mapFigmaBlendModeToSharp(fill.blendMode);
+
+                if (fill.type === 'SOLID') {
+                    const solidSvg = generateSolidSvg(fill, targetW, targetH);
+                    if (solidSvg) {
+                        const solidBuf = await sharp(solidSvg).png().toBuffer();
+                        layers.push({ input: solidBuf, blend });
+                    }
+                } else if (fill.type === 'GRADIENT_LINEAR') {
+                    const gradSvg = generateLinearGradientSvg(fill, targetW, targetH);
+                    if (gradSvg) {
+                        const gradBuf = await sharp(gradSvg).png().toBuffer();
+                        layers.push({ input: gradBuf, blend });
+                    }
+                } else if (fill.type === 'GRADIENT_RADIAL') {
+                    const radSvg = generateRadialGradientSvg(fill, targetW, targetH);
+                    if (radSvg) {
+                        const radBuf = await sharp(radSvg).png().toBuffer();
+                        layers.push({ input: radBuf, blend });
+                    }
+                } else if (fill.type === 'IMAGE' && fill.image?.hash) {
+                    const fHash = (typeof fill.image.hash === 'string')
+                        ? fill.image.hash.toLowerCase()
+                        : Buffer.from(fill.image.hash).toString('hex').toLowerCase();
+                    const fRaw = getRawImage(fHash);
+                    if (!fRaw?.buffer) continue;
+
+                    let pipeline = sharp(fRaw.buffer)
+                        .resize(targetW, targetH, {
+                            fit: fill.imageScaleMode === 'FIT' ? 'contain' : 'cover',
+                            background: { r: 0, g: 0, b: 0, alpha: 0 }
+                        })
+                        .ensureAlpha();
+
+                    if (fill.paintFilter) {
+                        pipeline = applyPaintFilterToPipeline(pipeline, fill.paintFilter);
+                    }
+
+                    if (fill.opacity !== undefined && fill.opacity !== null && fill.opacity < 0.999) {
+                        pipeline = pipeline.linear([1, 1, 1, Math.max(0, fill.opacity)], [0, 0, 0, 0]);
+                    }
+
+                    const photoBuf = await pipeline.png().toBuffer();
+                    layers.push({ input: photoBuf, blend });
+                }
+            }
+
+            if (layers.length === 0) continue;
+
+            let bakedBuf;
+            if (layers.length === 1 && layers[0].blend === 'over') {
+                bakedBuf = layers[0].input;
+            } else {
+                const baseCanvas = sharp({
+                    create: {
+                        width: targetW,
+                        height: targetH,
+                        channels: 4,
+                        background: { r: 0, g: 0, b: 0, alpha: 0 }
+                    }
+                });
+                bakedBuf = await baseCanvas.composite(layers).png().toBuffer();
+            }
+
+            const bakedHashHex = crypto.createHash('sha1').update(bakedBuf).digest('hex');
+            setRawImage(bakedHashHex, { buffer: bakedBuf, mime: 'image/png' });
+
+            imgPaint.image.hash = Buffer.isBuffer(imgPaint.image.hash) || typeof imgPaint.image.hash === 'object'
+                ? Buffer.from(bakedHashHex, 'hex')
+                : bakedHashHex;
+
+            node.isImageFillsBaked = true;
+            bakedCount++;
+        } catch (err) {
+            // Ignore sharp failures on corrupt data
+        }
+    }
+
+    return bakedCount;
 }
 
 /**
@@ -436,7 +825,10 @@ async function optimizeAllImages(rawImages, rootNodes, options = {}) {
     const isInline = options.inlineImages !== false;
     const prefix = options.assetUrlPrefix || 'img/';
 
-    // 0. Bake masks into images if not explicitly tagged with [mask] / [маска]
+    // 0. Bake fills & filters into images first
+    await bakeImageFillsAndFilters(rawImages, rootNodes, options);
+
+    // 0b. Bake masks into images if not explicitly tagged with [mask] / [маска]
     await bakeMasksIntoImages(rawImages, rootNodes, options);
 
     const usages = collectImageUsages(rootNodes);
@@ -655,5 +1047,6 @@ module.exports = {
     calculateDeviceWidths,
     optimizeBuffer,
     optimizeAllImages,
-    bakeMasksIntoImages
+    bakeMasksIntoImages,
+    bakeImageFillsAndFilters
 };
