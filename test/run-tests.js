@@ -90,6 +90,7 @@ const {
 } = require('../src/decompiler/container-detector');
 const {
     detectGrid,
+    isMaskContainer,
     synthesizeContainerLayout,
     synthesizeLayoutTree,
     applySmartLayout
@@ -2185,6 +2186,164 @@ async function runAllTests() {
         assert(coin, 'Coin should be in children');
         assert.strictEqual(coin.stackPositioning, 'ABSOLUTE', 'Coin should be positioned absolutely');
         assert.strictEqual(coin.isDecorativeOverlay, true, 'Coin should be marked as decorative overlay');
+    });
+
+    it('translates Figma Auto Layout SPACE_EVENLY and SPACE_BETWEEN into justify-content: space-between', () => {
+        const dummyParent = { type: 'FRAME', stackMode: 'VERTICAL' };
+        const nodeEvenly = {
+            type: 'FRAME',
+            stackMode: 'HORIZONTAL',
+            stackPrimaryAlignItems: 'SPACE_EVENLY',
+            children: [{ type: 'FRAME' }, { type: 'FRAME' }]
+        };
+        const sEvenly = computeNodeStyles(nodeEvenly, dummyParent);
+        assert.strictEqual(sEvenly['justify-content'], 'space-between');
+
+        const nodeBetween = {
+            type: 'FRAME',
+            stackMode: 'HORIZONTAL',
+            stackPrimaryAlignItems: 'SPACE_BETWEEN',
+            children: [{ type: 'FRAME' }, { type: 'FRAME' }]
+        };
+        const sBetween = computeNodeStyles(nodeBetween, dummyParent);
+        assert.strictEqual(sBetween['justify-content'], 'space-between');
+
+        const nodeAround = {
+            type: 'FRAME',
+            stackMode: 'HORIZONTAL',
+            stackPrimaryAlignItems: 'SPACE_AROUND',
+            children: [{ type: 'FRAME' }, { type: 'FRAME' }]
+        };
+        const sAround = computeNodeStyles(nodeAround, dummyParent);
+        assert.strictEqual(sAround['justify-content'], 'space-around');
+    });
+
+    it('calculates proper layer z-index for absolute underlays, overlays and adds pointer-events: none for images', () => {
+        const bgVector = {
+            name: 'Vector',
+            type: 'VECTOR',
+            stackPositioning: 'ABSOLUTE',
+            transform: { m02: 0, m12: 0 },
+            size: { x: 500, y: 500 }
+        };
+        const inFlowCard = {
+            name: 'Card',
+            type: 'FRAME',
+            stackPositioning: 'AUTO',
+            size: { x: 400, y: 300 }
+        };
+        const badgeOverlay = {
+            name: 'Badge',
+            type: 'FRAME',
+            stackPositioning: 'ABSOLUTE',
+            isDecorativeOverlay: true,
+            transform: { m02: 380, m12: -10 },
+            size: { x: 40, y: 40 }
+        };
+
+        const parent = {
+            type: 'FRAME',
+            stackMode: 'HORIZONTAL',
+            children: [bgVector, inFlowCard, badgeOverlay]
+        };
+
+        const sBg = computeNodeStyles(bgVector, parent);
+        assert.strictEqual(sBg['position'], 'absolute');
+        assert.strictEqual(sBg['z-index'], '0', 'Background underlay (before in-flow) should have z-index: 0');
+        assert.strictEqual(sBg['pointer-events'], 'none', 'Vector decoration should have pointer-events: none');
+
+        const sCard = computeNodeStyles(inFlowCard, parent);
+        assert.strictEqual(sCard['position'], 'relative');
+        assert.strictEqual(sCard['z-index'], '1', 'In-flow content with underlay should be elevated to z-index: 1');
+
+        const sBadge = computeNodeStyles(badgeOverlay, parent);
+        assert.strictEqual(sBadge['position'], 'absolute');
+        const badgeZ = parseInt(sBadge['z-index'], 10);
+        assert(badgeZ >= 10, 'Overlay badge (after in-flow) should have elevated z-index >= 10');
+
+        // Image node should also have pointer-events: none
+        const imgNode = {
+            name: 'Image 1',
+            type: 'RECTANGLE',
+            stackPositioning: 'ABSOLUTE',
+            fillPaints: [{ type: 'IMAGE', visible: true }],
+            transform: { m02: 0, m12: 0 },
+            size: { x: 100, y: 100 }
+        };
+        const sImg = computeNodeStyles(imgNode, parent);
+        assert.strictEqual(sImg['pointer-events'], 'none', 'Absolute image should have pointer-events: none');
+    });
+
+    it('preserves fixed width and height for Mask Group containers and masks child images', () => {
+        const maskGroup = {
+            name: 'Mask group',
+            type: 'FRAME',
+            cornerRadius: 90,
+            size: { x: 92, y: 92 },
+            stackMode: 'NONE',
+            children: [
+                {
+                    name: 'image 45',
+                    type: 'ROUNDED_RECTANGLE',
+                    fillPaints: [{ type: 'IMAGE', visible: true }],
+                    size: { x: 110, y: 130 }
+                }
+            ]
+        };
+
+        const parent = {
+            type: 'FRAME',
+            stackMode: 'VERTICAL',
+            children: [maskGroup]
+        };
+
+        assert.strictEqual(isMaskContainer(maskGroup), true);
+        synthesizeContainerLayout(maskGroup);
+        // Should not be turned into a flex column
+        assert.notStrictEqual(maskGroup.stackMode, 'VERTICAL');
+
+        const sMask = computeNodeStyles(maskGroup, parent);
+        assert.strictEqual(sMask['width'], '92px', 'Mask group must retain fixed width');
+        assert.strictEqual(sMask['height'], '92px', 'Mask group must retain fixed height');
+        assert.strictEqual(sMask['overflow'], 'hidden');
+
+        const sImg = computeNodeStyles(maskGroup.children[0], maskGroup);
+        assert.strictEqual(sImg['width'], '100%');
+        assert.strictEqual(sImg['height'], '100%');
+        assert.strictEqual(sImg['object-fit'], 'cover');
+    });
+
+    it('parses Figma Kiwi gridColumns entries object into integer repeat count in CSS grid-template-columns', () => {
+        const dummyParent = { type: 'FRAME' };
+        const gridNode = {
+            type: 'FRAME',
+            name: 'Frame 116047436',
+            stackMode: 'HORIZONTAL',
+            stackWrap: 'WRAP',
+            gridColumns: {
+                entries: [
+                    { id: { sessionID: 80, localID: 3 }, position: '!' },
+                    { id: { sessionID: 80, localID: 4 }, position: '"' },
+                    { id: { sessionID: 2104, localID: 1 }, position: '#' }
+                ]
+            },
+            gridRows: {
+                entries: [
+                    { id: { sessionID: 80, localID: 0 }, position: '!' },
+                    { id: { sessionID: 80, localID: 1 }, position: '"' }
+                ]
+            },
+            children: [
+                { type: 'FRAME', size: { x: 100, y: 100 } },
+                { type: 'FRAME', size: { x: 100, y: 100 } },
+                { type: 'FRAME', size: { x: 100, y: 100 } }
+            ]
+        };
+
+        const styles = computeNodeStyles(gridNode, dummyParent);
+        assert.strictEqual(styles['display'], 'grid');
+        assert.strictEqual(styles['grid-template-columns'], 'repeat(3, 1fr)');
+        assert(!styles['grid-template-columns'].includes('[object Object]'));
     });
 
     // 11. Figma Multi-Page Import Engine (v1.3.0) Tests

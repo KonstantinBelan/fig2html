@@ -237,6 +237,19 @@ function isOverlayNode(node, containerW, containerH, allChildren, epsilon = 3) {
 }
 
 /**
+ * Checks if a node is a mask group/container that clips its children to its boundaries
+ * @param {object} node
+ * @returns {boolean}
+ */
+function isMaskContainer(node) {
+    if (!node) return false;
+    if (node.name && /mask(\s*group)?/i.test(node.name)) return true;
+    if (node.mask === true || node.isMask === true) return true;
+    if (Array.isArray(node.children) && node.children.some(c => c.mask === true || c.isMask === true)) return true;
+    return false;
+}
+
+/**
  * Synthesizes Auto Layout and Grid properties for a container frame and its children
  * @param {object} containerNode
  * @param {object} [options={}]
@@ -247,7 +260,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
     if (!containerNode || !Array.isArray(containerNode.children) || containerNode.children.length === 0) {
         return containerNode;
     }
-    if (isVectorContainer(containerNode)) {
+    if (isVectorContainer(containerNode) || isMaskContainer(containerNode)) {
         return containerNode;
     }
 
@@ -301,6 +314,9 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         containerNode.stackPaddingRight = pr;
         containerNode.stackPaddingBottom = pb;
         containerNode.stackSpacing = 0;
+        if (containerH > 0 && !containerNode.isButton) {
+            containerNode.stackPrimarySizing = 'FIXED';
+        }
 
         // If child spans content width, stretch it (unless it is a button)
         if (containerW > 0 && childBox.width >= (containerW - pl - pr - epsilon * 2) && !child.isButton) {
@@ -744,7 +760,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
  */
 function synthesizeLayoutTree(node, options = {}) {
     if (!node) return node;
-    if (isVectorContainer(node)) return node;
+    if (isVectorContainer(node) || isMaskContainer(node)) return node;
 
     // 1. If node has children, detect and extract underlays / card backgrounds first
     if (Array.isArray(node.children) && node.children.length > 1) {
@@ -788,6 +804,7 @@ function applySmartLayout(rootNodes, options = {}) {
 
 module.exports = {
     detectGrid,
+    isMaskContainer,
     synthesizeContainerLayout,
     synthesizeLayoutTree,
     applySmartLayout

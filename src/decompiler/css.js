@@ -213,17 +213,40 @@ function parseFontWeightAndStyle(fontStyleName) {
     };
 }
 
-function isVectorNodeCheck(n) {
-    if (!n) return false;
-    return ['VECTOR', 'STAR', 'REGULAR_POLYGON', 'BOOLEAN_OPERATION'].includes(n.type) || (n.vectorData && (!n.children || n.children.length === 0));
+function parseGridAxisCount(val) {
+    if (typeof val === 'number') return val;
+    if (val && Array.isArray(val.entries)) return val.entries.length;
+    if (Array.isArray(val)) return val.length;
+    if (val && typeof val.count === 'number') return val.count;
+    return null;
 }
 
-function isVectorContainerCheck(n) {
-    if (!n || !Array.isArray(n.children) || n.children.length === 0) return false;
-    if (!['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'BOOLEAN_OPERATION'].includes(n.type)) return false;
-    const hasImageFill = Array.isArray(n.fillPaints) && n.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false);
+function isImageNode(n) {
+    if (!n) return false;
+    if (Array.isArray(n.fillPaints) && n.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false)) return true;
+    if (n.type === 'IMAGE') return true;
+    const name = (n.name || '').toLowerCase();
+    if (/^(image|img|photo|picture|pic)/i.test(name) || name.includes('generated_image') || name.includes('mockup') || name.includes('kontract')) return true;
+    if (Array.isArray(n.children) && n.children.length > 0) {
+        return n.children.some(c => isImageNode(c));
+    }
+    return false;
+}
+
+function isVectorNode(n) {
+    if (!n) return false;
+    return ['VECTOR', 'STAR', 'REGULAR_POLYGON', 'BOOLEAN_OPERATION', 'LINE'].includes(n.type) || (n.vectorData && (!n.children || n.children.length === 0));
+}
+
+function isVectorContainer(node) {
+    if (!node || !Array.isArray(node.children) || node.children.length === 0) return false;
+    const isFrame = ['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'BOOLEAN_OPERATION'].includes(node.type);
+    if (!isFrame) return false;
+
+    const hasImageFill = Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false);
     if (hasImageFill) return false;
-    return n.children.every(c => isVectorNodeCheck(c) || c.type === 'LINE');
+
+    return node.children.every(c => isVectorNode(c) || c.type === 'LINE');
 }
 
 /**
@@ -512,18 +535,20 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     // 7. Auto Layout (Container Properties)
     const isAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
     if (isAutoLayout) {
-        const isGridContainer = (layoutMode === 'grid' || node.isGrid || node.layoutType === 'GRID' || Boolean(node.gridColumns)) && Array.isArray(node.children) && node.children.length > 1 && (
+        const numGridCols = parseGridAxisCount(node.gridColumns);
+        const numGridRows = parseGridAxisCount(node.gridRows);
+        const isGridContainer = (layoutMode === 'grid' || node.isGrid || node.layoutType === 'GRID' || Boolean(numGridCols)) && Array.isArray(node.children) && node.children.length > 1 && (
             node.stackWrap === 'WRAP' ||
             /grid/i.test(node.name || '') ||
-            Boolean(node.gridColumns || node.gridRows) ||
+            Boolean(numGridCols || numGridRows) ||
             Boolean(node.stackCounterSpacing && node.stackCounterSpacing > 0 && node.stackWrap === 'WRAP') ||
             Boolean(node.isGrid || node.layoutType === 'GRID')
         );
 
         if (isGridContainer) {
             styles['display'] = 'grid';
-            if (node.gridColumns) {
-                styles['grid-template-columns'] = `repeat(${node.gridColumns}, 1fr)`;
+            if (numGridCols && numGridCols > 0) {
+                styles['grid-template-columns'] = `repeat(${numGridCols}, 1fr)`;
             } else if (node.stackMode === 'HORIZONTAL') {
                 const childW = node.children[0]?.size?.x || 200;
                 const containerW = node.size?.x || cw;
@@ -580,9 +605,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
 
         // Justify content (primary axis)
-        if (node.stackPrimaryAlignItems === 'CENTER') styles['justify-content'] = 'center';
-        else if (node.stackPrimaryAlignItems === 'MAX') styles['justify-content'] = 'flex-end';
-        else if (node.stackPrimaryAlignItems === 'SPACE_BETWEEN') styles['justify-content'] = 'space-between';
+        const primaryAlign = node.stackPrimaryAlignItems || node.primaryAxisAlignItems;
+        if (primaryAlign === 'CENTER') styles['justify-content'] = 'center';
+        else if (primaryAlign === 'MAX') styles['justify-content'] = 'flex-end';
+        else if (primaryAlign === 'SPACE_BETWEEN' || primaryAlign === 'SPACE_EVENLY') styles['justify-content'] = 'space-between';
+        else if (primaryAlign === 'SPACE_AROUND') styles['justify-content'] = 'space-around';
+        else if (primaryAlign === 'SPACE_EVENLY_CSS') styles['justify-content'] = 'space-evenly';
 
         // Align items (cross axis)
         if (node.stackCounterAlignItems === 'CENTER') styles['align-items'] = 'center';
@@ -593,7 +621,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     // 8. Sizing & Position relative to parent
     const parentIsAutoLayout = parentNode && (parentNode.stackMode === 'HORIZONTAL' || parentNode.stackMode === 'VERTICAL');
-    const parentHasMask = Boolean(parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.mask === true || c.isMask === true));
+    const parentHasMask = Boolean(parentNode && (
+        (parentNode.name && /mask(\s*group)?/i.test(parentNode.name)) ||
+        parentNode.mask === true ||
+        parentNode.isMask === true ||
+        (Array.isArray(parentNode.children) && parentNode.children.some(c => c.mask === true || c.isMask === true))
+    ));
     const isAbsolute = node.stackPositioning === 'ABSOLUTE' || (!parentIsAutoLayout && parentNode && !parentHasMask);
 
     // If current node has absolute children or is a slide/card, or is a container with children and not auto-layout
@@ -610,7 +643,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     // Overflow clipping for frames with corner radius, slides/cards, masks, or clipsContent
     // Note: Synthesized virtual frames should NEVER clip content unless explicitly marked clipsContent
-    if (!node.isSynthesized && (node.clipsContent || isSlideOrCard || hasMaskChild || (node.type === 'FRAME' && (node.cornerRadius || node.rectangleCornerRadiiIndependent) && node.children?.length))) {
+    if (!node.isSynthesized && (node.clipsContent || isSlideOrCard || hasMaskChild || (node.name && /mask(\s*group)?/i.test(node.name)) || (node.type === 'FRAME' && (node.cornerRadius || node.rectangleCornerRadiiIndependent) && node.children?.length))) {
         styles['overflow'] = 'hidden';
     }
 
@@ -625,10 +658,27 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
     }
 
+    const siblings = Array.isArray(parentNode?.children) ? parentNode.children : [];
+    const childIndex = siblings.indexOf(node);
+    const inFlowIndices = [];
+    siblings.forEach((c, i) => {
+        const isChildAbs = c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay || c.isBleedingOverlay || (!parentIsAutoLayout && !parentHasMask);
+        if (!isChildAbs) inFlowIndices.push(i);
+    });
+    const hasInFlow = inFlowIndices.length > 0;
+    const minInFlow = hasInFlow ? inFlowIndices[0] : -1;
+    const maxInFlow = hasInFlow ? inFlowIndices[inFlowIndices.length - 1] : -1;
+
     // In-flow positioning relative to absolute siblings
     const parentHasAbsoluteChildren = parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.stackPositioning === 'ABSOLUTE');
-    if (parentHasAbsoluteChildren && !isAbsolute && !styles['position']) {
-        styles['position'] = 'relative';
+    if (parentHasAbsoluteChildren && !isAbsolute) {
+        if (!styles['position']) {
+            styles['position'] = 'relative';
+        }
+        const hasUnderlay = siblings.some((c, i) => i < minInFlow && (c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay));
+        if (hasUnderlay && !styles['z-index']) {
+            styles['z-index'] = '1';
+        }
     }
 
     if (isAbsolute && parentNode) {
@@ -647,11 +697,27 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             styles['top'] = `${posY}px`;
         }
 
-        // Overlay z-index calculation:
-        // Overlays and floating elements must be elevated above in-flow content
-        if (node.isDecorativeOverlay || node.stackPositioning === 'ABSOLUTE') {
-            const childIndex = Array.isArray(parentNode.children) ? parentNode.children.indexOf(node) : 0;
-            styles['z-index'] = String(10 + Math.max(0, childIndex));
+        // Layer z-index calculation:
+        // Correctly calculate layer in Figma relative to other elements
+        if (node.isDecorativeOverlay || node.stackPositioning === 'ABSOLUTE' || isAbsolute) {
+            if (!hasInFlow) {
+                // Freeform / non-auto-layout canvas: layer index based on Figma layer order (1, 2, 3...)
+                styles['z-index'] = String(Math.max(0, childIndex) + 1);
+            } else if (childIndex < minInFlow) {
+                // Underlay / Background: placed behind in-flow content in Figma
+                styles['z-index'] = String(Math.max(0, childIndex));
+            } else if (childIndex > maxInFlow) {
+                // Overlay: placed above in-flow content in Figma
+                styles['z-index'] = String(10 + Math.max(0, childIndex));
+            } else {
+                styles['z-index'] = String(Math.max(0, childIndex));
+            }
+        }
+
+        // Add pointer-events: none for images and vector decorations that should not intercept clicks
+        const isImg = isImageNode(node) || (node.type === 'VECTOR' && (!node.children || node.children.length === 0));
+        if (isImg && !node.isButton && !node.prototypeInteractions?.length) {
+            styles['pointer-events'] = 'none';
         }
 
         if (node.size?.x) styles['width'] = fmtW(node.size.x);
@@ -661,6 +727,9 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         styles['width'] = '100%';
         styles['height'] = '100%';
         styles['display'] = 'block';
+        if (isImageNode(node) && !styles['object-fit']) {
+            styles['object-fit'] = 'cover';
+        }
     } else if (parentIsAutoLayout) {
         // Flow child in Auto Layout
         const isGrow = node.stackChildPrimaryGrow === 1.0 || node.layoutGrow === 1.0 || node.layoutGrow === 1;
@@ -684,10 +753,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
         const alignSelfVal = rawAlignSelf;
 
-        const parentIsGrid = (layoutMode === 'grid' || parentNode?.isGrid || parentNode?.layoutType === 'GRID' || Boolean(parentNode?.gridColumns)) && parentNode && (
+        const parentGridCols = parseGridAxisCount(parentNode?.gridColumns);
+        const parentGridRows = parseGridAxisCount(parentNode?.gridRows);
+        const parentIsGrid = (layoutMode === 'grid' || parentNode?.isGrid || parentNode?.layoutType === 'GRID' || Boolean(parentGridCols)) && parentNode && (
             parentNode.stackWrap === 'WRAP' ||
             /grid/i.test(parentNode.name || '') ||
-            Boolean(parentNode.gridColumns || parentNode.gridRows) ||
+            Boolean(parentGridCols || parentGridRows) ||
             Boolean(parentNode.isGrid || parentNode.layoutType === 'GRID')
         );
         if (parentIsGrid) {
@@ -726,7 +797,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         // Sizing in Auto Layout
         const isRow = parentNode.stackMode === 'HORIZONTAL';
         const isShapeOrImage = ['ELLIPSE', 'RECTANGLE', 'VECTOR', 'REGULAR_POLYGON', 'STAR', 'LINE'].includes(node.type);
-        const isIconContainer = isVectorContainerCheck(node);
+        const isIconContainer = isVectorContainer(node);
         const isButton = Boolean(node.isButton || (/^(btn|button)/i.test(node.name || '')));
 
         if (isButton) {
