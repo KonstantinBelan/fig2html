@@ -5,7 +5,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.4.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 107 passed](https://img.shields.io/badge/tests-107%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 117 passed](https://img.shields.io/badge/tests-117%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -204,8 +204,11 @@ Open dist/index.html in any browser.
   - **Фаза 1. Spatial Normalization & Indexing**: точное вычисление 2D-габаритов (`BoundingBox`), пространственное индексирование и разрешение порядка наложения z-index.
   - **Фаза 2. Background & Container Induction**: автоматическое обнаружение прямоугольников-подложек (`RECTANGLE` с заливками, скруглениями или тенями), повышение их до семантических контейнеров и перенос стилей оформления на синтезированные `<div>` и `<button>` блоки.
   - **Фаза 3. Recursive XY-Cut & Fuzzy Clustering**: метод рекурсивного ортогонального разрезания пространства по 1D-профилям проекций с допуском неточностей дизайнера $\epsilon = 3\text{px}$ (Fuzzy Tolerance Clustering) для выравнивания строк, колонок и элементов (`align-items: center | flex-start`, `justify-content: space-between`).
-  - **Фаза 4. Grid & Matrix Induction**: автоматическое распознавание регулярных матричных сеток карточек $N \times M$ и синтез нативного `display: grid; grid-template-columns: repeat(C, 1fr); column-gap: ...; row-gap: ...;`.
+  - **Фаза 4. Grid & Matrix Induction**: автоматическое распознавание регулярных матричных сеток карточек $N \times M$ и синтез нативного `display: grid; grid-template-columns: repeat(C, 1fr); column-gap: ...; row-gap: ...;` (с корректной трансляцией Kiwi-объектов `gridColumns.entries` в целочисленные повторения).
   - **Фаза 5. Flexbox Property Synthesis**: вычисление внутренних отступов (`padding`), промежутков (`gap`), правил растяжения (`align-self: stretch`, `width: 100%`) и изоляция декоративных оверлеев (`DECORATIVE_OVERLAY`).
+  - **Иерархия слоёв и расчет `z-index`**: точное определение взаимного положения слоёв в Figma — фоновые подложки гарантированно получают `z-index: 0` и располагаются перед контентом, а для абсолютных фоновых декоративных изображений автоматически добавляется `pointer-events: none;`, предотвращая блокировку кликов по интерактивным элементам под ними.
+  - **Корректная обработка Clip Content**: учёт параметра `frameMaskDisabled` в Figma Kiwi — если «Clip Content» отключён дизайнером, свойство `overflow: hidden` не добавляется, сохраняя естественное переполнение контента.
+  - **Асимметричные отступы (`padding`)**: прецизионная трансляция 4-сторонних внутренних отступов с учётом опущенных нулевых значений из Kiwi (например, `padding: 64px 0px 0px 0px;`).
   - **Управление через CLI**: флаг `--smart-layout` (включен по умолчанию) и `--no-smart-layout` для отката к абсолютному позиционированию при необходимости.
 - **Режимы вёрстки и адаптивность (Fluid & Relative)**:
   - **Fluid (резиновая вёрстка)**: главный контейнер страницы растягивается на всю ширину (`width: 100vw; min-height: 100dvh;`), для типографики и отступов генерируются гибкие выражения `clamp()`, `min()`, `max()`, подключается `<meta name="viewport" content="width=device-width, initial-scale=1">`, а вместо фиксированных пикселей используются `rem`, `em`, `vw`, `vh`.
@@ -225,18 +228,22 @@ Open dist/index.html in any browser.
   - Автоматическое объединение чисто векторных фреймов и групп в единые цельные `<svg>` иконки.
   - Пропорциональное масштабирование координат векторов (`scale(sx, sy)`) под реальный размер фрейма.
   - Атрибут `vector-effect="non-scaling-stroke"` для защиты толщины линий от искажений при масштабировании.
-- **Маски и замаскированные группы (Masking)**:
-  - Автоматическое определение маскирующих слоев (`mask: true`).
-  - Применение формы и скруглений маски к родительскому контейнеру (`overflow: hidden; border-radius: ...`).
-  - Сохранение нормального потока замаскированного содержимого (`width: 100%; height: 100%; object-fit: cover`) без выпадения в абсолютное позиционирование.
+- **Маски и запекание прозрачности (Mask Baking & Transparency)**:
+  - **Автоматическое запекание масок в графические ассеты**: по умолчанию при экспорте слоёв с масками (`mask: true`), наложенными на изображения, движок через Sharp (`blend: 'dest-in'`) аппаратно запекает маску прямо в файл ассета с истинной альфа-прозрачностью (`hasAlpha: true`, PNG 32-bit / WebP).
+  - Поддержка радиальных (`GRADIENT_RADIAL`) и линейных (`GRADIENT_LINEAR`) градиентных масок с сохранением углов и прозрачности, геометрических форм (`ELLIPSE`, `cornerRadius`) и растровых масок (`IMAGE`).
+  - Полное исключение костыльных `mix-blend-mode: darken` и искусственных белых фонов (`background-color: #ffffff;`), гарантирующее идеальное отображение на любых фонах в 100% браузеров без белых ореолов и проблем Safari.
+  - **Ручной режим CSS-масок по тегу (`[mask]`, `[маска]`)**: при наличии тегов `[mask]`, `[маска]`, `#mask`, `/mask` запекание в файл пропускается и генерируется нативный CSS `mask-image` / `-webkit-mask-image`.
+  - Сохранение фиксированных габаритов `width` и `height` у Mask Group контейнеров.
 - **Прецизионный Auto Layout и Flexbox**:
   - Чёткое разделение основной и поперечной осей (`isRow` vs `!isRow`).
   - Сохранение фиксированных размеров на основной оси при растяжении (`align-self: stretch`) по поперечной (например, `width: 256px` у растянутого сайдбара).
+  - Режимы распределения `SPACE_BETWEEN` и `SPACE_EVENLY` транслируются в чистый `justify-content: space-between`.
   - Поддержка режимов **Hug contents** (отсутствие жестких `width`/`height`), **Fixed** (`px`), и **Fill container** (`flex: 1`).
   - Автоматическое вертикальное центрирование текста при `textAlignVertical: CENTER`.
 - **Типографика и обрезка текста**:
   - Поддержка множителей `line-height` (единицы `RAW`, `PERCENT`, `PIXELS`).
   - Межбуквенный интервал `letter-spacing` (относительные `em` и фиксированные `px`, включая отрицательные значения вроде `-3%` -> `-0.03em`).
+  - **Градиентный текст**: поддержка линейных и радиальных градиентов для текстовых слоёв с автоматической генерацией `background-image: linear-gradient(...)`, `-webkit-background-clip: text`, `-webkit-text-fill-color: transparent`.
   - Параметр **Truncate text** из Figma: генерация `text-overflow: ellipsis; white-space: nowrap; overflow: hidden; min-width: 0`.
 - **Типизированные `:root` CSS-переменные**:
   - Контекстно-зависимая группировка: радиусы (`--radius-*`), цвета (`--color-*`), шрифты (`--font-*`), габариты холстов (`--slide-*`).
@@ -499,7 +506,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (95 тестов):
+Проект покрыт всесторонними автоматическими тестами (117 тестов):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -545,6 +552,13 @@ decompile();
   - Поддержка настроек цветокоррекции изображений Figma (`paintFilter`: Exposure, Contrast, Saturation, Temperature, Tint) с трансляцией в CSS `filter`
   - Адаптивный резиновый корневой контейнер `.main-container` с `max-width` вместо фиксированного `width`
   - Интеллектуальный расчет ритма секций: при неравномерных зазорах дочерним блокам назначаются точечные `margin-top` вместо искусственного общего `gap`
+  - Трансляция Auto Layout `SPACE_BETWEEN` и `SPACE_EVENLY` в `justify-content: space-between`
+  - Интеллектуальный расчет взаимного порядка слоев и `z-index` (фоновые подложки с `z-index: 0` vs контент с `z-index: 1`) с добавлением `pointer-events: none` для фоновых декоративных изображений
+  - Сохранение фиксированных размеров `width` и `height` у Mask Group контейнеров
+  - Парсинг объектов `gridColumns.entries` в Kiwi в целочисленный синтаксис `repeat(N, 1fr)` в CSS Grid
+  - Наложение линейных и радиальных градиентов на текст (`-webkit-background-clip: text`, `-webkit-text-fill-color: transparent`, `background-image: linear-gradient(...)`)
+  - Прецизионное сохранение 4-сторонних асимметричных `padding` с восстановлением опущенных Kiwi нулевых сторон
+  - Отключение `overflow: hidden` при отключенном Clip Content (`frameMaskDisabled: true`)
   - Парсинг CLI-флагов `--smart-layout` и `--no-smart-layout`
   - End-to-End декомпиляция макетов без единого Auto Layout фрейма в чистый Flexbox и CSS Grid без `position: absolute`
   - Проверка сохранения традиционного абсолютного позиционирования при флаге `--no-smart-layout`
@@ -559,6 +573,15 @@ decompile();
   - Автоматическое разрешение коллизий стилей при одинаковых именах слоев через страничный модификатор (`.btn--cart`)
   - Разделение свойств корневого `.main-container` и страницы (`.page-index-container`, `.page-about-container`)
   - Сквозной E2E-тест многостраничного экспорта: генерация сайта `dist/*.html` с общим `dist/css/style.css` и дедуплицированными ассетами
+- **Figma Adaptive Multi-Breakpoint Engine (v1.4.0) & Mask Baking**:
+  - Распознавание тегов брейкпоинтов во всех синтаксисах (`[desktop]`, `[mobile]`, `@1440`, `@375`, `/desktop`, `Mobile`)
+  - Группировка экранных фреймов в канонические адаптивные страницы
+  - AST Similarity Matching и сопоставление соответствующих элементов между вьюпортами
+  - Изоляция эксклюзивных десктопных и мобильных элементов (`display: none` / `display: flex`)
+  - Синтез непрерывных формул `clamp()` и дискретных `@media` запросов
+  - Сквозная декомпиляция мульти-брейкпоинт проектов в единый канонический HTML-документ
+  - Автоматическое запекание радиальных/линейных масок в растровые изображения через Sharp (`dest-in`) с истинным альфа-каналом и исключение артефактов `mix-blend-mode`
+  - Поддержка явных тегов `[mask]`, `[маска]`, `#mask`, `/mask` для сохранения CSS `mask-image`
 
 Запуск тестов:
 ```bash
@@ -595,6 +618,7 @@ html-to-fig/
 │   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS и маппинг MIME типов
 │   │   ├── units.js        # Преобразование единиц (rem, em, vw, vh) и fluid-расчеты (clamp, min, max)
 │   │   ├── html.js         # Генерация семантического HTML5, форм и Rich Text
+│   │   ├── image-optimizer.js # Оптимизация картинок (Retina 2x, WebP/AVIF, srcset) и запекание масок
 │   │   └── vector.js       # Декодирование бинарных VectorNetwork и commandsBlob в SVG
 │   ├── parsers/
 │   │   ├── color.js        # Парсер всех типов CSS цветов
@@ -606,7 +630,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (107 тестов)
+    ├── run-tests.js        # Автоматический тестовый запуск (117 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
