@@ -250,6 +250,33 @@ function isMaskContainer(node) {
 }
 
 /**
+ * Checks if a node has affine rotation
+ * @param {object} node
+ * @returns {boolean}
+ */
+function hasTransformRotation(node) {
+    if (!node) return false;
+    if (typeof node.rotation === 'number' && Math.abs(node.rotation) > 0.01) return true;
+    if (!node.transform) return false;
+    const { m01 = 0, m10 = 0 } = node.transform;
+    return Math.abs(m01) > 0.001 || Math.abs(m10) > 0.001;
+}
+
+/**
+ * Checks if a container should skip auto-layout / flexbox synthesis
+ * @param {object} node
+ * @returns {boolean}
+ */
+function shouldSkipLayoutSynthesis(node) {
+    if (!node) return true;
+    if (isVectorContainer(node) || isMaskContainer(node) || hasTransformRotation(node)) return true;
+    if (Array.isArray(node.children) && node.children.some(c => isMaskContainer(c) || hasTransformRotation(c))) {
+        return true;
+    }
+    return false;
+}
+
+/**
  * Synthesizes Auto Layout and Grid properties for a container frame and its children
  * @param {object} containerNode
  * @param {object} [options={}]
@@ -260,7 +287,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
     if (!containerNode || !Array.isArray(containerNode.children) || containerNode.children.length === 0) {
         return containerNode;
     }
-    if (isVectorContainer(containerNode) || isMaskContainer(containerNode)) {
+    if (shouldSkipLayoutSynthesis(containerNode)) {
         return containerNode;
     }
 
@@ -766,16 +793,18 @@ function synthesizeContainerLayout(containerNode, options = {}) {
  */
 function synthesizeLayoutTree(node, options = {}) {
     if (!node) return node;
-    if (isVectorContainer(node) || isMaskContainer(node)) return node;
+    if (isVectorContainer(node) || isMaskContainer(node) || hasTransformRotation(node)) return node;
+
+    const skipContainerSynthesis = shouldSkipLayoutSynthesis(node);
 
     // 1. If node has children, detect and extract underlays / card backgrounds first
-    if (Array.isArray(node.children) && node.children.length > 1) {
+    if (!skipContainerSynthesis && Array.isArray(node.children) && node.children.length > 1) {
         node.children = detectAndExtractContainers(node.children, node.size, options.epsilon || 3);
     }
 
     // 2. Synthesize layout for this node if it lacks native Auto Layout
     const isAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
-    if (!isAutoLayout && Array.isArray(node.children) && node.children.length > 0) {
+    if (!skipContainerSynthesis && !isAutoLayout && Array.isArray(node.children) && node.children.length > 0) {
         synthesizeContainerLayout(node, options);
     }
 
@@ -811,6 +840,8 @@ function applySmartLayout(rootNodes, options = {}) {
 module.exports = {
     detectGrid,
     isMaskContainer,
+    hasTransformRotation,
+    shouldSkipLayoutSynthesis,
     synthesizeContainerLayout,
     synthesizeLayoutTree,
     applySmartLayout

@@ -34,6 +34,8 @@ const {
 const {
     formatColor,
     getLinearGradientAngle,
+    parseTransformMatrix,
+    getNodeTransformInfo,
     formatGradient,
     formatEffects,
     formatPaintFilter,
@@ -93,6 +95,8 @@ const {
 const {
     detectGrid,
     isMaskContainer,
+    hasTransformRotation,
+    shouldSkipLayoutSynthesis,
     synthesizeContainerLayout,
     synthesizeLayoutTree,
     applySmartLayout
@@ -3529,6 +3533,81 @@ async function runAllTests() {
         assert.strictEqual(singleBaked, 0, 'Single independent image should not be baked');
         const singleStyles = computeNodeStyles(singleNode, null, rawImages, {});
         assert.strictEqual(singleStyles['filter'], 'brightness(1.1)', 'Should retain filter in CSS');
+    });
+
+    it('decompiles affine rotation from Figma transform matrix and preserves nested mask child positioning', () => {
+        // 1. Matrix decomposition
+        const mRotMinus15 = {
+            m00: 0.9659258,
+            m01: 0.2588190,
+            m02: 0,
+            m10: -0.2588190,
+            m11: 0.9659258,
+            m12: 111.8
+        };
+        const parsed = parseTransformMatrix(mRotMinus15);
+        assert.deepStrictEqual(parsed, { scaleX: 1, scaleY: 1, rotateDeg: -15 });
+
+        // Flip horizontal
+        const mFlipH = { m00: -1, m01: 0, m02: 480, m10: 0, m11: 1, m12: 0 };
+        assert.deepStrictEqual(parseTransformMatrix(mFlipH), { scaleX: -1, scaleY: 1, rotateDeg: 0 });
+
+        // 2. Synthesizer skipping on rotated container
+        const rotatedContainer = {
+            name: 'Group 116047490',
+            type: 'FRAME',
+            size: { x: 432, y: 423 },
+            transform: mRotMinus15,
+            children: [{ name: 'Child', type: 'RECTANGLE', size: { x: 100, y: 100 } }]
+        };
+        assert.strictEqual(hasTransformRotation(rotatedContainer), true);
+        assert.strictEqual(shouldSkipLayoutSynthesis(rotatedContainer), true);
+        synthesizeContainerLayout(rotatedContainer);
+        assert.strictEqual(rotatedContainer.stackMode, undefined, 'Rotated container should not be converted to flex');
+
+        // 3. CSS styles for rotated mask group and nested offset child image
+        const maskGroupNode = {
+            name: 'Mask group',
+            type: 'FRAME',
+            size: { x: 432, y: 423 },
+            transform: mRotMinus15,
+            children: [
+                {
+                    name: 'Mask Shape',
+                    type: 'ROUNDED_RECTANGLE',
+                    mask: true,
+                    size: { x: 432, y: 423 },
+                    transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
+                },
+                {
+                    name: 'Nested Image',
+                    type: 'ROUNDED_RECTANGLE',
+                    fillPaints: [{ type: 'IMAGE', visible: true }],
+                    size: { x: 569, y: 762 },
+                    transform: { m00: 1, m01: 0, m02: -68.5, m10: 0, m11: 1, m12: -83.3 }
+                }
+            ]
+        };
+
+        const parentFrame = {
+            name: 'Parent Frame',
+            type: 'FRAME',
+            size: { x: 600, y: 600 }
+        };
+
+        const sMask = computeNodeStyles(maskGroupNode, parentFrame);
+        assert.strictEqual(sMask['transform'], 'rotate(-15deg)');
+        assert.strictEqual(sMask['transform-origin'], '0 0');
+        assert.strictEqual(sMask['overflow'], 'hidden');
+        assert.strictEqual(sMask['position'], 'absolute');
+        assert.strictEqual(sMask['top'], '111.8px');
+
+        const sImg = computeNodeStyles(maskGroupNode.children[1], maskGroupNode);
+        assert.strictEqual(sImg['position'], 'absolute', 'Offset image inside mask must be position: absolute');
+        assert.strictEqual(sImg['left'], '-68.5px', 'Image must preserve negative X offset');
+        assert.strictEqual(sImg['top'], '-83.3px', 'Image must preserve negative Y offset');
+        assert.strictEqual(sImg['width'], '569px', 'Image must preserve true width');
+        assert.strictEqual(sImg['height'], '762px', 'Image must preserve true height');
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);

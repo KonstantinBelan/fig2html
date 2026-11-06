@@ -58,6 +58,70 @@ function getLinearGradientAngle(transform) {
 }
 
 /**
+ * Decomposes a 2x3 affine matrix into scale, rotation (in degrees)
+ * @param {{ m00: number, m01: number, m02: number, m10: number, m11: number, m12: number }} transform
+ * @returns {{ scaleX: number, scaleY: number, rotateDeg: number } | null}
+ */
+function parseTransformMatrix(transform) {
+    if (!transform) return null;
+    const m00 = transform.m00 ?? 1;
+    const m01 = transform.m01 ?? 0;
+    const m10 = transform.m10 ?? 0;
+    const m11 = transform.m11 ?? 1;
+
+    // Check if identity (no rotation, no scale/flip)
+    if (Math.abs(m00 - 1) < 0.001 && Math.abs(m11 - 1) < 0.001 && Math.abs(m01) < 0.001 && Math.abs(m10) < 0.001) {
+        return null;
+    }
+
+    const det = m00 * m11 - m01 * m10;
+
+    // Pure horizontal flip: m00 == -1, m11 == 1, m01 == 0, m10 == 0
+    if (Math.abs(m00 - (-1)) < 0.001 && Math.abs(m11 - 1) < 0.001 && Math.abs(m01) < 0.001 && Math.abs(m10) < 0.001) {
+        return { scaleX: -1, scaleY: 1, rotateDeg: 0 };
+    }
+
+    // Pure vertical flip: m00 == 1, m11 == -1, m01 == 0, m10 == 0
+    if (Math.abs(m00 - 1) < 0.001 && Math.abs(m11 - (-1)) < 0.001 && Math.abs(m01) < 0.001 && Math.abs(m10) < 0.001) {
+        return { scaleX: 1, scaleY: -1, rotateDeg: 0 };
+    }
+
+    if (det < 0) {
+        // Reflection + rotation
+        const rad = Math.atan2(m10, -m00);
+        const deg = Math.round(rad * (180 / Math.PI) * 100) / 100;
+        return { scaleX: -1, scaleY: 1, rotateDeg: Math.abs(deg) > 0.01 ? deg : 0 };
+    }
+
+    // Standard rotation (det > 0)
+    const rad = Math.atan2(m10, m00);
+    const deg = Math.round(rad * (180 / Math.PI) * 100) / 100;
+    const rotateDeg = Math.abs(deg) > 0.01 ? deg : 0;
+
+    return { scaleX: 1, scaleY: 1, rotateDeg };
+}
+
+/**
+ * Gets transform information (rotation, flip) for a node
+ * @param {object} node
+ * @returns {{ scaleX: number, scaleY: number, rotateDeg: number } | null}
+ */
+function getNodeTransformInfo(node) {
+    if (!node) return null;
+    const info = parseTransformMatrix(node.transform);
+    if (info) return info;
+    if (typeof node.rotation === 'number' && Math.abs(node.rotation) > 0.01) {
+        const deg = Math.abs(node.rotation) <= 2 * Math.PI
+            ? Math.round(node.rotation * (180 / Math.PI) * 100) / 100
+            : Math.round(node.rotation * 100) / 100;
+        if (Math.abs(deg) > 0.01) {
+            return { scaleX: 1, scaleY: 1, rotateDeg: deg };
+        }
+    }
+    return null;
+}
+
+/**
  * Formats a Figma gradient paint object into CSS gradient string
  * @param {object} paint
  * @returns {string|null} CSS gradient
@@ -680,7 +744,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         parentNode.isMask === true ||
         (Array.isArray(parentNode.children) && parentNode.children.some(c => c.mask === true || c.isMask === true))
     ));
-    const isAbsolute = node.stackPositioning === 'ABSOLUTE' || (!parentIsAutoLayout && parentNode && !parentHasMask);
+
+    const nodeTransformInfo = getNodeTransformInfo(node);
+    const hasOffset = Math.abs(node.transform?.m02 || 0) >= 0.5 || Math.abs(node.transform?.m12 || 0) >= 0.5;
+    const hasTransform = Boolean(nodeTransformInfo);
+    const isMaskFillChild = parentHasMask && !hasOffset && !hasTransform && node.stackPositioning !== 'ABSOLUTE';
+    const isAbsolute = node.stackPositioning === 'ABSOLUTE' || (!parentIsAutoLayout && parentNode && !isMaskFillChild);
 
     // If current node has absolute children or is a slide/card, or is a container with children and not auto-layout
     const isContainer = ['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'COMPONENT'].includes(node.type);
@@ -840,7 +909,8 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         styles['width'] = '100%';
         styles['height'] = '100%';
         styles['display'] = 'block';
-        if (isImageNode(node) && !styles['object-fit']) {
+        const isDirectImg = node.type === 'IMAGE' || (Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false) && (!node.children || node.children.length === 0));
+        if (isDirectImg && !styles['object-fit']) {
             styles['object-fit'] = 'cover';
         }
     } else if (parentIsAutoLayout) {
@@ -1078,6 +1148,25 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
     }
 
+    // 8.5 Affine Transformation (Rotation, Scale, Flip)
+    if (nodeTransformInfo) {
+        const parts = [];
+        if (nodeTransformInfo.rotateDeg) {
+            parts.push(`rotate(${nodeTransformInfo.rotateDeg}deg)`);
+        }
+        if (nodeTransformInfo.scaleX === -1) {
+            parts.push('scaleX(-1)');
+        }
+        if (nodeTransformInfo.scaleY === -1) {
+            parts.push('scaleY(-1)');
+        }
+        if (parts.length > 0) {
+            const transformStr = parts.join(' ');
+            styles['transform'] = styles['transform'] ? `${styles['transform']} ${transformStr}` : transformStr;
+            styles['transform-origin'] = '0 0';
+        }
+    }
+
     // 9. Element-specific normalizations
     const nodeName = node.name || '';
     const lowerName = nodeName.toLowerCase().trim();
@@ -1111,6 +1200,8 @@ module.exports = {
     getExtensionForMime,
     formatColor,
     getLinearGradientAngle,
+    parseTransformMatrix,
+    getNodeTransformInfo,
     formatGradient,
     formatEffects,
     formatPaintFilter,
