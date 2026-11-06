@@ -1,6 +1,7 @@
 // src/decompiler/image-optimizer.js
+const crypto = require('crypto');
 const sharp = require('sharp');
-const { getExtensionForMime } = require('./css');
+const { getExtensionForMime, getLinearGradientAngle, hasExplicitMaskTag } = require('./css');
 
 /**
  * Traverses root nodes to find all image fills and their target CSS dimensions
@@ -214,6 +215,202 @@ async function optimizeBuffer(inputBuffer, options = {}) {
 }
 
 /**
+ * Detects mask containers without explicit [mask] / [маска] tag and bakes the mask into the image
+ * using Sharp compositing (blend: 'dest-in'), producing a clean PNG with transparent alpha.
+ *
+ * @param {Map<string, { buffer: Buffer, mime: string }>} rawImages
+ * @param {Array<object>} rootNodes
+ * @param {object} [options={}]
+ */
+async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
+    const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
+    if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
+        return 0;
+    }
+
+    let bakedCount = 0;
+    const scaleMultiplier = typeof options.imageScale === 'number' && options.imageScale > 0 ? options.imageScale : 2;
+
+    function findMaskContainers(nodes) {
+        const res = [];
+        for (const n of nodes) {
+            if (n.children && n.children.some(c => c.mask === true || c.isMask === true)) {
+                res.push(n);
+            }
+            if (n.children) res.push(...findMaskContainers(n.children));
+        }
+        return res;
+    }
+
+    function findImagesInSubtree(node) {
+        const res = [];
+        if (node.fillPaints?.some(f => f.type === 'IMAGE' && f.image?.hash && f.visible !== false)) {
+            res.push(node);
+        }
+        if (node.children) {
+            for (const c of node.children) {
+                res.push(...findImagesInSubtree(c));
+            }
+        }
+        return res;
+    }
+
+    function generateMaskSvg(maskChild, w, h) {
+        if (!maskChild) return null;
+
+        const radPaint = maskChild.fillPaints?.find(f => f.type === 'GRADIENT_RADIAL' && f.visible !== false);
+        if (radPaint && radPaint.stops && radPaint.stops.length >= 2) {
+            const stopsXml = radPaint.stops.map(s => {
+                const pct = Math.round((s.position !== undefined ? s.position : 0) * 100);
+                const a = s.color?.a !== undefined ? s.color.a : 1;
+                const op = Math.round(a * (radPaint.opacity ?? 1) * 1000) / 1000;
+                return `<stop offset="${pct}%" stop-color="white" stop-opacity="${op}" />`;
+            }).join('\n');
+
+            return Buffer.from(
+                `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+                `<defs><radialGradient id="m" cx="50%" cy="50%" r="50%" fx="50%" fy="50%">` +
+                stopsXml +
+                `</radialGradient></defs>` +
+                `<rect width="${w}" height="${h}" fill="url(#m)" />` +
+                `</svg>`
+            );
+        }
+
+        const linPaint = maskChild.fillPaints?.find(f => f.type === 'GRADIENT_LINEAR' && f.visible !== false);
+        if (linPaint && linPaint.stops && linPaint.stops.length >= 2) {
+            const angle = getLinearGradientAngle(linPaint.transform);
+            const stopsXml = linPaint.stops.map(s => {
+                const pct = Math.round((s.position !== undefined ? s.position : 0) * 100);
+                const a = s.color?.a !== undefined ? s.color.a : 1;
+                const op = Math.round(a * (linPaint.opacity ?? 1) * 1000) / 1000;
+                return `<stop offset="${pct}%" stop-color="white" stop-opacity="${op}" />`;
+            }).join('\n');
+
+            return Buffer.from(
+                `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+                `<defs><linearGradient id="m" gradientTransform="rotate(${angle - 90} 0.5 0.5)">` +
+                stopsXml +
+                `</linearGradient></defs>` +
+                `<rect width="${w}" height="${h}" fill="url(#m)" />` +
+                `</svg>`
+            );
+        }
+
+        if (maskChild.type === 'ELLIPSE') {
+            return Buffer.from(
+                `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+                `<ellipse cx="${w / 2}" cy="${h / 2}" rx="${w / 2}" ry="${h / 2}" fill="white" />` +
+                `</svg>`
+            );
+        }
+
+        if (maskChild.cornerRadius) {
+            const r = Math.round(maskChild.cornerRadius * scaleMultiplier);
+            return Buffer.from(
+                `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">` +
+                `<rect width="${w}" height="${h}" rx="${r}" ry="${r}" fill="white" />` +
+                `</svg>`
+            );
+        }
+
+        return null;
+    }
+
+    const containers = findMaskContainers(rootNodes);
+
+    const getRawImage = (hash) => {
+        if (!rawImages) return null;
+        if (typeof rawImages.get === 'function') return rawImages.get(hash);
+        const item = rawImages[hash];
+        if (!item) return null;
+        if (Buffer.isBuffer(item)) return { buffer: item, mime: 'image/png' };
+        return item;
+    };
+
+    const setRawImage = (hash, item) => {
+        if (!rawImages) return;
+        if (typeof rawImages.set === 'function') {
+            rawImages.set(hash, item);
+        } else {
+            rawImages[hash] = item;
+        }
+    };
+
+    for (const container of containers) {
+        if (hasExplicitMaskTag(container)) continue;
+        const maskChild = container.children.find(c => c.mask === true || c.isMask === true);
+        if (!maskChild || hasExplicitMaskTag(maskChild)) continue;
+
+        const siblings = container.children.filter(c => c !== maskChild);
+        const images = siblings.flatMap(s => findImagesInSubtree(s));
+        if (images.length === 0) continue;
+
+        for (const targetImageNode of images) {
+            const targetPaint = targetImageNode.fillPaints.find(f => f.type === 'IMAGE' && f.image?.hash);
+            if (!targetPaint) continue;
+            const targetHash = Buffer.isBuffer(targetPaint.image.hash)
+                ? targetPaint.image.hash.toString('hex').toLowerCase()
+                : String(targetPaint.image.hash).toLowerCase();
+            const targetRaw = getRawImage(targetHash);
+            if (!targetRaw?.buffer) continue;
+
+            const cssW = Math.round(maskChild.size?.x || container.size?.x || targetImageNode.size?.x || 100);
+            const cssH = Math.round(maskChild.size?.y || container.size?.y || targetImageNode.size?.y || 100);
+            const targetW = Math.max(1, Math.round(cssW * scaleMultiplier));
+            const targetH = Math.max(1, Math.round(cssH * scaleMultiplier));
+
+            let maskRasterBuf = null;
+            try {
+                // Check if mask has its own image fill (e.g. PNG alpha mask)
+                const maskImgPaint = maskChild.fillPaints?.find(f => f.type === 'IMAGE' && f.image?.hash && f.visible !== false);
+                if (maskImgPaint) {
+                    const mHash = Buffer.isBuffer(maskImgPaint.image.hash)
+                        ? maskImgPaint.image.hash.toString('hex').toLowerCase()
+                        : String(maskImgPaint.image.hash).toLowerCase();
+                    const mRaw = getRawImage(mHash);
+                    if (mRaw?.buffer) {
+                        maskRasterBuf = await sharp(mRaw.buffer).resize(targetW, targetH, { fit: 'cover' }).toBuffer();
+                    }
+                } else {
+                    const svgBuf = generateMaskSvg(maskChild, targetW, targetH);
+                    if (svgBuf) {
+                        maskRasterBuf = await sharp(svgBuf).png().toBuffer();
+                    }
+                }
+
+                if (!maskRasterBuf) continue;
+
+                const targetRaster = await sharp(targetRaw.buffer)
+                    .resize(targetW, targetH, { fit: 'cover' })
+                    .ensureAlpha()
+                    .toBuffer();
+
+                const bakedBuf = await sharp(targetRaster)
+                    .composite([{ input: maskRasterBuf, blend: 'dest-in' }])
+                    .png()
+                    .toBuffer();
+
+                const bakedHashHex = crypto.createHash('sha1').update(bakedBuf).digest('hex');
+                setRawImage(bakedHashHex, { buffer: bakedBuf, mime: 'image/png' });
+
+                // Update target node image fill
+                targetPaint.image.hash = Buffer.isBuffer(targetPaint.image.hash)
+                    ? Buffer.from(bakedHashHex, 'hex')
+                    : bakedHashHex;
+                targetImageNode.isMaskBaked = true;
+                container.isMaskBaked = true;
+                maskChild.isMaskBaked = true;
+                bakedCount++;
+            } catch (err) {
+                // Ignore sharp failures on corrupt buffers
+            }
+        }
+    }
+    return bakedCount;
+}
+
+/**
  * Optimizes all images extracted from a .fig file:
  * 1. Resizes according to CSS dimensions with multiplier (default 2x for high quality retina)
  * 2. Generates responsive device variants for srcset / sizes (with option to disable)
@@ -238,6 +435,9 @@ async function optimizeAllImages(rawImages, rootNodes, options = {}) {
     const targetFormat = (options.imageFormat || options.format || 'original').toLowerCase().trim();
     const isInline = options.inlineImages !== false;
     const prefix = options.assetUrlPrefix || 'img/';
+
+    // 0. Bake masks into images if not explicitly tagged with [mask] / [маска]
+    await bakeMasksIntoImages(rawImages, rootNodes, options);
 
     const usages = collectImageUsages(rootNodes);
     const usagesByHash = new Map();
@@ -454,5 +654,6 @@ module.exports = {
     collectImageUsages,
     calculateDeviceWidths,
     optimizeBuffer,
-    optimizeAllImages
+    optimizeAllImages,
+    bakeMasksIntoImages
 };

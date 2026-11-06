@@ -39,8 +39,10 @@ const {
     formatPaintFilter,
     parseFontWeightAndStyle,
     computeNodeStyles,
-    getExtensionForMime
+    getExtensionForMime,
+    hasExplicitMaskTag
 } = require('../src/decompiler/css');
+const { bakeMasksIntoImages } = require('../src/decompiler/image-optimizer');
 const {
     StylesheetManager,
     toBaseClassName
@@ -3342,6 +3344,89 @@ async function runAllTests() {
         // Clean up
         fs.unlinkSync(testFigPath);
         fs.rmSync(outDir, { recursive: true, force: true });
+    });
+
+    await itAsync('bakeMasksIntoImages bakes radial/linear gradient masks directly into images and respects explicit [mask] tags', async () => {
+        // Create a 100x100 solid red JPEG image buffer
+        const redJpeg = await sharp({
+            create: {
+                width: 100,
+                height: 100,
+                channels: 3,
+                background: { r: 255, g: 0, b: 0 }
+            }
+        }).jpeg().toBuffer();
+
+        const fakeHash = 'fake-image-hash-12345';
+        const rawImages = {
+            [fakeHash]: redJpeg
+        };
+
+        const maskNode = {
+            type: 'RECTANGLE',
+            name: 'Mask Layer',
+            mask: true,
+            size: { x: 100, y: 100 },
+            fillPaints: [{
+                type: 'GRADIENT_RADIAL',
+                stops: [
+                    { position: 0, color: { r: 0, g: 0, b: 0, a: 1 } },
+                    { position: 1, color: { r: 0, g: 0, b: 0, a: 0 } }
+                ]
+            }]
+        };
+
+        const imageNode = {
+            type: 'RECTANGLE',
+            name: 'Photo',
+            size: { x: 100, y: 100 },
+            fillPaints: [{
+                type: 'IMAGE',
+                image: { hash: fakeHash }
+            }]
+        };
+
+        const maskContainer = {
+            type: 'FRAME',
+            name: 'Group with Mask',
+            size: { x: 100, y: 100 },
+            children: [maskNode, imageNode]
+        };
+
+        const bakedCount = await bakeMasksIntoImages(rawImages, [maskContainer], {});
+        assert.strictEqual(bakedCount, 1, 'Should have baked 1 mask into image');
+        assert.strictEqual(maskContainer.isMaskBaked, true, 'Container should be marked as isMaskBaked');
+        assert.strictEqual(imageNode.isMaskBaked, true, 'Image node should be marked as isMaskBaked');
+        assert.notStrictEqual(imageNode.fillPaints[0].image.hash, fakeHash, 'Image hash should be updated to new baked hash');
+
+        const newHash = imageNode.fillPaints[0].image.hash;
+        assert(rawImages[newHash], 'New baked image must exist in rawImages');
+
+        // Verify the baked image has alpha channel
+        const metadata = await sharp(rawImages[newHash].buffer).metadata();
+        assert.strictEqual(metadata.hasAlpha, true, 'Baked image must have alpha channel');
+
+        // Test explicit [mask] / [маска] tags
+        assert.strictEqual(hasExplicitMaskTag({ name: 'Group [mask]' }), true);
+        assert.strictEqual(hasExplicitMaskTag({ name: 'Layer [маска]' }), true);
+        assert.strictEqual(hasExplicitMaskTag({ name: 'Layer #mask' }), true);
+        assert.strictEqual(hasExplicitMaskTag({ name: 'Normal Layer' }), false);
+
+        // Container with [mask] tag should NOT be baked
+        const taggedMaskContainer = {
+            type: 'FRAME',
+            name: 'Masked Layer [mask]',
+            size: { x: 100, y: 100 },
+            children: [maskNode, {
+                type: 'RECTANGLE',
+                name: 'Photo 2',
+                size: { x: 100, y: 100 },
+                fillPaints: [{ type: 'IMAGE', image: { hash: fakeHash } }]
+            }]
+        };
+
+        const secondPassBaked = await bakeMasksIntoImages(rawImages, [taggedMaskContainer], {});
+        assert.strictEqual(secondPassBaked, 0, 'Should not bake container with [mask] tag');
     });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);

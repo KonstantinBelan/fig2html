@@ -213,6 +213,12 @@ function parseFontWeightAndStyle(fontStyleName) {
     };
 }
 
+function hasExplicitMaskTag(node) {
+    if (!node) return false;
+    const name = (node.name || '').toLowerCase();
+    return /\[(mask|маска)\]/i.test(name) || /#(mask|маска)\b/i.test(name) || /\/(mask|маска)\b/i.test(name);
+}
+
 function parseGridAxisCount(val) {
     if (typeof val === 'number') return val;
     if (val && Array.isArray(val.entries)) return val.entries.length;
@@ -353,7 +359,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             if (bgImages.length > 0) {
                 styles['background-image'] = bgImages.join(', ');
             }
-            if (bgColor && bgColor !== 'transparent') {
+            if (bgColor && bgColor !== 'transparent' && !node.isMaskBaked) {
                 styles['background-color'] = bgColor;
             }
         }
@@ -431,7 +437,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     if (node.opacity !== undefined && node.opacity !== null && node.opacity < 1.0) {
         styles['opacity'] = String(Math.round(node.opacity * 100) / 100);
     }
-    if (node.blendMode && node.blendMode !== 'NORMAL') {
+    if (node.blendMode && node.blendMode !== 'NORMAL' && !node.isMaskBaked) {
         styles['mix-blend-mode'] = node.blendMode.toLowerCase().replace('_', '-');
     }
     if ((node.clipsContent || node.frameMaskDisabled === false) && node.frameMaskDisabled !== true) {
@@ -692,7 +698,9 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     if (hasMaskChild) {
         const maskChild = node.children.find(c => c.mask === true || c.isMask === true);
-        if (maskChild) {
+        const hasExplicitTag = hasExplicitMaskTag(node) || hasExplicitMaskTag(maskChild);
+
+        if (maskChild && (hasExplicitTag || !node.isMaskBaked)) {
             // 1. Shape border-radius
             if (!styles['border-radius']) {
                 if (maskChild.type === 'ELLIPSE') {
@@ -1086,5 +1094,6 @@ module.exports = {
     formatPaintFilter,
     parseFontWeightAndStyle,
     computeNodeStyles,
-    toStyleString
+    toStyleString,
+    hasExplicitMaskTag
 };
