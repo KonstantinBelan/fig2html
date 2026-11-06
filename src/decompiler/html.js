@@ -522,7 +522,13 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
 
     // Pass 1: Walk entire scene tree and register all nodes
     function registerTree(node, parent, isRoot = false) {
-        if (!node || node.visible === false || node.mask === true || node.isMask === true) return;
+        if (!node || node.visible === false) return;
+        if (node.mask === true || node.isMask === true) {
+            if (Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.type === 'IMAGE' && f.image?.hash)) {
+                stylesheetManager.registerNode(node, parent, imageRegistry, { ...options, isRoot });
+            }
+            return;
+        }
         stylesheetManager.registerNode(node, parent, imageRegistry, { ...options, isRoot });
         stylesheetManager.registerVariants(node, imageRegistry, options);
         if (isVectorContainer(node)) {

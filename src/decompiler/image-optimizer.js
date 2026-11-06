@@ -11,13 +11,14 @@ function collectImageUsages(rootNodes) {
     const usages = [];
 
     function traverse(node) {
-        if (!node || node.visible === false || node.mask === true || node.isMask === true) return;
+        if (!node || node.visible === false) return;
 
         if (Array.isArray(node.fillPaints)) {
             for (const f of node.fillPaints) {
                 if (f.type === 'IMAGE' && f.visible !== false && f.image?.hash) {
                     const hashHex = Buffer.from(f.image.hash).toString('hex').toLowerCase();
-                    const isImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0);
+                    const isMask = node.mask === true || node.isMask === true;
+                    const isImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0) && !isMask;
                     const cssW = Math.round(node.size?.x || 0);
                     const cssH = Math.round(node.size?.y || 0);
 

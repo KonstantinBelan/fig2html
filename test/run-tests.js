@@ -2346,6 +2346,154 @@ async function runAllTests() {
         assert(!styles['grid-template-columns'].includes('[object Object]'));
     });
 
+    it('applies -webkit-background-clip: text and gradient background when text fill has GRADIENT_LINEAR or GRADIENT_RADIAL', () => {
+        const dummyParent = { type: 'FRAME' };
+        const textNode = {
+            type: 'TEXT',
+            name: 'Показать на карте',
+            fontSize: 16,
+            fillPaints: [
+                {
+                    type: 'GRADIENT_LINEAR',
+                    opacity: 1,
+                    visible: true,
+                    stops: [
+                        { color: { r: 0, g: 0.7098, b: 0.4431, a: 1 }, position: 0.24 },
+                        { color: { r: 0.023, g: 0.7845, b: 0.4984, a: 1 }, position: 0.82 }
+                    ],
+                    transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
+                }
+            ]
+        };
+
+        const styles = computeNodeStyles(textNode, dummyParent);
+        assert(styles['background'] && styles['background'].includes('linear-gradient'), 'Should set gradient background');
+        assert.strictEqual(styles['-webkit-background-clip'], 'text');
+        assert.strictEqual(styles['-webkit-text-fill-color'], 'transparent');
+        assert.strictEqual(styles['background-clip'], 'text');
+        assert(styles['color'], 'Should set fallback color from first stop');
+    });
+
+    it('preserves asymmetric vertical padding and correctly detects bottom padding: 0 when omitted by Kiwi', () => {
+        const dummyParent = { type: 'FRAME' };
+        const container = {
+            type: 'FRAME',
+            name: 'Frame 116047482',
+            stackMode: 'VERTICAL',
+            size: { x: 1444, y: 641 },
+            stackVerticalPadding: 64,
+            stackPaddingBottom: undefined,
+            children: [
+                {
+                    type: 'FRAME',
+                    name: 'Frame 1597882064',
+                    transform: { m02: 0, m12: 64 },
+                    size: { x: 1444, y: 577 }
+                }
+            ]
+        };
+
+        const styles = computeNodeStyles(container, dummyParent);
+        assert.strictEqual(styles['padding'], '64px 0px 0px 0px', 'Should format as 4 values with bottom: 0px');
+    });
+
+    it('does not emit overflow: hidden when frameMaskDisabled is true (Clip Content disabled in Figma)', () => {
+        const dummyParent = { type: 'FRAME' };
+        const unclippedFrame = {
+            type: 'FRAME',
+            name: 'Frame 116047416',
+            cornerRadius: 24,
+            frameMaskDisabled: true,
+            children: [
+                {
+                    type: 'FRAME',
+                    size: { x: 100, y: 100 }
+                }
+            ]
+        };
+
+        const styles = computeNodeStyles(unclippedFrame, dummyParent);
+        assert.strictEqual(styles['border-radius'], '24px');
+        assert.strictEqual(styles['overflow'], undefined, 'overflow: hidden must not be set when frameMaskDisabled is true');
+    });
+
+    it('preserves underlay nodes before flow content in synthesizer and assigns z-index: 0 underlay vs z-index: 1 in-flow', () => {
+        const container = {
+            type: 'FRAME',
+            name: 'Card Container',
+            size: { x: 1344, y: 354 },
+            children: [
+                {
+                    name: 'Underlay Background',
+                    type: 'FRAME',
+                    size: { x: 960, y: 700 },
+                    transform: { m00: 1, m01: 0, m02: 434, m10: 0, m11: 1, m12: -252 }
+                },
+                {
+                    name: 'Main Content',
+                    type: 'FRAME',
+                    size: { x: 660, y: 354 },
+                    transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 },
+                    children: [{ type: 'TEXT', characters: 'Hello' }]
+                }
+            ]
+        };
+
+        synthesizeContainerLayout(container);
+
+        // Underlay should remain before Main Content in container.children
+        assert.strictEqual(container.children[0].name, 'Underlay Background');
+        assert.strictEqual(container.children[0].isDecorativeUnderlay, true);
+        assert.strictEqual(container.children[1].name, 'Main Content');
+
+        const sUnderlay = computeNodeStyles(container.children[0], container);
+        assert.strictEqual(sUnderlay['position'], 'absolute');
+        assert.strictEqual(sUnderlay['z-index'], '0', 'Underlay should receive z-index: 0');
+
+        const sContent = computeNodeStyles(container.children[1], container);
+        assert.strictEqual(sContent['position'], 'relative');
+        assert.strictEqual(sContent['z-index'], '1', 'In-flow content with underlay should receive z-index: 1');
+    });
+
+    it('applies gradient mask-image and -webkit-mask-image to container when maskChild has gradient fill', () => {
+        const maskGroup = {
+            type: 'FRAME',
+            name: 'Group 116047498',
+            size: { x: 414, y: 326 },
+            children: [
+                {
+                    name: 'Mask',
+                    type: 'ROUNDED_RECTANGLE',
+                    mask: true,
+                    size: { x: 414, y: 326 },
+                    fillPaints: [
+                        {
+                            type: 'GRADIENT_RADIAL',
+                            stops: [
+                                { color: { r: 1, g: 1, b: 1, a: 1 }, position: 0.59 },
+                                { color: { r: 0.6, g: 0.6, b: 0.6, a: 0 }, position: 1 }
+                            ],
+                            transform: { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 }
+                        }
+                    ]
+                },
+                {
+                    name: 'Image',
+                    type: 'ROUNDED_RECTANGLE',
+                    size: { x: 414, y: 326 },
+                    fillPaints: [{ type: 'IMAGE', visible: true }]
+                }
+            ]
+        };
+
+        const styles = computeNodeStyles(maskGroup, null);
+        assert(styles['mask-image'] && styles['mask-image'].includes('radial-gradient'), 'mask-image should be radial-gradient');
+        assert(styles['-webkit-mask-image'] && styles['-webkit-mask-image'].includes('radial-gradient'), '-webkit-mask-image should be radial-gradient');
+        assert.strictEqual(styles['mask-size'], '100% 100%');
+        assert.strictEqual(styles['-webkit-mask-size'], '100% 100%');
+        assert.strictEqual(styles['overflow'], 'hidden');
+    });
+
     // 11. Figma Multi-Page Import Engine (v1.3.0) Tests
     console.log('\n\x1b[1m11. Multi-Page Import Engine Tests (v1.3.0)\x1b[0m');
 

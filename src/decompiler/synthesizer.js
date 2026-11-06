@@ -162,7 +162,7 @@ function detectGrid(nodes, containerSize = null, epsilon = 3) {
  */
 function isOverlayNode(node, containerW, containerH, allChildren, epsilon = 3) {
     if (!node) return false;
-    if (node.stackPositioning === 'ABSOLUTE' || node.isDecorativeOverlay) {
+    if (node.stackPositioning === 'ABSOLUTE' || node.isDecorativeOverlay || node.isDecorativeUnderlay) {
         return true;
     }
 
@@ -268,15 +268,21 @@ function synthesizeContainerLayout(containerNode, options = {}) {
     const containerW = containerNode.size?.x || containerNode.width || 0;
     const containerH = containerNode.size?.y || containerNode.height || 0;
 
-    // Separate flow nodes from absolute/decorative overlay nodes
+    // Separate flow nodes from absolute/decorative underlay/overlay nodes
+    const underlayNodes = [];
     let flowNodes = [];
     const overlayNodes = [];
 
     for (const child of containerNode.children) {
         if (isOverlayNode(child, containerW, containerH, containerNode.children, epsilon)) {
             child.stackPositioning = 'ABSOLUTE';
-            child.isDecorativeOverlay = true;
-            overlayNodes.push(child);
+            if (flowNodes.length === 0) {
+                child.isDecorativeUnderlay = true;
+                underlayNodes.push(child);
+            } else {
+                child.isDecorativeOverlay = true;
+                overlayNodes.push(child);
+            }
         } else {
             flowNodes.push(child);
         }
@@ -329,7 +335,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
             synthesizeContainerLayout(child, options);
         }
 
-        containerNode.children = [child, ...overlayNodes];
+        containerNode.children = [...underlayNodes, child, ...overlayNodes];
         return containerNode;
     }
 
@@ -358,7 +364,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         containerNode.stackPaddingRight = pr;
         containerNode.stackPaddingBottom = pb;
 
-        containerNode.children = [...gridInfo.orderedNodes, ...overlayNodes];
+        containerNode.children = [...underlayNodes, ...gridInfo.orderedNodes, ...overlayNodes];
 
         // Recurse into each grid item
         for (const item of gridInfo.orderedNodes) {
@@ -521,7 +527,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
             }
         }
 
-        containerNode.children = [...newChildren, ...overlayNodes];
+        containerNode.children = [...underlayNodes, ...newChildren, ...overlayNodes];
         return containerNode;
     }
 
@@ -737,7 +743,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
             }
         }
 
-        containerNode.children = [...newChildren, ...overlayNodes];
+        containerNode.children = [...underlayNodes, ...newChildren, ...overlayNodes];
         return containerNode;
     }
 
@@ -748,7 +754,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         }
     }
 
-    containerNode.children = [...flowNodes, ...overlayNodes];
+    containerNode.children = [...underlayNodes, ...flowNodes, ...overlayNodes];
     return containerNode;
 }
 

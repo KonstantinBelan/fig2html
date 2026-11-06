@@ -290,9 +290,22 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         const visibleFills = node.fillPaints.filter(f => f.visible !== false);
 
         if (node.type === 'TEXT') {
-            // Text color
+            // Text color & gradients
+            const gradient = visibleFills.find(f => f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL');
             const solid = visibleFills.find(f => f.type === 'SOLID');
-            if (solid) {
+            if (gradient) {
+                const gradCss = formatGradient(gradient);
+                if (gradCss) {
+                    const firstStop = gradient.stops?.[0];
+                    if (firstStop) {
+                        styles['color'] = formatColor(firstStop.color, gradient.opacity ?? 1);
+                    }
+                    styles['background'] = gradCss;
+                    styles['-webkit-background-clip'] = 'text';
+                    styles['-webkit-text-fill-color'] = 'transparent';
+                    styles['background-clip'] = 'text';
+                }
+            } else if (solid) {
                 styles['color'] = formatColor(solid.color, solid.opacity);
             }
         } else {
@@ -421,7 +434,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     if (node.blendMode && node.blendMode !== 'NORMAL') {
         styles['mix-blend-mode'] = node.blendMode.toLowerCase().replace('_', '-');
     }
-    if (node.clipsContent || node.frameMaskDisabled === false) {
+    if ((node.clipsContent || node.frameMaskDisabled === false) && node.frameMaskDisabled !== true) {
         styles['overflow'] = 'hidden';
     }
 
@@ -589,10 +602,34 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
 
         // Padding
-        const pt = node.stackVerticalPadding || 0;
-        const pr = node.stackPaddingRight !== undefined ? node.stackPaddingRight : (node.stackHorizontalPadding || 0);
-        const pb = node.stackPaddingBottom !== undefined ? node.stackPaddingBottom : (node.stackVerticalPadding || 0);
-        const pl = node.stackHorizontalPadding || 0;
+        const pt = node.stackPaddingTop !== undefined ? node.stackPaddingTop : (node.stackVerticalPadding || 0);
+        const pl = node.stackPaddingLeft !== undefined ? node.stackPaddingLeft : (node.stackHorizontalPadding || 0);
+
+        let pb = node.stackPaddingBottom !== undefined ? node.stackPaddingBottom : (node.stackVerticalPadding || 0);
+        if (node.stackPaddingBottom === undefined && node.stackVerticalPadding && node.stackMode === 'VERTICAL' && Array.isArray(node.children) && node.size?.y) {
+            const inFlowChildren = node.children.filter(c => c.stackPositioning !== 'ABSOLUTE' && !c.isDecorativeOverlay && !c.isDecorativeUnderlay && c.visible !== false && c.size?.y);
+            if (inFlowChildren.length > 0) {
+                const last = inFlowChildren[inFlowChildren.length - 1];
+                const lastBottom = (last.transform?.m12 || 0) + (last.size?.y || 0);
+                const actualBottomSpace = Math.round(node.size.y - lastBottom);
+                if (Math.abs(actualBottomSpace) <= 1) {
+                    pb = 0;
+                }
+            }
+        }
+
+        let pr = node.stackPaddingRight !== undefined ? node.stackPaddingRight : (node.stackHorizontalPadding || 0);
+        if (node.stackPaddingRight === undefined && node.stackHorizontalPadding && node.stackMode === 'HORIZONTAL' && Array.isArray(node.children) && node.size?.x) {
+            const inFlowChildren = node.children.filter(c => c.stackPositioning !== 'ABSOLUTE' && !c.isDecorativeOverlay && !c.isDecorativeUnderlay && c.visible !== false && c.size?.x);
+            if (inFlowChildren.length > 0) {
+                const last = inFlowChildren[inFlowChildren.length - 1];
+                const lastRight = (last.transform?.m02 || 0) + (last.size?.x || 0);
+                const actualRightSpace = Math.round(node.size.x - lastRight);
+                if (Math.abs(actualRightSpace) <= 1) {
+                    pr = 0;
+                }
+            }
+        }
 
         if (pt || pr || pb || pl) {
             if (pt === pb && pr === pl && pt === pr) {
@@ -643,18 +680,64 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     // Overflow clipping for frames with corner radius, slides/cards, masks, or clipsContent
     // Note: Synthesized virtual frames should NEVER clip content unless explicitly marked clipsContent
-    if (!node.isSynthesized && (node.clipsContent || isSlideOrCard || hasMaskChild || (node.name && /mask(\s*group)?/i.test(node.name)) || (node.type === 'FRAME' && (node.cornerRadius || node.rectangleCornerRadiiIndependent) && node.children?.length))) {
+    // In Figma, frameMaskDisabled === true means "Clip Content" was explicitly unchecked by the user!
+    const isClipExplicitlyDisabled = node.frameMaskDisabled === true;
+    const isMaskNode = hasMaskChild || (node.name && /mask(\s*group)?/i.test(node.name)) || node.mask === true || node.isMask === true;
+
+    if (!isClipExplicitlyDisabled && !node.isSynthesized && (node.clipsContent || node.frameMaskDisabled === false || isSlideOrCard || isMaskNode || (node.type === 'FRAME' && (node.cornerRadius || node.rectangleCornerRadiiIndependent) && node.children?.length))) {
+        styles['overflow'] = 'hidden';
+    } else if (isMaskNode && !node.isSynthesized) {
         styles['overflow'] = 'hidden';
     }
 
-    if (hasMaskChild && !styles['border-radius']) {
+    if (hasMaskChild) {
         const maskChild = node.children.find(c => c.mask === true || c.isMask === true);
         if (maskChild) {
-            if (maskChild.type === 'ELLIPSE') {
-                styles['border-radius'] = '50%';
-            } else if (maskChild.cornerRadius) {
-                styles['border-radius'] = useRelativeUnits ? toRem(maskChild.cornerRadius) : `${maskChild.cornerRadius}px`;
+            // 1. Shape border-radius
+            if (!styles['border-radius']) {
+                if (maskChild.type === 'ELLIPSE') {
+                    styles['border-radius'] = '50%';
+                } else if (maskChild.cornerRadius) {
+                    styles['border-radius'] = useRelativeUnits ? toRem(maskChild.cornerRadius) : `${maskChild.cornerRadius}px`;
+                }
             }
+
+            // 2. Gradient masks (GRADIENT_RADIAL, GRADIENT_LINEAR)
+            const gradPaint = Array.isArray(maskChild.fillPaints) && maskChild.fillPaints.find(f => f.visible !== false && (f.type === 'GRADIENT_RADIAL' || f.type === 'GRADIENT_LINEAR'));
+            if (gradPaint) {
+                const gradCss = formatGradient(gradPaint);
+                if (gradCss) {
+                    styles['-webkit-mask-image'] = gradCss;
+                    styles['mask-image'] = gradCss;
+                    styles['-webkit-mask-size'] = '100% 100%';
+                    styles['mask-size'] = '100% 100%';
+                    styles['-webkit-mask-repeat'] = 'no-repeat';
+                    styles['mask-repeat'] = 'no-repeat';
+                }
+            }
+
+            // 3. Image masks
+            const imgPaint = Array.isArray(maskChild.fillPaints) && maskChild.fillPaints.find(f => f.visible !== false && f.type === 'IMAGE' && f.image?.hash);
+            if (imgPaint) {
+                const hashHex = Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase();
+                const imgObj = imageRegistry?.get(hashHex);
+                if (imgObj) {
+                    const ext = imgObj.ext || getExtensionForMime(imgObj.mime);
+                    const prefix = options.cssAssetUrlPrefix || options.assetUrlPrefix || (options.extractCss ? '../img/' : 'img/');
+                    const mainFile = imgObj.mainFileName || `${hashHex}.${ext}`;
+                    const imgUrl = options.inlineImages !== false
+                        ? (imgObj.mainBase64 || imgObj.base64)
+                        : `${prefix}${mainFile}`;
+                    styles['-webkit-mask-image'] = `url('${imgUrl}')`;
+                    styles['mask-image'] = `url('${imgUrl}')`;
+                    styles['-webkit-mask-size'] = '100% 100%';
+                    styles['mask-size'] = '100% 100%';
+                    styles['-webkit-mask-repeat'] = 'no-repeat';
+                    styles['mask-repeat'] = 'no-repeat';
+                }
+            }
+
+            styles['overflow'] = 'hidden';
         }
     }
 
@@ -662,7 +745,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     const childIndex = siblings.indexOf(node);
     const inFlowIndices = [];
     siblings.forEach((c, i) => {
-        const isChildAbs = c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay || c.isBleedingOverlay || (!parentIsAutoLayout && !parentHasMask);
+        const isChildAbs = c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay || c.isDecorativeUnderlay || c.isBleedingOverlay || (!parentIsAutoLayout && !parentHasMask);
         if (!isChildAbs) inFlowIndices.push(i);
     });
     const hasInFlow = inFlowIndices.length > 0;
@@ -670,12 +753,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     const maxInFlow = hasInFlow ? inFlowIndices[inFlowIndices.length - 1] : -1;
 
     // In-flow positioning relative to absolute siblings
-    const parentHasAbsoluteChildren = parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.stackPositioning === 'ABSOLUTE');
+    const parentHasAbsoluteChildren = parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.stackPositioning === 'ABSOLUTE' || c.isDecorativeUnderlay || c.isDecorativeOverlay);
     if (parentHasAbsoluteChildren && !isAbsolute) {
         if (!styles['position']) {
             styles['position'] = 'relative';
         }
-        const hasUnderlay = siblings.some((c, i) => i < minInFlow && (c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay));
+        const hasUnderlay = siblings.some((c, i) => (c.isDecorativeUnderlay || i < minInFlow) && (c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay || c.isDecorativeUnderlay));
         if (hasUnderlay && !styles['z-index']) {
             styles['z-index'] = '1';
         }
@@ -699,13 +782,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
         // Layer z-index calculation:
         // Correctly calculate layer in Figma relative to other elements
-        if (node.isDecorativeOverlay || node.stackPositioning === 'ABSOLUTE' || isAbsolute) {
-            if (!hasInFlow) {
-                // Freeform / non-auto-layout canvas: layer index based on Figma layer order (1, 2, 3...)
-                styles['z-index'] = String(Math.max(0, childIndex) + 1);
-            } else if (childIndex < minInFlow) {
+        if (node.isDecorativeOverlay || node.isDecorativeUnderlay || node.stackPositioning === 'ABSOLUTE' || isAbsolute) {
+            if (node.isDecorativeUnderlay || (hasInFlow && childIndex < minInFlow)) {
                 // Underlay / Background: placed behind in-flow content in Figma
                 styles['z-index'] = String(Math.max(0, childIndex));
+            } else if (!hasInFlow) {
+                // Freeform / non-auto-layout canvas: layer index based on Figma layer order (1, 2, 3...)
+                styles['z-index'] = String(Math.max(0, childIndex) + 1);
             } else if (childIndex > maxInFlow) {
                 // Overlay: placed above in-flow content in Figma
                 styles['z-index'] = String(10 + Math.max(0, childIndex));
