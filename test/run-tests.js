@@ -2402,6 +2402,66 @@ async function runAllTests() {
 
         const styles = computeNodeStyles(container, dummyParent);
         assert.strictEqual(styles['padding'], '64px 0px 0px 0px', 'Should format as 4 values with bottom: 0px');
+
+        // HORIZONTAL container with omitted stackPaddingBottom: 0 (e.g. Frame 116047491 / Frame 116047480)
+        const horizContainer = {
+            type: 'FRAME',
+            name: 'Frame 116047491',
+            stackMode: 'HORIZONTAL',
+            size: { x: 551, y: 78 },
+            stackVerticalPadding: 24,
+            stackPaddingBottom: undefined,
+            children: [
+                {
+                    type: 'FRAME',
+                    name: 'Frame 116047474',
+                    transform: { m02: 0, m12: 24 },
+                    size: { x: 191, y: 54 }
+                },
+                {
+                    type: 'FRAME',
+                    name: 'Frame 116047475',
+                    transform: { m02: 342, m12: 24 },
+                    size: { x: 209, y: 54 }
+                }
+            ]
+        };
+        const horizStyles = computeNodeStyles(horizContainer, dummyParent);
+        assert.strictEqual(horizStyles['padding'], '24px 0px 0px 0px', 'HORIZONTAL container with top=24 and bottom=0 should emit 24px 0px 0px 0px');
+
+        // Preceding sibling with bleeding absolute child -> subsequent sibling gets position: relative; z-index: 1
+        const parentSection = {
+            type: 'FRAME',
+            name: 'Frame 1597882070',
+            stackMode: 'VERTICAL',
+            size: { x: 1444, y: 727 },
+            children: [
+                {
+                    type: 'FRAME',
+                    name: 'Frame 116047489',
+                    stackMode: 'HORIZONTAL',
+                    size: { x: 1344, y: 330 },
+                    children: [
+                        {
+                            type: 'FRAME',
+                            name: 'Frame 116047490',
+                            stackPositioning: 'ABSOLUTE',
+                            transform: { m02: 894, m12: -113 },
+                            size: { x: 500, y: 660 }
+                        }
+                    ]
+                },
+                {
+                    type: 'FRAME',
+                    name: 'Frame 1597882052',
+                    stackMode: 'VERTICAL',
+                    size: { x: 1344, y: 167 }
+                }
+            ]
+        };
+        const nextSiblingStyles = computeNodeStyles(parentSection.children[1], parentSection);
+        assert.strictEqual(nextSiblingStyles['position'], 'relative');
+        assert.strictEqual(nextSiblingStyles['z-index'], '1');
     });
 
     it('does not emit overflow: hidden when frameMaskDisabled is true (Clip Content disabled in Figma)', () => {

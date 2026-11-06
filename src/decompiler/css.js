@@ -768,26 +768,26 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         const pl = node.stackPaddingLeft !== undefined ? node.stackPaddingLeft : (node.stackHorizontalPadding || 0);
 
         let pb = node.stackPaddingBottom !== undefined ? node.stackPaddingBottom : (node.stackVerticalPadding || 0);
-        if (node.stackPaddingBottom === undefined && node.stackVerticalPadding && node.stackMode === 'VERTICAL' && Array.isArray(node.children) && node.size?.y) {
+        if (node.stackPaddingBottom === undefined && node.stackVerticalPadding && Array.isArray(node.children) && node.size?.y) {
             const inFlowChildren = node.children.filter(c => c.stackPositioning !== 'ABSOLUTE' && !c.isDecorativeOverlay && !c.isDecorativeUnderlay && c.visible !== false && c.size?.y);
             if (inFlowChildren.length > 0) {
-                const last = inFlowChildren[inFlowChildren.length - 1];
-                const lastBottom = (last.transform?.m12 || 0) + (last.size?.y || 0);
-                const actualBottomSpace = Math.round(node.size.y - lastBottom);
-                if (Math.abs(actualBottomSpace) <= 1) {
+                const minTop = Math.min(...inFlowChildren.map(c => c.transform?.m12 || 0));
+                const maxBottom = Math.max(...inFlowChildren.map(c => (c.transform?.m12 || 0) + (c.size?.y || 0)));
+                const actualBottomSpace = Math.round(node.size.y - maxBottom);
+                if (Math.abs(minTop - pt) <= 1 && Math.abs(actualBottomSpace) <= 1) {
                     pb = 0;
                 }
             }
         }
 
         let pr = node.stackPaddingRight !== undefined ? node.stackPaddingRight : (node.stackHorizontalPadding || 0);
-        if (node.stackPaddingRight === undefined && node.stackHorizontalPadding && node.stackMode === 'HORIZONTAL' && Array.isArray(node.children) && node.size?.x) {
+        if (node.stackPaddingRight === undefined && node.stackHorizontalPadding && Array.isArray(node.children) && node.size?.x) {
             const inFlowChildren = node.children.filter(c => c.stackPositioning !== 'ABSOLUTE' && !c.isDecorativeOverlay && !c.isDecorativeUnderlay && c.visible !== false && c.size?.x);
             if (inFlowChildren.length > 0) {
-                const last = inFlowChildren[inFlowChildren.length - 1];
-                const lastRight = (last.transform?.m02 || 0) + (last.size?.x || 0);
-                const actualRightSpace = Math.round(node.size.x - lastRight);
-                if (Math.abs(actualRightSpace) <= 1) {
+                const minLeft = Math.min(...inFlowChildren.map(c => c.transform?.m02 || 0));
+                const maxRight = Math.max(...inFlowChildren.map(c => (c.transform?.m02 || 0) + (c.size?.x || 0)));
+                const actualRightSpace = Math.round(node.size.x - maxRight);
+                if (Math.abs(minLeft - pl) <= 1 && Math.abs(actualRightSpace) <= 1) {
                     pr = 0;
                 }
             }
@@ -928,13 +928,27 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     const minInFlow = hasInFlow ? inFlowIndices[0] : -1;
     const maxInFlow = hasInFlow ? inFlowIndices[inFlowIndices.length - 1] : -1;
 
-    // In-flow positioning relative to absolute siblings
+    // In-flow positioning relative to absolute siblings (or preceding siblings with unclipped bleeding absolute children)
     const parentHasAbsoluteChildren = parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.stackPositioning === 'ABSOLUTE' || c.isDecorativeUnderlay || c.isDecorativeOverlay);
-    if (parentHasAbsoluteChildren && !isAbsolute) {
+    const precedingSiblingHasBleedingAbsoluteChild = !isAbsolute && childIndex > 0 && siblings.slice(0, childIndex).some(c => {
+        if (!Array.isArray(c.children) || c.children.length === 0) return false;
+        const cw2 = c.size?.x || 0;
+        const ch2 = c.size?.y || 0;
+        return c.children.some(gc => {
+            const isGcAbs = gc.stackPositioning === 'ABSOLUTE' || gc.isDecorativeOverlay || gc.isDecorativeUnderlay;
+            if (!isGcAbs) return false;
+            const gx = gc.transform?.m02 || 0;
+            const gy = gc.transform?.m12 || 0;
+            const gw = gc.size?.x || 0;
+            const gh = gc.size?.y || 0;
+            return gx < -1 || gy < -1 || (cw2 > 0 && gx + gw > cw2 + 1) || (ch2 > 0 && gy + gh > ch2 + 1);
+        });
+    });
+    if ((parentHasAbsoluteChildren || precedingSiblingHasBleedingAbsoluteChild) && !isAbsolute) {
         if (!styles['position']) {
             styles['position'] = 'relative';
         }
-        const hasUnderlay = siblings.some((c, i) => (c.isDecorativeUnderlay || i < minInFlow) && (c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay || c.isDecorativeUnderlay));
+        const hasUnderlay = precedingSiblingHasBleedingAbsoluteChild || siblings.some((c, i) => (c.isDecorativeUnderlay || i < minInFlow) && (c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay || c.isDecorativeUnderlay));
         if (hasUnderlay && !styles['z-index']) {
             styles['z-index'] = '1';
         }
