@@ -5,7 +5,7 @@
 
 [![Version](https://img.shields.io/badge/version-1.5.0-6366f1.svg?style=for-the-badge)](package.json)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 129 passed](https://img.shields.io/badge/tests-129%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 131 passed](https://img.shields.io/badge/tests-131%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
@@ -191,7 +191,9 @@ Open dist/index.html in any browser.
   - Перенос `layoutGrow: 1` с дочерних карточек на саму синтезированную колонку и назначение `layoutAlign: STRETCH`, что предотвращает паразитное превращение карточек во `flex: 1` по высоте.
   - Защита нативных Auto Layout фреймов с фиксированной высотой от ошибочного снятия высоты через `isEqualHeightGroup`.
   - **Универсальная детекция асимметричных `padding` для всех осей**: прецизионный расчёт 4-сторонних отступов (`padding: top right bottom left`) для `HORIZONTAL`, `VERTICAL` и `GRID` контейнеров. Автоматическое восстановление опущенных в Kiwi нулевых сторон (`stackPaddingBottom: 0`, `stackPaddingRight: 0`), предотвращающее ошибочное схлопывание стилей в симметричный `padding: 24px 0px` вместо `padding: 24px 0px 0px 0px`.
-  - **Интеллектуальная защита иерархии наложения слоёв (Stacking Order Resolution)**: автоматическое обнаружение предшествующих блоков с не-обрезанными абсолютными дочерними элементами, выходящими за границы родительского фрейма (bleeding absolute children). Назначение `position: relative; z-index: 1;` последующим потоковым секциям страницы гарантирует, что выступающие элементы (наклонные бутылки, банки, оверлеи) не перекрывают текст и интерактивные карточки нижних секций, 100% совпадая с порядком отрисовки в Figma.
+  - **Аппаратное запекание Multiply в истинную альфа-прозрачность (Multiply-to-Alpha Baking)**: для растровых логотипов и изображений с режимом `blendMode: MULTIPLY` на светлом или белом фоне автоматическое математическое преобразование белого фона в честный альфа-канал через Sharp ($\alpha = 255 - \min(R,G,B)$). Решает проблему браузерных изолированных стековых контекстов (`opacity`, `overflow: hidden`), гарантируя чистое бесшовное отображение логотипов партнеров без белых фоновых плашек.
+  - **Поддержка режима наложения Luminosity**: трансляция Figma `blendMode: LUMINOSITY` в связку CSS `mix-blend-mode: luminosity` и `filter: grayscale(1)`. Обеспечивает корректное монохромное отображение логотипов и графики на нейтральных и полупрозрачных фонах браузера в 100% соответствии с рендером Figma.
+  - **Интеллектуальная защита иерархии наложения слоёв (Stacking Order Resolution)**: автоматическое обнаружение предшествующих блоков с не-обрезанными абсолютными дочерними элементами, выходящими за границы родительского фрейма (bleeding absolute children), с геометрической проверкой пересечения вертикальных координат ($y_{\text{bottom}} > y_{\text{siblingTop}}$). Назначение `position: relative; z-index: 1;` защищает последующие потоковые секции страницы от перекрытия выступающими элементами.
 - **📱 Figma Adaptive Multi-Breakpoint Engine (v1.4.0)**:
   - **Кросс-девайсная адаптивная верстка из связанных фреймов**: автоматическое объединение макетов разных экранов (например, Desktop `1440px`, Tablet `768px`, Mobile `375px`) в **единый канонический HTML-документ** без дублирования DOM-дерева.
   - **AST Reconciliation & Similarity Matching**: интеллектуальный скоринг нод по контенту, именам слоев, типам и положению в иерархии с автоматическим связыванием соответствующих элементов.
@@ -522,7 +524,7 @@ decompile();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (129 тестов):
+Проект покрыт всесторонними автоматическими тестами (131 тест):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -611,7 +613,9 @@ decompile();
   - Разрешение привязок `bottom`/`right` vs `top`/`left` на основе геометрической близости к граням и Figma Constraints (`MAX`)
   - Автоматический сброс противоположных координат (`auto`) при смене стороны привязки в адаптивных медиа-запросах
   - Сохранение асимметричного 4-стороннего `padding` для всех типов Auto Layout контейнеров (`HORIZONTAL`, `VERTICAL`, `GRID`)
-  - Защита иерархии наложения слоёв (`position: relative; z-index: 1`) для потоковых блоков, следующих за выступающими абсолютными элементами
+  - Защита иерархии наложения слоёв (`position: relative; z-index: 1`) с проверкой физических вертикальных координат перекрытия
+  - Аппаратное запекание растровых изображений с `blendMode: MULTIPLY` в альфа-прозрачность (`bakeMultiplyImages`)
+  - Поддержка `blendMode: LUMINOSITY` в CSS с автоматической генерацией `filter: grayscale(1)`
 
 Запуск тестов:
 ```bash
@@ -664,7 +668,7 @@ html-to-fig/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (129 тестов)
+    ├── run-tests.js        # Автоматический тестовый запуск (131 тест)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)

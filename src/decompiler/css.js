@@ -593,8 +593,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     if (node.opacity !== undefined && node.opacity !== null && node.opacity < 1.0) {
         styles['opacity'] = String(Math.round(node.opacity * 100) / 100);
     }
-    if (node.blendMode && node.blendMode !== 'NORMAL' && !node.isMaskBaked) {
+    if (node.blendMode && node.blendMode !== 'NORMAL' && !node.isMaskBaked && !node.isMultiplyBaked) {
         styles['mix-blend-mode'] = node.blendMode.toLowerCase().replace('_', '-');
+    }
+    const hasLuminosity = node.blendMode === 'LUMINOSITY' || (Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.visible !== false && f.blendMode === 'LUMINOSITY'));
+    if (hasLuminosity) {
+        styles['filter'] = styles['filter'] ? `${styles['filter']} grayscale(1)` : 'grayscale(1)';
     }
     if ((node.clipsContent || node.frameMaskDisabled === false) && node.frameMaskDisabled !== true) {
         styles['overflow'] = 'hidden';
@@ -930,10 +934,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     // In-flow positioning relative to absolute siblings (or preceding siblings with unclipped bleeding absolute children)
     const parentHasAbsoluteChildren = parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.stackPositioning === 'ABSOLUTE' || c.isDecorativeUnderlay || c.isDecorativeOverlay);
-    const precedingSiblingHasBleedingAbsoluteChild = !isAbsolute && childIndex > 0 && siblings.slice(0, childIndex).some(c => {
+    const precedingSiblingHasBleedingAbsoluteChild = !isAbsolute && childIndex > 0 && siblings.slice(0, childIndex).some((c, ci) => {
         if (!Array.isArray(c.children) || c.children.length === 0) return false;
+        if (c.clipsContent || c.frameMaskDisabled === false) return false;
         const cw2 = c.size?.x || 0;
         const ch2 = c.size?.y || 0;
+        const cTop = c.transform?.m12;
+        const thisTop = node.transform?.m12;
         return c.children.some(gc => {
             const isGcAbs = gc.stackPositioning === 'ABSOLUTE' || gc.isDecorativeOverlay || gc.isDecorativeUnderlay;
             if (!isGcAbs) return false;
@@ -941,7 +948,13 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             const gy = gc.transform?.m12 || 0;
             const gw = gc.size?.x || 0;
             const gh = gc.size?.y || 0;
-            return gx < -1 || gy < -1 || (cw2 > 0 && gx + gw > cw2 + 1) || (ch2 > 0 && gy + gh > ch2 + 1);
+            const isBleeding = gx < -1 || gy < -1 || (cw2 > 0 && gx + gw > cw2 + 1) || (ch2 > 0 && gy + gh > ch2 + 1);
+            if (!isBleeding) return false;
+            if (typeof cTop === 'number' && typeof thisTop === 'number') {
+                const gcBottom = cTop + gy + gh;
+                return gcBottom > thisTop + 1;
+            }
+            return ci === childIndex - 1 && ch2 > 0 && (gy + gh > ch2 + 1);
         });
     });
     if ((parentHasAbsoluteChildren || precedingSiblingHasBleedingAbsoluteChild) && !isAbsolute) {

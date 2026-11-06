@@ -852,6 +852,163 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
 }
 
 /**
+ * Bakes MULTIPLY blendMode images with solid/near-white backgrounds into true alpha transparency.
+ * This ensures raster logos (e.g. JPEGs on white) render seamlessly with transparent backgrounds
+ * even when placed inside containers with opacity/overflow that isolate CSS stacking contexts.
+ *
+ * @param {Map<string, { buffer: Buffer, mime: string }>|object} rawImages
+ * @param {Array<object>} rootNodes
+ * @param {object} [options={}]
+ * @returns {Promise<number>} Count of baked multiply image nodes
+ */
+async function bakeMultiplyImages(rawImages, rootNodes, options = {}) {
+    const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
+    if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
+        return 0;
+    }
+
+    const getRawImage = (hash) => {
+        if (!rawImages) return null;
+        if (typeof rawImages.get === 'function') return rawImages.get(hash);
+        const item = rawImages[hash];
+        if (!item) return null;
+        if (Buffer.isBuffer(item)) return { buffer: item, mime: 'image/png' };
+        return item;
+    };
+
+    const setRawImage = (hash, item) => {
+        if (!rawImages) return;
+        if (typeof rawImages.set === 'function') {
+            rawImages.set(hash, item);
+        } else {
+            rawImages[hash] = item;
+        }
+    };
+
+    const candidates = [];
+    function traverse(node) {
+        if (!node || node.visible === false) return;
+        const hasMultiply = node.blendMode === 'MULTIPLY' || (Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.visible !== false && f.blendMode === 'MULTIPLY'));
+        if (hasMultiply && Array.isArray(node.fillPaints)) {
+            const imgPaint = node.fillPaints.find(f => f.type === 'IMAGE' && f.image?.hash && f.visible !== false);
+            if (imgPaint) {
+                candidates.push({ node, imgPaint });
+            }
+        }
+        if (node.children) {
+            for (const child of node.children) {
+                traverse(child);
+            }
+        }
+    }
+
+    for (const r of rootNodes) {
+        traverse(r);
+    }
+
+    if (candidates.length === 0) return 0;
+
+    let bakedCount = 0;
+    const bakedCache = new Map(); // rawHash -> bakedHashHex
+
+    for (const { node, imgPaint } of candidates) {
+        const rawHash = (typeof imgPaint.image.hash === 'string')
+            ? imgPaint.image.hash.toLowerCase()
+            : Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase();
+
+        if (bakedCache.has(rawHash)) {
+            const bakedHashHex = bakedCache.get(rawHash);
+            imgPaint.image.hash = Buffer.isBuffer(imgPaint.image.hash) || typeof imgPaint.image.hash === 'object'
+                ? Buffer.from(bakedHashHex, 'hex')
+                : bakedHashHex;
+            node.isMultiplyBaked = true;
+            bakedCount++;
+            continue;
+        }
+
+        const rawItem = getRawImage(rawHash);
+        if (!rawItem?.buffer) continue;
+
+        try {
+            const img = sharp(rawItem.buffer);
+            const { data, info } = await img.raw().toBuffer({ resolveWithObject: true });
+            const { width, height, channels } = info;
+
+            // Check if image has light/white background (corners check)
+            const checkPixelBrightness = (x, y) => {
+                const idx = (y * width + x) * channels;
+                const r = data[idx];
+                const g = data[idx + 1];
+                const b = data[idx + 2];
+                return (r + g + b) / 3;
+            };
+
+            const corners = [
+                checkPixelBrightness(0, 0),
+                checkPixelBrightness(width - 1, 0),
+                checkPixelBrightness(0, height - 1),
+                checkPixelBrightness(width - 1, height - 1)
+            ];
+            const avgCornerBrightness = corners.reduce((a, b) => a + b, 0) / 4;
+
+            // Only bake if corners are light (>= 220), indicating a white/light canvas background intended for Multiply
+            if (avgCornerBrightness < 220) {
+                continue;
+            }
+
+            const outData = Buffer.alloc(width * height * 4);
+            for (let i = 0; i < width * height; i++) {
+                const srcOffset = i * channels;
+                const dstOffset = i * 4;
+                const r = data[srcOffset];
+                const g = data[srcOffset + 1];
+                const b = data[srcOffset + 2];
+                const origA = channels === 4 ? data[srcOffset + 3] : 255;
+
+                const minVal = Math.min(r, g, b);
+                const whitenessAlpha = 255 - minVal;
+                const alpha = Math.round((origA / 255) * whitenessAlpha);
+
+                if (alpha <= 0) {
+                    outData[dstOffset] = 0;
+                    outData[dstOffset + 1] = 0;
+                    outData[dstOffset + 2] = 0;
+                    outData[dstOffset + 3] = 0;
+                } else {
+                    const aNorm = alpha / 255;
+                    const newR = Math.max(0, Math.min(255, Math.round(255 - (255 - r) / aNorm)));
+                    const newG = Math.max(0, Math.min(255, Math.round(255 - (255 - g) / aNorm)));
+                    const newB = Math.max(0, Math.min(255, Math.round(255 - (255 - b) / aNorm)));
+
+                    outData[dstOffset] = newR;
+                    outData[dstOffset + 1] = newG;
+                    outData[dstOffset + 2] = newB;
+                    outData[dstOffset + 3] = alpha;
+                }
+            }
+
+            const bakedBuf = await sharp(outData, {
+                raw: { width, height, channels: 4 }
+            }).png().toBuffer();
+
+            const bakedHashHex = crypto.createHash('sha1').update(bakedBuf).digest('hex');
+            setRawImage(bakedHashHex, { buffer: bakedBuf, mime: 'image/png' });
+            bakedCache.set(rawHash, bakedHashHex);
+
+            imgPaint.image.hash = Buffer.isBuffer(imgPaint.image.hash) || typeof imgPaint.image.hash === 'object'
+                ? Buffer.from(bakedHashHex, 'hex')
+                : bakedHashHex;
+            node.isMultiplyBaked = true;
+            bakedCount++;
+        } catch (err) {
+            // Ignore sharp errors on corrupt image
+        }
+    }
+
+    return bakedCount;
+}
+
+/**
  * Bakes a degenerate graphic wrapper chain asset into a single raster buffer via Sharp:
  * - Scales according to cumulative scale and target scale multiplier (e.g. 2 for Retina)
  * - Rotates by cumulative angle theta with transparent background
@@ -1164,6 +1321,9 @@ async function optimizeAllImages(rawImages, rootNodes, options = {}) {
     // 0c. Cumulative graphic subtree collapsing & baking
     await bakeAndCollapseGraphicChains(rawImages, rootNodes, options);
 
+    // 0d. Bake MULTIPLY blendMode images into genuine alpha transparency
+    await bakeMultiplyImages(rawImages, rootNodes, options);
+
     const usages = collectImageUsages(rootNodes);
     const usagesByHash = new Map();
 
@@ -1383,5 +1543,6 @@ module.exports = {
     bakeMasksIntoImages,
     bakeImageFillsAndFilters,
     bakeGraphicChainAsset,
-    bakeAndCollapseGraphicChains
+    bakeAndCollapseGraphicChains,
+    bakeMultiplyImages
 };

@@ -44,7 +44,7 @@ const {
     getExtensionForMime,
     hasExplicitMaskTag
 } = require('../src/decompiler/css');
-const { bakeMasksIntoImages, bakeImageFillsAndFilters } = require('../src/decompiler/image-optimizer');
+const { bakeMasksIntoImages, bakeImageFillsAndFilters, bakeMultiplyImages } = require('../src/decompiler/image-optimizer');
 const {
     StylesheetManager,
     toBaseClassName
@@ -3794,6 +3794,177 @@ async function runAllTests() {
         const sBadge = computeNodeStyles(badge, { type: 'FRAME', size: { x: 432, y: 623 }, stackMode: 'VERTICAL' });
         assert.strictEqual(sBadge['right'], '20px');
         assert.strictEqual(sBadge['top'], '20px');
+    });
+
+    await itAsync('bakeMultiplyImages bakes raster images with MULTIPLY blend mode into genuine alpha transparency and skips non-white images', async () => {
+        // 1. Create a 40x40 raster image with white background and black 20x20 center
+        const testImageBuf = await sharp({
+            create: {
+                width: 40,
+                height: 40,
+                channels: 3,
+                background: { r: 255, g: 255, b: 255 }
+            }
+        }).composite([
+            {
+                input: await sharp({
+                    create: {
+                        width: 20,
+                        height: 20,
+                        channels: 3,
+                        background: { r: 0, g: 0, b: 0 }
+                    }
+                }).png().toBuffer(),
+                left: 10,
+                top: 10
+            }
+        ]).jpeg().toBuffer();
+
+        const rawImages = new Map();
+        const rawHash = 'test-logo-hash';
+        rawImages.set(rawHash, { buffer: testImageBuf, mime: 'image/jpeg' });
+
+        const node = {
+            type: 'RECTANGLE',
+            name: 'Logo',
+            blendMode: 'MULTIPLY',
+            size: { x: 40, y: 40 },
+            fillPaints: [
+                {
+                    type: 'IMAGE',
+                    blendMode: 'NORMAL',
+                    image: { hash: rawHash },
+                    visible: true
+                }
+            ]
+        };
+
+        const count = await bakeMultiplyImages(rawImages, [node]);
+        assert.strictEqual(count, 1, 'Should bake 1 multiply image');
+        assert.strictEqual(node.isMultiplyBaked, true, 'Node should be marked isMultiplyBaked: true');
+        assert.notStrictEqual(node.fillPaints[0].image.hash, rawHash, 'Node image hash should be updated to new baked hash');
+
+        // Verify the newly baked image has genuine alpha
+        const bakedItem = rawImages.get(node.fillPaints[0].image.hash);
+        assert(bakedItem, 'Baked image should be stored in rawImages map');
+        const meta = await sharp(bakedItem.buffer).metadata();
+        assert.strictEqual(meta.hasAlpha, true, 'Baked image must have alpha channel');
+        assert.strictEqual(meta.channels, 4);
+
+        const { data } = await sharp(bakedItem.buffer).raw().toBuffer({ resolveWithObject: true });
+        // Corner pixel (0, 0): white transformed to transparent (alpha = 0)
+        assert.strictEqual(data[3], 0, 'Corner pixel alpha must be 0 (fully transparent)');
+        // Center pixel (20, 20): black remains opaque (alpha = 255)
+        const centerIdx = (20 * 40 + 20) * 4;
+        assert.strictEqual(data[centerIdx + 3], 255, 'Center pixel alpha must be 255 (opaque)');
+
+        // 2. Protect against false positives: image with dark corners should NOT be baked
+        const darkImageBuf = await sharp({
+            create: {
+                width: 40,
+                height: 40,
+                channels: 3,
+                background: { r: 30, g: 30, b: 30 }
+            }
+        }).jpeg().toBuffer();
+
+        const darkHash = 'test-dark-photo';
+        rawImages.set(darkHash, { buffer: darkImageBuf, mime: 'image/jpeg' });
+        const darkNode = {
+            type: 'RECTANGLE',
+            name: 'Dark Photo',
+            blendMode: 'MULTIPLY',
+            fillPaints: [
+                {
+                    type: 'IMAGE',
+                    blendMode: 'NORMAL',
+                    image: { hash: darkHash },
+                    visible: true
+                }
+            ]
+        };
+
+        const darkCount = await bakeMultiplyImages(rawImages, [darkNode]);
+        assert.strictEqual(darkCount, 0, 'Should not bake dark photos without white background');
+        assert.strictEqual(darkNode.isMultiplyBaked, undefined);
+    });
+
+    it('handles MULTIPLY and LUMINOSITY blend modes in CSS decompilation', () => {
+        // 1. When isMultiplyBaked is true, mix-blend-mode: multiply is omitted
+        const bakedNode = {
+            type: 'RECTANGLE',
+            name: 'image 8',
+            blendMode: 'MULTIPLY',
+            isMultiplyBaked: true,
+            size: { x: 160, y: 53 }
+        };
+        const sBaked = computeNodeStyles(bakedNode, { type: 'FRAME' });
+        assert.strictEqual(sBaked['mix-blend-mode'], undefined, 'mix-blend-mode must be omitted when isMultiplyBaked is true');
+
+        // 2. Normal MULTIPLY (non-baked) preserves mix-blend-mode: multiply
+        const normalMult = {
+            type: 'RECTANGLE',
+            name: 'Multiply Box',
+            blendMode: 'MULTIPLY',
+            size: { x: 100, y: 100 }
+        };
+        const sNormal = computeNodeStyles(normalMult, { type: 'FRAME' });
+        assert.strictEqual(sNormal['mix-blend-mode'], 'multiply');
+
+        // 3. LUMINOSITY generates both mix-blend-mode: luminosity and filter: grayscale(1)
+        const lumContainer = {
+            type: 'FRAME',
+            name: 'Frame 116047420',
+            blendMode: 'LUMINOSITY',
+            opacity: 0.5,
+            size: { x: 160, y: 80 }
+        };
+        const sLum = computeNodeStyles(lumContainer, { type: 'FRAME' });
+        assert.strictEqual(sLum['mix-blend-mode'], 'luminosity');
+        assert.strictEqual(sLum['opacity'], '0.5');
+        assert.strictEqual(sLum['filter'], 'grayscale(1)');
+
+        // 4. Bleeding absolute child vertical range gating prevents marking far-away siblings
+        const sectionContainer = {
+            type: 'FRAME',
+            stackMode: 'VERTICAL',
+            size: { x: 1344, y: 3000 },
+            children: [
+                {
+                    type: 'FRAME',
+                    name: 'Hero',
+                    transform: { m12: 0 },
+                    size: { x: 1344, y: 500 },
+                    children: [
+                        {
+                            type: 'VECTOR',
+                            stackPositioning: 'ABSOLUTE',
+                            transform: { m02: 100, m12: 200 },
+                            size: { x: 200, y: 400 } // bottom = 0 + 200 + 400 = 600 (bleeding 100px past 500)
+                        }
+                    ]
+                },
+                {
+                    type: 'FRAME',
+                    name: 'Section 2',
+                    transform: { m12: 520 }, // 600 > 520 -> overlaps!
+                    size: { x: 1344, y: 400 }
+                },
+                {
+                    type: 'FRAME',
+                    name: 'Section 3 Far Away',
+                    transform: { m12: 2000 }, // 600 is NOT > 2000 -> does not overlap!
+                    size: { x: 1344, y: 400 }
+                }
+            ]
+        };
+        const sSec2 = computeNodeStyles(sectionContainer.children[1], sectionContainer);
+        assert.strictEqual(sSec2['position'], 'relative', 'Section 2 overlapping bleeding child should receive position: relative');
+        assert.strictEqual(sSec2['z-index'], '1');
+
+        const sSec3 = computeNodeStyles(sectionContainer.children[2], sectionContainer);
+        assert.strictEqual(sSec3['position'], undefined, 'Far-away Section 3 must not receive position: relative');
+        assert.strictEqual(sSec3['z-index'], undefined);
     });
 
     // 35. Graphic Subtree Collapsing & Cumulative Baking Engine
