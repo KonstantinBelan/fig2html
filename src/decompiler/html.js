@@ -260,7 +260,7 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
     const hasImageFill = Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false);
     const hasNoChildren = !node.children || node.children.length === 0;
 
-    if ((node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && hasImageFill && hasNoChildren) {
+    if ((node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE' || node.isCollapsedGraphicRoot) && hasImageFill && hasNoChildren) {
         const imgPaint = node.fillPaints.find(f => f.type === 'IMAGE' && f.visible !== false);
         const hashHex = imgPaint?.image?.hash
             ? (typeof imgPaint.image.hash === 'string' ? imgPaint.image.hash.toLowerCase() : Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase())
@@ -287,7 +287,8 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
                 }
             }
 
-            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr} alt="${escapeHtml(nodeName)}"${classAttr}${styleAttr}>\n`;
+            const altText = node.altText || nodeName;
+            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr} alt="${escapeHtml(altText)}"${classAttr}${styleAttr}>\n`;
         }
     }
 

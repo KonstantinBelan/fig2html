@@ -293,6 +293,7 @@ function parseGridAxisCount(val) {
 
 function isImageNode(n) {
     if (!n) return false;
+    if (n.isCollapsedGraphicRoot) return true;
     if (Array.isArray(n.fillPaints) && n.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false)) return true;
     if (n.type === 'IMAGE') return true;
     const name = (n.name || '').toLowerCase();
@@ -383,7 +384,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             const bgImages = [];
             let bgColor = null;
 
-            const isNativeImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0);
+            const isNativeImg = (node.isCollapsedGraphicRoot || node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0);
             const hasImageFill = visibleFills.some(f => f.type === 'IMAGE' && f.image?.hash);
             const isFillsBaked = Boolean(node.isImageFillsBaked || node.isMaskBaked);
 
@@ -404,7 +405,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                         const hashHex = (typeof fill.image.hash === 'string')
                             ? fill.image.hash.toLowerCase()
                             : Buffer.from(fill.image.hash).toString('hex').toLowerCase();
-                        const imgObj = imageRegistry.get(hashHex);
+                        const imgObj = (imageRegistry && typeof imageRegistry.get === 'function') ? imageRegistry.get(hashHex) : null;
                         if (imgObj) {
                             const ext = imgObj.ext || getExtensionForMime(imgObj.mime);
                             const prefix = options.cssAssetUrlPrefix || options.assetUrlPrefix || (options.extractCss ? '../img/' : 'img/');
@@ -626,7 +627,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     }
 
     // 7. Auto Layout (Container Properties)
-    const isAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
+    const isAutoLayout = !node.isCollapsedGraphicRoot && (node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL');
     if (isAutoLayout) {
         const numGridCols = parseGridAxisCount(node.gridColumns);
         const numGridRows = parseGridAxisCount(node.gridRows);
@@ -897,9 +898,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
 
         // Add pointer-events: none for images and vector decorations that should not intercept clicks
-        const isImg = isImageNode(node) || (node.type === 'VECTOR' && (!node.children || node.children.length === 0));
+        const isImg = isImageNode(node) || Boolean(node.isCollapsedGraphicRoot) || (node.type === 'VECTOR' && (!node.children || node.children.length === 0));
         if (isImg && !node.isButton && !node.prototypeInteractions?.length) {
             styles['pointer-events'] = 'none';
+        }
+        if (node.isCollapsedGraphicRoot) {
+            styles['object-fit'] = 'contain';
         }
 
         if (node.size?.x) styles['width'] = fmtW(node.size.x);
@@ -1122,7 +1126,10 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
     } else {
         // Root element or independent artboard
-        if (isFluid) {
+        if (node.isCollapsedGraphicRoot) {
+            if (node.size?.x) styles['width'] = fmtW(node.size.x);
+            if (node.size?.y) styles['height'] = fmtH(node.size.y);
+        } else if (isFluid) {
             styles['width'] = '100vw';
             styles['min-height'] = '100dvh';
             styles['max-width'] = '100%';
@@ -1149,7 +1156,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     }
 
     // 8.5 Affine Transformation (Rotation, Scale, Flip)
-    if (nodeTransformInfo) {
+    if (nodeTransformInfo && !node.isCollapsedGraphicRoot) {
         const parts = [];
         if (nodeTransformInfo.rotateDeg) {
             parts.push(`rotate(${nodeTransformInfo.rotateDeg}deg)`);
@@ -1178,6 +1185,24 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     } else if (lowerName.startsWith('btn') || lowerName === 'button') {
         if (!styles['border']) styles['border'] = 'none';
         styles['cursor'] = 'pointer';
+    }
+
+    if (node.isCollapsedGraphicRoot) {
+        delete styles['display'];
+        delete styles['flex-direction'];
+        delete styles['flex-wrap'];
+        delete styles['gap'];
+        delete styles['row-gap'];
+        delete styles['column-gap'];
+        delete styles['padding'];
+        delete styles['padding-top'];
+        delete styles['padding-bottom'];
+        delete styles['padding-left'];
+        delete styles['padding-right'];
+        delete styles['align-items'];
+        delete styles['justify-content'];
+        styles['object-fit'] = 'contain';
+        styles['pointer-events'] = 'none';
     }
 
     return styles;

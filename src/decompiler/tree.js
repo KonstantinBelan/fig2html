@@ -1,5 +1,10 @@
 // src/decompiler/tree.js
 const { synthesizeLayoutTree, applySmartLayout } = require('./synthesizer');
+const {
+    detectGraphicSubtreeChain,
+    findAllGraphicChains,
+    collapseGraphicSubtree
+} = require('./graphic-collapser');
 
 /**
  * Creates a unique string identifier for a Figma GUID
@@ -273,5 +278,8 @@ module.exports = {
     resolveInstanceNode,
     buildSceneTree,
     synthesizeLayoutTree,
-    applySmartLayout
+    applySmartLayout,
+    detectGraphicSubtreeChain,
+    findAllGraphicChains,
+    collapseGraphicSubtree
 };

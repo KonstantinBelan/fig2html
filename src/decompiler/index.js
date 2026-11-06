@@ -775,12 +775,16 @@ async function convertFigToHtml(figInput, options = {}) {
     // 8. Write output HTML file if requested
     if (outputPath) {
         reportProgress(98, 'Writing standalone HTML file...');
-        const outDir = path.dirname(outputPath);
+        let targetHtmlPath = outputPath;
+        if (!outputPath.toLowerCase().endsWith('.html')) {
+            targetHtmlPath = path.join(outputPath, 'index.html');
+        }
+        const outDir = path.dirname(targetHtmlPath);
         if (!fs.existsSync(outDir)) {
             fs.mkdirSync(outDir, { recursive: true });
         }
-        fs.writeFileSync(outputPath, html, 'utf8');
-        log(`Saved HTML to ${outputPath} (${Buffer.byteLength(html, 'utf8')} bytes)`);
+        fs.writeFileSync(targetHtmlPath, html, 'utf8');
+        log(`Saved HTML to ${targetHtmlPath} (${Buffer.byteLength(html, 'utf8')} bytes)`);
     }
 
     reportProgress(100, 'Complete');

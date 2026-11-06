@@ -121,6 +121,7 @@ const {
     diffNodeStyles,
     synthesizeResponsiveStyles
 } = require('../src/decompiler/responsive-css');
+const { runGraphicCollapserTests } = require('./test-graphic-collapser');
 
 let totalTests = 0;
 let passedTests = 0;
@@ -3609,6 +3610,10 @@ async function runAllTests() {
         assert.strictEqual(sImg['width'], '569px', 'Image must preserve true width');
         assert.strictEqual(sImg['height'], '762px', 'Image must preserve true height');
     });
+
+    // 35. Graphic Subtree Collapsing & Cumulative Baking Engine
+    console.log('\x1b[1m35. Graphic Subtree Collapsing & Cumulative Baking Engine Tests\x1b[0m');
+    await runGraphicCollapserTests({ it, itAsync });
 
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);
     if (passedTests === totalTests) {

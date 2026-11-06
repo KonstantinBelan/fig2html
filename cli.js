@@ -204,6 +204,13 @@ async function runConversion(options) {
 async function main() {
     const args = process.argv.slice(2);
 
+    if (args.includes('--reverse')) {
+        const reverseArgs = args.filter(a => a !== '--reverse');
+        process.argv = [process.argv[0], path.resolve(__dirname, 'cli-reverse.js'), ...reverseArgs];
+        const reverseCli = require('./cli-reverse');
+        return await reverseCli.main();
+    }
+
     if (args.length === 0) {
         printHelp();
         process.exit(1);

@@ -143,7 +143,7 @@ function parseArgs(args) {
             process.exit(0);
         } else if (arg === '-i' || arg === '--input') {
             options.input = args[++i];
-        } else if (arg === '-o' || arg === '--output') {
+        } else if (arg === '-o' || arg === '--output' || arg === '--out') {
             options.output = args[++i];
         } else if (arg === '-p' || arg === '--page') {
             options.page = args[++i];
@@ -247,6 +247,14 @@ function parseArgs(args) {
         const ext = path.extname(options.input);
         const base = path.basename(options.input, ext);
         options.output = `${base}.html`;
+    }
+
+    if (options.output && !options.output.endsWith('.html')) {
+        if (!args.includes('--inline-images') && !args.includes('--no-separate-files')) {
+            options.separateFiles = true;
+            options.extractCss = true;
+            options.inlineImages = false;
+        }
     }
 
     return options;
@@ -428,5 +436,6 @@ if (require.main === module) {
 
 module.exports = {
     parseArgs,
-    runConversion
+    runConversion,
+    main
 };

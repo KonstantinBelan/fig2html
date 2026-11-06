@@ -2,6 +2,7 @@
 const crypto = require('crypto');
 const sharp = require('sharp');
 const { getExtensionForMime, getLinearGradientAngle, hasExplicitMaskTag } = require('./css');
+const { findAllGraphicChains, collapseGraphicSubtree } = require('./graphic-collapser');
 
 /**
  * Traverses root nodes to find all image fills and their target CSS dimensions
@@ -21,7 +22,7 @@ function collectImageUsages(rootNodes) {
                         ? f.image.hash.toLowerCase()
                         : Buffer.from(f.image.hash).toString('hex').toLowerCase();
                     const isMask = node.mask === true || node.isMask === true;
-                    const isImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0) && !isMask;
+                    const isImg = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE' || node.isCollapsedGraphicRoot) && (!node.children || node.children.length === 0) && !isMask;
                     const cssW = Math.round(node.size?.x || 0);
                     const cssH = Math.round(node.size?.y || 0);
 
@@ -800,6 +801,177 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
 }
 
 /**
+ * Bakes a degenerate graphic wrapper chain asset into a single raster buffer via Sharp:
+ * - Scales according to cumulative scale and target scale multiplier (e.g. 2 for Retina)
+ * - Rotates by cumulative angle theta with transparent background
+ * - Applies any intermediate masks if not already baked
+ * - Centers and clips the resulting raster onto the exact root canvas boundary (e.g. 300x332 @1x -> 600x664 @2x)
+ * - Stores the resulting buffer in rawImages under its SHA-1 hash
+ *
+ * @param {object} chainInfo Result from detectGraphicSubtreeChain
+ * @param {Map<string, { buffer: Buffer, mime: string }>|object} rawImages
+ * @param {object} [options={}]
+ * @returns {Promise<{ bakedHash: string, buffer: Buffer, canvasW: number, canvasH: number }|null>}
+ */
+async function bakeGraphicChainAsset(chainInfo, rawImages, options = {}) {
+    if (!chainInfo || !rawImages) return null;
+
+    const imgPaint = chainInfo.leaf?.fillPaints?.find(f => f.type === 'IMAGE' && f.image?.hash);
+    if (!imgPaint) return null;
+
+    const rawHash = (typeof imgPaint.image.hash === 'string')
+        ? imgPaint.image.hash.toLowerCase()
+        : Buffer.from(imgPaint.image.hash).toString('hex').toLowerCase();
+
+    const getRawImage = (hash) => {
+        if (!rawImages) return null;
+        if (typeof rawImages.get === 'function') return rawImages.get(hash);
+        const item = rawImages[hash];
+        if (!item) return null;
+        if (Buffer.isBuffer(item)) return { buffer: item, mime: 'image/png' };
+        return item;
+    };
+
+    const setRawImage = (hash, item) => {
+        if (!rawImages) return;
+        if (typeof rawImages.set === 'function') {
+            rawImages.set(hash, item);
+        } else {
+            rawImages[hash] = item;
+        }
+    };
+
+    const rawItem = getRawImage(rawHash);
+    if (!rawItem?.buffer) return null;
+
+    const scaleMultiplier = typeof options.imageScale === 'number' && options.imageScale > 0 ? options.imageScale : 2;
+
+    const canvasW = Math.max(1, Math.round(chainInfo.canvasWidth * scaleMultiplier));
+    const canvasH = Math.max(1, Math.round(chainInfo.canvasHeight * scaleMultiplier));
+
+    const wLeaf = chainInfo.leaf.size?.x || chainInfo.canvasWidth;
+    const hLeaf = chainInfo.leaf.size?.y || chainInfo.canvasHeight;
+    const decomp = chainInfo.decomposition;
+
+    const wScaled = Math.max(1, Math.round(wLeaf * (decomp.scaleX || 1) * scaleMultiplier));
+    const hScaled = Math.max(1, Math.round(hLeaf * (decomp.scaleY || 1) * scaleMultiplier));
+
+    // 1. Scale and rotate raster with transparent background
+    let rotatedBuf;
+    try {
+        rotatedBuf = await sharp(rawItem.buffer)
+            .resize(wScaled, hScaled, { fit: 'fill' })
+            .rotate(decomp.rotateDeg || 0, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+            .toBuffer();
+    } catch (err) {
+        return null;
+    }
+
+    const metaRot = await sharp(rotatedBuf).metadata().catch(() => null);
+    if (!metaRot?.width || !metaRot?.height) return null;
+
+    // 2. Center calculation in Root Canvas space
+    const m = chainInfo.cumulativeTransform;
+    const cxLeaf = wLeaf / 2;
+    const cyLeaf = hLeaf / 2;
+    const cxRoot = m.m00 * cxLeaf + m.m01 * cyLeaf + m.m02;
+    const cyRoot = m.m10 * cxLeaf + m.m11 * cyLeaf + m.m12;
+
+    const CX = cxRoot * scaleMultiplier;
+    const CY = cyRoot * scaleMultiplier;
+
+    const left = Math.round(CX - metaRot.width / 2);
+    const top = Math.round(CY - metaRot.height / 2);
+
+    const cx1 = Math.max(0, left);
+    const cy1 = Math.max(0, top);
+    const cx2 = Math.min(canvasW, left + metaRot.width);
+    const cy2 = Math.min(canvasH, top + metaRot.height);
+
+    const fw = cx2 - cx1;
+    const fh = cy2 - cy1;
+
+    let finalBuf;
+    if (fw <= 0 || fh <= 0) {
+        // Completely outside canvas boundary: create empty transparent canvas
+        finalBuf = await sharp({
+            create: {
+                width: canvasW,
+                height: canvasH,
+                channels: 4,
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+            }
+        }).png().toBuffer();
+    } else {
+        const fx = cx1 - left;
+        const fy = cy1 - top;
+
+        const extracted = await sharp(rotatedBuf).extract({
+            left: fx,
+            top: fy,
+            width: fw,
+            height: fh
+        }).toBuffer();
+
+        finalBuf = await sharp({
+            create: {
+                width: canvasW,
+                height: canvasH,
+                channels: 4,
+                background: { r: 0, g: 0, b: 0, alpha: 0 }
+            }
+        }).composite([{
+            input: extracted,
+            left: cx1,
+            top: cy1
+        }]).png().toBuffer();
+    }
+
+    const bakedHash = crypto.createHash('sha1').update(finalBuf).digest('hex');
+    setRawImage(bakedHash, { buffer: finalBuf, mime: 'image/png' });
+
+    return {
+        bakedHash,
+        buffer: finalBuf,
+        canvasW,
+        canvasH
+    };
+}
+
+/**
+ * Automatically detects degenerate graphic wrapper chains in rootNodes,
+ * bakes their cumulative affine composition via Sharp, and collapses the AST hierarchy.
+ *
+ * @param {Map<string, { buffer: Buffer, mime: string }>|object} rawImages
+ * @param {Array<object>} rootNodes
+ * @param {object} [options={}]
+ * @returns {Promise<number>} Number of collapsed chains
+ */
+async function bakeAndCollapseGraphicChains(rawImages, rootNodes, options = {}) {
+    const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
+    if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
+        return 0;
+    }
+
+    const chains = findAllGraphicChains(rootNodes);
+    if (!chains || chains.length === 0) return 0;
+
+    let collapsedCount = 0;
+    for (const chain of chains) {
+        try {
+            const baked = await bakeGraphicChainAsset(chain, rawImages, options);
+            if (baked && baked.bakedHash) {
+                collapseGraphicSubtree(chain, baked.bakedHash);
+                collapsedCount++;
+            }
+        } catch (err) {
+            // Ignore error on individual corrupted chain
+        }
+    }
+    return collapsedCount;
+}
+
+/**
  * Optimizes all images extracted from a .fig file:
  * 1. Resizes according to CSS dimensions with multiplier (default 2x for high quality retina)
  * 2. Generates responsive device variants for srcset / sizes (with option to disable)
@@ -830,6 +1002,9 @@ async function optimizeAllImages(rawImages, rootNodes, options = {}) {
 
     // 0b. Bake masks into images if not explicitly tagged with [mask] / [маска]
     await bakeMasksIntoImages(rawImages, rootNodes, options);
+
+    // 0c. Cumulative graphic subtree collapsing & baking
+    await bakeAndCollapseGraphicChains(rawImages, rootNodes, options);
 
     const usages = collectImageUsages(rootNodes);
     const usagesByHash = new Map();
@@ -1048,5 +1223,7 @@ module.exports = {
     optimizeBuffer,
     optimizeAllImages,
     bakeMasksIntoImages,
-    bakeImageFillsAndFilters
+    bakeImageFillsAndFilters,
+    bakeGraphicChainAsset,
+    bakeAndCollapseGraphicChains
 };
