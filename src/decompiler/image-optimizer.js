@@ -1304,6 +1304,141 @@ async function bakeAndCollapseGraphicChains(rawImages, rootNodes, options = {}) 
  * @param {string} [options.assetUrlPrefix='img/']
  * @returns {Promise<{ processedImages: Map<string, object>, nodeImageMap: Map<object, object>, filesToWrite: Array<{ fileName: string, buffer: Buffer }>, stats: { totalBeforeBytes: number, totalAfterBytes: number, optimizedCount: number } }>}
  */
+/**
+ * Bakes Figma crop transforms (`imageScaleMode === 'STRETCH'` or non-identity `fill.transform`)
+ * directly into cropped image assets before resizing or mask/filter baking.
+ *
+ * @param {Map<string, { buffer: Buffer, mime: string }>|object} rawImages
+ * @param {Array<object>} rootNodes
+ * @param {object} [options={}]
+ * @returns {Promise<number>} Number of cropped image fills baked
+ */
+async function bakeCroppedImages(rawImages, rootNodes, options = {}) {
+    const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
+    if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
+        return 0;
+    }
+
+    const getRaw = (k) => (typeof rawImages.get === 'function' ? rawImages.get(k) : rawImages[k]);
+    const setRaw = (k, v) => {
+        if (typeof rawImages.set === 'function') rawImages.set(k, v);
+        else rawImages[k] = v;
+    };
+
+    const cropCache = new Map();
+    let bakedCount = 0;
+
+    async function walk(nodes) {
+        for (const node of nodes) {
+            if (!node || node.visible === false) continue;
+            if (Array.isArray(node.fillPaints)) {
+                for (const fill of node.fillPaints) {
+                    if (!fill || fill.visible === false || fill.type !== 'IMAGE' || !fill.image?.hash) continue;
+                    const t = fill.transform;
+                    if (!t || typeof t.m00 !== 'number' || typeof t.m11 !== 'number') continue;
+
+                    const m00 = t.m00;
+                    const m01 = t.m01 || 0;
+                    const m02 = t.m02 || 0;
+                    const m10 = t.m10 || 0;
+                    const m11 = t.m11;
+                    const m12 = t.m12 || 0;
+
+                    if (m00 <= 0.001 || m11 <= 0.001) continue;
+                    if (Math.abs(m01) > 0.01 || Math.abs(m10) > 0.01) continue;
+
+                    const isNonIdentityCrop =
+                        Math.abs(m00 - 1) > 0.01 ||
+                        Math.abs(m11 - 1) > 0.01 ||
+                        Math.abs(m02) > 0.01 ||
+                        Math.abs(m12) > 0.01;
+                    if (!isNonIdentityCrop) continue;
+
+                    const origHashHex = (typeof fill.image.hash === 'string')
+                        ? fill.image.hash.toLowerCase()
+                        : Buffer.from(fill.image.hash).toString('hex').toLowerCase();
+                    const rawEntry = getRaw(origHashHex);
+                    if (!rawEntry || !rawEntry.buffer) continue;
+
+                    const cacheKey = `${origHashHex}:${m00.toFixed(4)}:${m02.toFixed(4)}:${m11.toFixed(4)}:${m12.toFixed(4)}`;
+                    let newHashHex = cropCache.get(cacheKey);
+
+                    if (!newHashHex) {
+                        try {
+                            const meta = await sharp(rawEntry.buffer).metadata();
+                            const imgW = meta.width || fill.originalImageWidth || 0;
+                            const imgH = meta.height || fill.originalImageHeight || 0;
+                            if (imgW <= 0 || imgH <= 0) continue;
+
+                            const rawLeft = Math.round(m02 * imgW);
+                            const rawTop = Math.round(m12 * imgH);
+                            const rawW = Math.max(1, Math.round(m00 * imgW));
+                            const rawH = Math.max(1, Math.round(m11 * imgH));
+
+                            const extractLeft = Math.max(0, Math.min(imgW - 1, rawLeft));
+                            const extractTop = Math.max(0, Math.min(imgH - 1, rawTop));
+                            const extractRight = Math.max(extractLeft + 1, Math.min(imgW, rawLeft + rawW));
+                            const extractBottom = Math.max(extractTop + 1, Math.min(imgH, rawTop + rawH));
+                            const extractW = extractRight - extractLeft;
+                            const extractH = extractBottom - extractTop;
+
+                            let croppedBuf;
+                            if (rawLeft >= 0 && rawTop >= 0 && rawLeft + rawW <= imgW && rawTop + rawH <= imgH) {
+                                croppedBuf = await sharp(rawEntry.buffer)
+                                    .extract({ left: extractLeft, top: extractTop, width: extractW, height: extractH })
+                                    .png()
+                                    .toBuffer();
+                            } else {
+                                const partBuf = await sharp(rawEntry.buffer)
+                                    .extract({ left: extractLeft, top: extractTop, width: extractW, height: extractH })
+                                    .png()
+                                    .toBuffer();
+                                const dstLeft = Math.max(0, extractLeft - rawLeft);
+                                const dstTop = Math.max(0, extractTop - rawTop);
+                                croppedBuf = await sharp({
+                                    create: {
+                                        width: rawW,
+                                        height: rawH,
+                                        channels: 4,
+                                        background: { r: 0, g: 0, b: 0, alpha: 0 }
+                                    }
+                                })
+                                    .composite([{ input: partBuf, left: dstLeft, top: dstTop }])
+                                    .png()
+                                    .toBuffer();
+                            }
+
+                            newHashHex = crypto.createHash('sha1').update(croppedBuf).digest('hex');
+                            setRaw(newHashHex, {
+                                buffer: croppedBuf,
+                                mime: 'image/png',
+                                ext: 'png',
+                                base64: `data:image/png;base64,${croppedBuf.toString('base64')}`
+                            });
+                            cropCache.set(cacheKey, newHashHex);
+                        } catch (_) {
+                            continue;
+                        }
+                    }
+
+                    if (newHashHex) {
+                        fill.image.hash = Uint8Array.from(Buffer.from(newHashHex, 'hex'));
+                        fill.imageScaleMode = 'FILL';
+                        fill.transform = { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 };
+                        bakedCount++;
+                    }
+                }
+            }
+            if (Array.isArray(node.children) && node.children.length > 0) {
+                await walk(node.children);
+            }
+        }
+    }
+
+    await walk(rootNodes);
+    return bakedCount;
+}
+
 async function optimizeAllImages(rawImages, rootNodes, options = {}) {
     const scaleMultiplier = typeof options.imageScale === 'number' && options.imageScale > 0 ? options.imageScale : 2;
     const isResponsive = options.responsiveImages !== false;
@@ -1311,6 +1446,9 @@ async function optimizeAllImages(rawImages, rootNodes, options = {}) {
     const targetFormat = (options.imageFormat || options.format || 'original').toLowerCase().trim();
     const isInline = options.inlineImages !== false;
     const prefix = options.assetUrlPrefix || 'img/';
+
+    // 0a. Bake stretched/cropped image transforms first so subsequent fill/mask/resize steps use the cropped region
+    await bakeCroppedImages(rawImages, rootNodes, options);
 
     // 0. Bake fills & filters into images first
     await bakeImageFillsAndFilters(rawImages, rootNodes, options);
@@ -1540,6 +1678,7 @@ module.exports = {
     calculateDeviceWidths,
     optimizeBuffer,
     optimizeAllImages,
+    bakeCroppedImages,
     bakeMasksIntoImages,
     bakeImageFillsAndFilters,
     bakeGraphicChainAsset,

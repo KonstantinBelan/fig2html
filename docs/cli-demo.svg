@@ -61,7 +61,7 @@
   <!-- Banner Box -->
   <text x="44" y="112" class="banner">┌──────────────────────────────────────────┐</text>
   <text x="44" y="128" class="banner">│             HTML to Figma CLI            │</text>
-  <text x="44" y="144" class="banner">│               v1.5.1                     │</text>
+  <text x="44" y="144" class="banner">│               v1.5.2                     │</text>
   <text x="44" y="160" class="banner">└──────────────────────────────────────────┘</text>
 
   <!-- Step Status -->
@@ -155,7 +155,7 @@
   <!-- Banner Box -->
   <text x="504" y="112" class="banner-rev">┌──────────────────────────────────────────┐</text>
   <text x="504" y="128" class="banner-rev">│             Figma to HTML CLI            │</text>
-  <text x="504" y="144" class="banner-rev">│               v1.5.1                     │</text>
+  <text x="504" y="144" class="banner-rev">│               v1.5.2                     │</text>
   <text x="504" y="160" class="banner-rev">└──────────────────────────────────────────┘</text>
   
   <!-- Step Status -->
@@ -240,7 +240,7 @@
 
   <!-- Bottom Status Bar -->
   <line x1="20" y1="544" x2="940" y2="544" stroke="#1e293b" stroke-width="1"/>
-  <text x="44" y="563" font-size="11px"><tspan fill="#4ade80">● </tspan><tspan fill="#475569">131/131 tests passed</tspan></text>
+  <text x="44" y="563" font-size="11px"><tspan fill="#4ade80">● </tspan><tspan fill="#475569">138/138 tests passed</tspan></text>
   <text x="480" y="563" fill="#475569" font-size="11px" text-anchor="middle">Kiwi Schema v101 • Zstandard • Flexbox Auto Layout v4 • Sharp Retina 2x</text>
-  <text x="916" y="563" fill="#475569" font-size="11px" text-anchor="end">v1.5.1</text>
+  <text x="916" y="563" fill="#475569" font-size="11px" text-anchor="end">v1.5.2</text>
 </svg>

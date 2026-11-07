@@ -156,7 +156,7 @@ function formatFluidDimension(px, canvasDimension = 1440, isWidth = true) {
  */
 function formatEffectsWithUnits(effects, options = {}, formatColorFn) {
     if (!Array.isArray(effects) || effects.length === 0) {
-        return { boxShadow: null, filter: null, backdropFilter: null };
+        return { boxShadow: null, textShadow: null, filter: null, backdropFilter: null };
     }
 
     const isFluid = options.layoutMode === 'fluid';
@@ -164,6 +164,7 @@ function formatEffectsWithUnits(effects, options = {}, formatColorFn) {
     const useRelativeUnits = isFluid || isRelative;
 
     const shadows = [];
+    const textShadows = [];
     let filter = null;
     let backdropFilter = null;
 
@@ -188,6 +189,9 @@ function formatEffectsWithUnits(effects, options = {}, formatColorFn) {
             let s = `${oxStr} ${oyStr} ${blurStr} ${spreadStr}${col}`.trim();
             if (isInset) s = `inset ${s}`;
             shadows.push(s);
+            if (!isInset) {
+                textShadows.push(`${oxStr} ${oyStr} ${blurStr} ${col}`.trim());
+            }
         } else if (eff.type === 'FOREGROUND_BLUR') {
             const r = Math.round((eff.radius || 0) * 10) / 10;
             if (r > 0) {
@@ -205,6 +209,7 @@ function formatEffectsWithUnits(effects, options = {}, formatColorFn) {
 
     return {
         boxShadow: shadows.length > 0 ? shadows.join(', ') : null,
+        textShadow: textShadows.length > 0 ? textShadows.join(', ') : null,
         filter,
         backdropFilter
     };

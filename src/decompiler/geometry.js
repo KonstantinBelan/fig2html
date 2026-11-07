@@ -170,10 +170,21 @@ class BoundingBox {
     static fromNode(node) {
         if (!node) return new BoundingBox(0, 0, 0, 0);
 
-        const x = node.x !== undefined ? node.x : (node.transform?.m02 ?? 0);
-        const y = node.y !== undefined ? node.y : (node.transform?.m12 ?? 0);
+        let x = node.x !== undefined ? node.x : (node.transform?.m02 ?? 0);
+        let y = node.y !== undefined ? node.y : (node.transform?.m12 ?? 0);
         const w = node.width !== undefined ? node.width : (node.size?.x ?? 0);
         const h = node.height !== undefined ? node.height : (node.size?.y ?? 0);
+
+        if (node.x === undefined && node.transform) {
+            const m00 = node.transform.m00 ?? 1;
+            const m01 = node.transform.m01 ?? 0;
+            const m10 = node.transform.m10 ?? 0;
+            const m11 = node.transform.m11 ?? 1;
+            if (Math.abs(m01) < 1e-4 && Math.abs(m10) < 1e-4) {
+                if (m00 < 0) x += m00 * w;
+                if (m11 < 0) y += m11 * h;
+            }
+        }
 
         return new BoundingBox(x, y, x + w, y + h);
     }

@@ -5,7 +5,7 @@
 
 [![npm version](https://img.shields.io/npm/v/fig2html.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/fig2html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 131 passed](https://img.shields.io/badge/tests-131%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 138 passed](https://img.shields.io/badge/tests-138%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/fig2html/pulls)
@@ -44,7 +44,7 @@ $ html-to-fig showcase.html showcase.fig
 
 ┌──────────────────────────────────────────┐
 │             HTML to Figma CLI            │
-│               v1.5.1                     │
+│               v1.5.2                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
 [██░░░░░░░░]  20% • Loading Kiwi schema...
@@ -74,7 +74,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 
 ┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
-│               v1.5.1                     │
+│               v1.5.2                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
 [██░░░░░░░░]  20% • Decoding Kiwi binary AST...
@@ -176,6 +176,18 @@ Open dist/index.html in any browser.
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
+- **🎯 Pixel-Perfect Decompilation & Complex Landing Page Synthesis (v1.5.2)**:
+  - **Предотвращение коллизий CSS-классов с числовыми суффиксами**: строгое разделение авто-нумерованных классов (`.frame-2`, `.vector-3`) и слоев с явными именами (`Frame 2`, `Vector 3`), исключающее перезапись стилей шапки, навигации, иконок корзины, бейджей и футера.
+  - **Синтез параметрических фигур (`STAR`, `REGULAR_POLYGON`)**: генерация векторных SVG-путей для звёзд рейтинга и многоугольников даже при отсутствии запечённых геометрических блобов в `.fig`, включая поддержку скругления углов (`cornerRadius`).
+  - **Прецизионная декомпозиция аффинных матриц с отражением (`det < 0`)**: корректный расчёт угла поворота для элементов с зеркальным отражением ($\text{scaleX}(-1)$ / $\text{scaleY}(-1)$), устраняющий инвертированный поворот выносных указателей и декоративных стрелок.
+  - **Отражённые подложки и нормализация контейнеров**: поддержка отрицательного масштаба в `BoundingBox.fromNode` и нормализация геометрии в `promoteToContainer` для зеркальных плашек навигационных панелей.
+  - **Автоматический расчёт правила заполнения SVG (`fill-rule="evenodd"`)**: распознавание `windingRule: 'ODD'` в `fillGeometry` и многоконтурных путей, исключающее сплошную заливку отверстий и вырезов в составных векторных иконках (значки гарантии, бейджи, логотипы мессенджеров).
+  - **Семантические списки `<ol>` и `<ul>` с сохранением маркеров**: трансляция строк с `ORDERED_LIST` / `UNORDERED_LIST` в нативные `<ol><li>` / `<ul><li>` с нумерацией `list-style-type: decimal` и сохранением межстрочных интервалов `listSpacing`.
+  - **Поддержка ограничений размеров `minSize` / `maxSize`**: трансляция минимальных и максимальных габаритов из Figma Kiwi в нативные CSS-свойства `min-height`, `min-width`, `max-height`, `max-width`.
+  - **Вертикальное кадрирование шрифтов (`leadingTrim`)**: генерация современных свойств `text-box-trim: trim-both` и `text-box-edge: cap alphabetic` для точной посадки крупных заголовков и цифр без паразитных внешних зазоров.
+  - **Расширенный каталог Google Fonts**: поддержка шрифтов `Jura`, `Bahianita`, `Manrope`, `Outfit`, `Unbounded` и др. в автоматическом линковщике шрифтов.
+  - **Снятие паразитной изоляции стекового контекста для `mix-blend-mode`**: предотвращение назначения `overflow: hidden` на Figma-группы и исключение нежелательного `z-index` у контейнеров с наложениями `MULTIPLY` и `SOFT_LIGHT`.
+  - **Защита фиксированных размеров SVG-иконок**: применение `max-width: none` для иконок с явными габаритами, предотвращающее их сжатие глобальным CSS reset-правилом `svg { max-width: 100% }`.
 - **🖼 Graphic Subtree Collapsing & Cumulative Baking Engine (v1.5.1)**:
   - **Автоматическое схлопывание вырожденных графических цепочек**: устранение «мусорной» виртуальной вложенности слоев в Figma (`Group -> Group -> Mask Group -> Group -> Image`), порождаемой при сложном составлении иллюстраций и экспорте макетов.
   - **Кумулятивная 2D-аффинная геометрия**: матричное перемножение цепочки 2D-трансформаций ($M_{\text{cumulative}} = M_1 \times M_2 \times \dots \times M_n$) с извлечением результирующего угла поворота $\theta = \text{atan2}(b, a)$, масштабирования и смещения.
@@ -525,7 +537,7 @@ build();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (131 тест):
+Проект покрыт всесторонними автоматическими тестами (138 тестов):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -601,6 +613,17 @@ build();
   - Сквозная декомпиляция мульти-брейкпоинт проектов в единый канонический HTML-документ
   - Автоматическое запекание радиальных/линейных масок в растровые изображения через Sharp (`dest-in`) с истинным альфа-каналом и исключение артефактов `mix-blend-mode`
   - Поддержка явных тегов `[mask]`, `[маска]`, `#mask`, `/mask` для сохранения CSS `mask-image`
+- **Pixel-Perfect Decompilation & Complex Landing Page Synthesis (v1.5.2)**:
+  - Предотвращение коллизий CSS-классов с числовыми суффиксами и защита уникальных правил
+  - Синтез параметрических путей `STAR` и `REGULAR_POLYGON` со скруглением `cornerRadius`
+  - Декомпозиция матриц с отрицательным определителем ($\det < 0$) и зеркальным отражением ($\text{scaleX}(-1)$ / $\text{scaleY}(-1)$)
+  - Поддержка зеркальных подложек в `BoundingBox.fromNode` и продвижение в контейнеры
+  - Генерация семантических списков `<ol><li>` и `<ul><li>` с `list-style-type: decimal` и шагом `listSpacing`
+  - Поддержка вертикального кадрирования `leadingTrim: 'CAP_HEIGHT'` (`text-box-trim: trim-both`)
+  - Поддержка ограничений размеров `minSize` и `maxSize` (`min-height`, `min-width`)
+  - Сохранение вырезов составных векторных иконок через `fill-rule="evenodd"` и `clip-rule="evenodd"`
+  - Снятие паразитной изоляции стекового контекста для режимов наложения `mix-blend-mode`
+  - Расширенная библиотека Google Fonts (`Jura`, `Bahianita`, `Manrope`, `Outfit`, `Unbounded` и др.)
 - **Graphic Subtree Collapsing & Cumulative Baking Engine (v1.5.1)**:
   - Математическое умножение 2D-матриц Figma Kiwi и кумулятивное накопление трансформаций
   - Вычисление результирующего угла поворота $\theta = \text{atan2}(b, a)$, масштаба и трансляции
@@ -643,7 +666,7 @@ fig2html/
 │   ├── schema.js           # Компилятор и кэш Kiwi схемы
 │   ├── decompiler/         # ДВИЖОК ОБРАТНОЙ КОНВЕРТАЦИИ (FIG -> HTML)
 │   │   ├── index.js        # Главный оркестратор декомпиляции
-│   │   ├── graphic-collapser.js # Кумулятивная аффинная геометрия и схлопывание поддеревьев (v1.5.1)
+│   │   ├── graphic-collapser.js # Кумулятивная аффинная геометрия и схлопывание поддеревьев (v1.5.2)
 │   │   ├── page-detector.js # Детекция страниц (теги, артборды, Canvas) и санитизация URL
 │   │   ├── breakpoint-detector.js # Детекция брейкпоинтов и группировка адаптивных страниц
 │   │   ├── ast-aligner.js  # AST Similarity Matching и сопоставление нод между экранами
@@ -653,7 +676,7 @@ fig2html/
 │   │   ├── reader.js       # Чтение .fig ZIP, декомпрессия Kiwi и извлечение картинок
 │   │   ├── tree.js         # Восстановление иерархии сцены, инстансы компонентов и overrides
 │   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, дедупликация и транслитерация
-│   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS, Smart Anchors (v1.5.1)
+│   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS, Smart Anchors (v1.5.2)
 │   │   ├── responsive-css.js # Генерация адаптивных медиа-запросов и fluid clamp() формул
 │   │   ├── units.js        # Преобразование единиц (rem, em, vw, vh) и fluid-расчеты (clamp, min, max)
 │   │   ├── html.js         # Генерация семантического HTML5, форм и Rich Text
@@ -669,7 +692,7 @@ fig2html/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (131 тест)
+    ├── run-tests.js        # Автоматический тестовый запуск (138 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)

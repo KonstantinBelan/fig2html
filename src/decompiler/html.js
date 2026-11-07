@@ -1,5 +1,5 @@
 // src/decompiler/html.js
-const { computeNodeStyles, toStyleString, formatColor, parseFontWeightAndStyle, getExtensionForMime } = require('./css');
+const { computeNodeStyles, toStyleString, formatColor, formatGradient, parseFontWeightAndStyle, getExtensionForMime } = require('./css');
 const { toRem, formatFluidFontSize } = require('./units');
 const { StylesheetManager } = require('./stylesheet');
 const {
@@ -60,7 +60,7 @@ function renderRichText(textData, defaultNode, stylesheetManager = null) {
 
     // Plain text without overrides
     if (!Array.isArray(styleIDs) || styleIDs.length === 0 || !Array.isArray(styleTable) || styleTable.length === 0) {
-        return escapeHtml(characters).replace(/\n/g, '<br>');
+        return escapeHtml(characters).replace(/\n|\u2028/g, '<br>');
     }
 
     // Map styleID -> style object
@@ -93,7 +93,7 @@ function renderRichText(textData, defaultNode, stylesheetManager = null) {
     // Render each run
     const resultParts = [];
     for (const run of runs) {
-        const escaped = escapeHtml(run.text).replace(/\n/g, '<br>');
+        const escaped = escapeHtml(run.text).replace(/\n|\u2028/g, '<br>');
         if (run.id === 0 || !styleMap.has(run.id)) {
             resultParts.push(escaped);
         } else {
@@ -101,10 +101,30 @@ function renderRichText(textData, defaultNode, stylesheetManager = null) {
             const spanStyles = {};
 
             if (override.fillPaints && override.fillPaints.length > 0) {
-                const solid = override.fillPaints.find(f => f.type === 'SOLID');
-                if (solid) {
+                const visibleOverrideFills = override.fillPaints.filter(f => f.visible !== false);
+                const topFill = visibleOverrideFills[visibleOverrideFills.length - 1];
+                const topGrad = (topFill && (topFill.type === 'GRADIENT_LINEAR' || topFill.type === 'GRADIENT_RADIAL'))
+                    ? topFill
+                    : null;
+                const solid = (topFill && topFill.type === 'SOLID')
+                    ? topFill
+                    : [...visibleOverrideFills].reverse().find(f => f.type === 'SOLID');
+                if (topGrad) {
+                    const gradCss = formatGradient(topGrad);
+                    if (gradCss) {
+                        spanStyles['background'] = gradCss;
+                        spanStyles['-webkit-background-clip'] = 'text';
+                        spanStyles['-webkit-text-fill-color'] = 'transparent';
+                        spanStyles['background-clip'] = 'text';
+                    }
+                } else if (solid) {
                     const rawColor = formatColor(solid.color, solid.opacity);
-                    spanStyles['color'] = stylesheetManager ? stylesheetManager.substituteVar('color', rawColor) : rawColor;
+                    const subColor = stylesheetManager ? stylesheetManager.substituteVar('color', rawColor) : rawColor;
+                    spanStyles['color'] = subColor;
+                    const defaultHasGrad = Array.isArray(defaultNode?.fillPaints) && defaultNode.fillPaints.some(f => f.visible !== false && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL'));
+                    if (defaultHasGrad) {
+                        spanStyles['-webkit-text-fill-color'] = subColor;
+                    }
                 }
             }
 
@@ -351,6 +371,9 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
                 }
 
                 let pathAttrs = `d="${info.d}" fill="${fillVal}"`;
+                if (info.fillRule === 'evenodd') {
+                    pathAttrs += ` fill-rule="evenodd" clip-rule="evenodd"`;
+                }
                 if (transformAttr) pathAttrs = `${transformAttr} ${pathAttrs}`;
                 if (strokeVal !== 'none') {
                     pathAttrs += ` stroke="${strokeVal}"`;
@@ -398,6 +421,9 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
             }
 
             let pathAttrs = `d="${info.d}" fill="${fillVal}"`;
+            if (info.fillRule === 'evenodd') {
+                pathAttrs += ` fill-rule="evenodd" clip-rule="evenodd"`;
+            }
             if (transformAttr) pathAttrs = `${transformAttr} ${pathAttrs}`;
             if (strokeVal !== 'none') {
                 pathAttrs += ` stroke="${strokeVal}"`;
@@ -413,6 +439,16 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
 
     // 6. TEXT ELEMENT
     if (node.type === 'TEXT') {
+        const lines = node.textData?.lines;
+        const isOrderedList = Array.isArray(lines) && lines.length > 0 && lines.every(l => l.lineType === 'ORDERED_LIST');
+        const isUnorderedList = Array.isArray(lines) && lines.length > 0 && lines.every(l => l.lineType === 'UNORDERED_LIST');
+        if ((isOrderedList || isUnorderedList) && node.textData?.characters) {
+            const listTag = isOrderedList ? 'ol' : 'ul';
+            const items = node.textData.characters.split('\n');
+            const liHtml = items.map(item => `${indent}  <li>${escapeHtml(item).replace(/\u2028/g, '<br>')}</li>`).join('\n');
+            return `${indent}<${listTag}${classAttr}${styleAttr}>\n${liHtml}\n${indent}</${listTag}>\n`;
+        }
+
         const tag = determineTextTag(node);
         const textContent = renderRichText(node.textData || { characters: node.name }, node, stylesheetManager);
 
@@ -478,7 +514,9 @@ function generateGoogleFontsUrl(fontFamilies) {
     const googleFontCandidates = [
         'Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins',
         'Source Sans Pro', 'Raleway', 'Ubuntu', 'Nunito', 'Playfair Display',
-        'Rubik', 'Plus Jakarta Sans', 'Fira Sans', 'Work Sans', 'DM Sans'
+        'Rubik', 'Plus Jakarta Sans', 'Fira Sans', 'Work Sans', 'DM Sans',
+        'Jura', 'Bahianita', 'Manrope', 'Outfit', 'Oswald', 'PT Sans',
+        'Noto Sans', 'Space Grotesk', 'Unbounded', 'Golos Text', 'Onest'
     ];
 
     const familiesToLoad = [];

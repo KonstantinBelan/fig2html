@@ -41,11 +41,13 @@ function hasContainerVisualStyles(node) {
  * @returns {boolean}
  */
 function isUnderlayCandidate(node) {
-    if (!node) return false;
+    if (!node || node.visible === false) return false;
     const isUnderlayType = node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE' || node.type === 'FRAME';
     const hasNoChildren = !Array.isArray(node.children) || node.children.length === 0;
+    const hasImageFill = (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') &&
+        Array.isArray(node.fillPaints) && node.fillPaints.some(p => p.visible !== false && p.type === 'IMAGE');
 
-    return isUnderlayType && hasNoChildren && hasContainerVisualStyles(node);
+    return isUnderlayType && hasNoChildren && !hasImageFill && hasContainerVisualStyles(node);
 }
 
 /**
@@ -89,8 +91,26 @@ function adjustCoordinatesRelativeToContainer(node, containerX, containerY) {
  * @returns {object} Promoted container frame
  */
 function promoteToContainer(underlayNode, children) {
-    const origX = underlayNode.x !== undefined ? underlayNode.x : (underlayNode.transform?.m02 ?? 0);
-    const origY = underlayNode.y !== undefined ? underlayNode.y : (underlayNode.transform?.m12 ?? 0);
+    const underlayBox = BoundingBox.fromNode(underlayNode);
+    const origX = underlayBox.xMin;
+    const origY = underlayBox.yMin;
+
+    if (underlayNode.transform && Math.abs(underlayNode.transform.m01 ?? 0) < 1e-4 && Math.abs(underlayNode.transform.m10 ?? 0) < 1e-4) {
+        if ((underlayNode.transform.m00 ?? 1) < 0) {
+            underlayNode.transform = {
+                ...underlayNode.transform,
+                m00: Math.abs(underlayNode.transform.m00),
+                m02: origX
+            };
+        }
+        if ((underlayNode.transform.m11 ?? 1) < 0) {
+            underlayNode.transform = {
+                ...underlayNode.transform,
+                m11: Math.abs(underlayNode.transform.m11),
+                m12: origY
+            };
+        }
+    }
 
     // Adjust each child's position relative to underlay
     for (const child of children) {
@@ -154,7 +174,7 @@ function detectAndExtractContainers(nodes, containerSize = null, epsilon = 3) {
 
         // Check all other active nodes in workingNodes
         for (const item of workingNodes) {
-            if (item === underlay) continue;
+            if (item === underlay || !item || item.visible === false) continue;
 
             const itemBox = BoundingBox.fromNode(item);
 
@@ -166,8 +186,6 @@ function detectAndExtractContainers(nodes, containerSize = null, epsilon = 3) {
             else if (itemBox.area < underlayBox.area * 0.4 && underlayBox.overlapsBoundary(itemBox, epsilon)) {
                 // Must have substantial intersection with the container or touch its edge
                 if (underlayBox.intersects(itemBox, -epsilon)) {
-                    item.stackPositioning = 'ABSOLUTE';
-                    item.isDecorativeOverlay = true;
                     overlayNodes.push(item);
                 }
             }
@@ -175,6 +193,10 @@ function detectAndExtractContainers(nodes, containerSize = null, epsilon = 3) {
 
         // Only promote if underlay contains at least 1 content node
         if (containedNodes.length > 0) {
+            for (const ov of overlayNodes) {
+                ov.stackPositioning = 'ABSOLUTE';
+                ov.isDecorativeOverlay = true;
+            }
             const allAdoptedChildren = [...containedNodes, ...overlayNodes];
 
             // Promote underlay to FRAME and attach children

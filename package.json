@@ -1,6 +1,6 @@
 {
     "name": "fig2html",
-    "version": "1.5.1",
+    "version": "1.5.2",
     "description": "Figma (.fig) to clean responsive HTML/CSS decompiler and bidirectional HTML-to-Figma compiler",
     "license": "MIT",
     "author": "Konstantin Belan <kosbelan@yandex.ru>",

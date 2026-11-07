@@ -291,6 +291,42 @@ function assignUniqueFileNames(pages) {
 }
 
 /**
+ * Determines whether a single top-level frame is a page artboard composed of stacked sections
+ * rather than a multi-page wrapper holding separate screen artboards.
+ *
+ * @param {object} node
+ * @returns {boolean}
+ */
+function isSinglePageArtboard(node) {
+    if (!node || !Array.isArray(node.children)) return false;
+
+    const visibleChildren = node.children.filter(c => c && c.visible !== false && (c.type === 'FRAME' || c.type === 'COMPONENT'));
+    if (visibleChildren.length < 2) return false;
+
+    const nodeW = node.size?.x || 0;
+    const nodeH = node.size?.y || 0;
+    if (nodeW <= 0 || nodeH <= 0) return false;
+
+    // If children have explicit breakpoint tags like [desktop], [mobile], @768, etc., it is a multi-breakpoint wrapper
+    const hasBreakpointTag = visibleChildren.some(c => /\[(desktop|laptop|tablet|mobile|phone|\d+px?)\]|@(desktop|tablet|mobile|\d+)/i.test(c.name || ''));
+    if (hasBreakpointTag) return false;
+
+    const xs = visibleChildren.map(c => c.transform?.m02 ?? 0);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const allSameWidth = visibleChildren.every(c => Math.abs((c.size?.x || 0) - nodeW) <= 40);
+    const totalChildHeight = visibleChildren.reduce((sum, c) => sum + (c.size?.y || 0), 0);
+
+    // If all child frames share the same X column and width as the parent and stack to fill its height,
+    // they are vertical sections of a single page, not separate pages.
+    if (maxX - minX <= 40 && allSameWidth && (node.stackMode === 'VERTICAL' || totalChildHeight >= nodeH * 0.7)) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
  * Detects pages from scene tree according to 3-tier heuristic:
  * Priority 1: Explicit Tags ([page], [страница], [p], #page, /page)
  * Priority 2: Screen Artboards (width >= 320, height >= 400)
@@ -365,13 +401,15 @@ function detectPages(treeContext = {}, options = {}) {
 
     // If there is a single top-level container/wrapper frame that is not itself tagged,
     // and its children contain tagged frames or screen artboards, unwrap to children
+    // (unless the single frame is itself a vertical page artboard made of stacked sections)
     if (!options.allCanvases && candidateNodes.length === 1 && Array.isArray(candidateNodes[0].children) && candidateNodes[0].children.length >= 2) {
-        const topTag = stripPageTag(candidateNodes[0].name, customTags);
-        if (!topTag.isTagged && !hasExcludeTag(candidateNodes[0].name, customExcludeTags)) {
-            const hasTaggedChildren = candidateNodes[0].children.some(c => stripPageTag(c.name, customTags).isTagged && !hasExcludeTag(c.name, customExcludeTags));
-            const hasScreenChildren = candidateNodes[0].children.filter(c => (c.type === 'FRAME' || c.type === 'COMPONENT') && (c.size?.x || 0) >= minPageWidth && (c.size?.y || 0) >= minPageHeight && !hasExcludeTag(c.name, customExcludeTags)).length >= 2;
-            if (hasTaggedChildren || hasScreenChildren) {
-                candidateNodes = candidateNodes[0].children;
+        const topNode = candidateNodes[0];
+        const topTag = stripPageTag(topNode.name, customTags);
+        if (!topTag.isTagged && !hasExcludeTag(topNode.name, customExcludeTags)) {
+            const hasTaggedChildren = topNode.children.some(c => stripPageTag(c.name, customTags).isTagged && !hasExcludeTag(c.name, customExcludeTags));
+            const hasScreenChildren = topNode.children.filter(c => (c.type === 'FRAME' || c.type === 'COMPONENT') && (c.size?.x || 0) >= minPageWidth && (c.size?.y || 0) >= minPageHeight && !hasExcludeTag(c.name, customExcludeTags)).length >= 2;
+            if (hasTaggedChildren || (hasScreenChildren && !isSinglePageArtboard(topNode))) {
+                candidateNodes = topNode.children;
             }
         }
     }
@@ -546,5 +584,6 @@ module.exports = {
     slugifyPageName,
     sanitizeFileName,
     assignUniqueFileNames,
+    isSinglePageArtboard,
     detectPages
 };

@@ -87,8 +87,8 @@ function parseTransformMatrix(transform) {
     }
 
     if (det < 0) {
-        // Reflection + rotation
-        const rad = Math.atan2(m10, -m00);
+        // Reflection + rotation: R(theta) * scaleX(-1) => m00 = -cos(theta), m10 = -sin(theta)
+        const rad = Math.atan2(-m10, -m00);
         const deg = Math.round(rad * (180 / Math.PI) * 100) / 100;
         return { scaleX: -1, scaleY: 1, rotateDeg: Math.abs(deg) > 0.01 ? deg : 0 };
     }
@@ -155,7 +155,7 @@ function formatGradient(paint) {
  */
 function formatEffects(effects, options = {}) {
     if (!Array.isArray(effects) || effects.length === 0) {
-        return { boxShadow: null, filter: null, backdropFilter: null };
+        return { boxShadow: null, textShadow: null, filter: null, backdropFilter: null };
     }
 
     if (options.layoutMode === 'fluid' || options.layoutMode === 'relative') {
@@ -163,6 +163,7 @@ function formatEffects(effects, options = {}) {
     }
 
     const shadows = [];
+    const textShadows = [];
     let filter = null;
     let backdropFilter = null;
 
@@ -180,6 +181,9 @@ function formatEffects(effects, options = {}) {
             let s = `${ox}px ${oy}px ${blur}px ${spread ? spread + 'px ' : ''}${col}`.trim();
             if (isInset) s = `inset ${s}`;
             shadows.push(s);
+            if (!isInset) {
+                textShadows.push(`${ox}px ${oy}px ${blur}px ${col}`.trim());
+            }
         } else if (eff.type === 'FOREGROUND_BLUR') {
             const r = Math.round((eff.radius || 0) * 10) / 10;
             if (r > 0) filter = `blur(${r}px)`;
@@ -191,6 +195,7 @@ function formatEffects(effects, options = {}) {
 
     return {
         boxShadow: shadows.length > 0 ? shadows.join(', ') : null,
+        textShadow: textShadows.length > 0 ? textShadows.join(', ') : null,
         filter,
         backdropFilter
     };
@@ -423,17 +428,22 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         return `${Math.round(h)}px`;
     };
 
-    const isSvgVector = node.type === 'VECTOR' || node.type === 'STAR' || node.type === 'REGULAR_POLYGON' || node.type === 'BOOLEAN_OPERATION' || (node.vectorData && (!node.children || node.children.length === 0));
+    const isSvgVector = node.type === 'VECTOR' || node.type === 'STAR' || node.type === 'REGULAR_POLYGON' || node.type === 'BOOLEAN_OPERATION' || (node.vectorData && (!node.children || node.children.length === 0) && node.type !== 'RECTANGLE' && node.type !== 'ROUNDED_RECTANGLE' && node.type !== 'ELLIPSE');
 
     // 1. Fills & Backgrounds
     if (!isSvgVector && Array.isArray(node.fillPaints) && node.fillPaints.length > 0) {
         const visibleFills = node.fillPaints.filter(f => f.visible !== false);
 
         if (node.type === 'TEXT') {
-            // Text color & gradients
-            const gradient = visibleFills.find(f => f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL');
-            const solid = visibleFills.find(f => f.type === 'SOLID');
-            if (gradient) {
+            // Text color & gradients (top-most visible fill in Figma paint stack takes precedence)
+            const topFill = visibleFills[visibleFills.length - 1];
+            const gradient = (topFill && (topFill.type === 'GRADIENT_LINEAR' || topFill.type === 'GRADIENT_RADIAL'))
+                ? topFill
+                : [...visibleFills].reverse().find(f => f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL');
+            const solid = (topFill && topFill.type === 'SOLID')
+                ? topFill
+                : [...visibleFills].reverse().find(f => f.type === 'SOLID');
+            if (gradient && (!topFill || topFill.type !== 'SOLID')) {
                 const gradCss = formatGradient(gradient);
                 if (gradCss) {
                     const firstStop = gradient.stops?.[0];
@@ -451,19 +461,22 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         } else {
             // Backgrounds
             const bgImages = [];
+            const bgBlendModes = [];
             let bgColor = null;
 
-            const isNativeImg = (node.isCollapsedGraphicRoot || node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && (!node.children || node.children.length === 0);
             const hasImageFill = visibleFills.some(f => f.type === 'IMAGE' && f.image?.hash);
+            const isNativeImg = (node.isCollapsedGraphicRoot || ((node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE') && hasImageFill)) && (!node.children || node.children.length === 0);
             const isFillsBaked = Boolean(node.isImageFillsBaked || node.isMaskBaked);
 
             for (const fill of visibleFills) {
                 const isNormalBlend = !fill.blendMode || fill.blendMode === 'NORMAL' || fill.blendMode === 'PASS_THROUGH';
+                const fillBlendCss = isNormalBlend ? 'normal' : fill.blendMode.toLowerCase().replace('_', '-');
                 if (fill.type === 'SOLID') {
                     if (!isFillsBaked && !isNativeImg) {
                         const isOpaqueSolid = isNormalBlend && (fill.opacity ?? 1) >= 0.999 && (fill.color?.a ?? 1) >= 0.999;
                         if (isOpaqueSolid) {
                             bgImages.length = 0;
+                            bgBlendModes.length = 0;
                         }
                         bgColor = formatColor(fill.color, fill.opacity);
                     }
@@ -474,10 +487,14 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                             fill.stops.every(s => (s.color?.a ?? 1) >= 0.999);
                         if (isOpaqueGrad) {
                             bgImages.length = 0;
+                            bgBlendModes.length = 0;
                             bgColor = null;
                         }
                         const grad = formatGradient(fill);
-                        if (grad) bgImages.push(grad);
+                        if (grad) {
+                            bgImages.push(grad);
+                            bgBlendModes.push(fillBlendCss);
+                        }
                     }
                 } else if (fill.type === 'IMAGE' && fill.image?.hash) {
                     if (isNativeImg) {
@@ -495,6 +512,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                                 ? (imgObj.mainBase64 || imgObj.base64)
                                 : `${prefix}${mainFile}`;
                             bgImages.push(`url('${imgUrl}')`);
+                            bgBlendModes.push(fillBlendCss);
 
                             if (fill.imageScaleMode === 'FIT') {
                                 styles['background-size'] = 'contain';
@@ -513,6 +531,18 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
             if (bgImages.length > 0 && !(isNativeImg && hasImageFill)) {
                 styles['background-image'] = bgImages.slice().reverse().join(', ');
+                if (bgColor && bgColor !== 'transparent') {
+                    if (bgBlendModes.some(m => m !== 'normal')) {
+                        styles['background-blend-mode'] = bgBlendModes.slice().reverse().join(', ');
+                    }
+                } else {
+                    if (bgImages.length > 1 && bgBlendModes.slice(1).some(m => m !== 'normal')) {
+                        styles['background-blend-mode'] = [...bgBlendModes.slice(1).reverse(), 'normal'].join(', ');
+                    }
+                    if (bgBlendModes[0] && bgBlendModes[0] !== 'normal' && (!node.children || node.children.length === 0) && (!node.blendMode || node.blendMode === 'NORMAL' || node.blendMode === 'PASS_THROUGH')) {
+                        styles['mix-blend-mode'] = bgBlendModes[0];
+                    }
+                }
             }
             if (bgColor && bgColor !== 'transparent' && !node.isMaskBaked && !node.isImageFillsBaked && !(isNativeImg && hasImageFill)) {
                 styles['background-color'] = bgColor;
@@ -570,7 +600,11 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
 
     // 4. Effects (Shadows & Blurs)
     const eff = formatEffects(node.effects, { layoutMode });
-    if (eff.boxShadow) styles['box-shadow'] = eff.boxShadow;
+    if (node.type === 'TEXT') {
+        if (eff.textShadow) styles['text-shadow'] = eff.textShadow;
+    } else if (eff.boxShadow) {
+        styles['box-shadow'] = eff.boxShadow;
+    }
     if (eff.filter) styles['filter'] = eff.filter;
     if (eff.backdropFilter) styles['backdrop-filter'] = eff.backdropFilter;
 
@@ -593,15 +627,12 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     if (node.opacity !== undefined && node.opacity !== null && node.opacity < 1.0) {
         styles['opacity'] = String(Math.round(node.opacity * 100) / 100);
     }
-    if (node.blendMode && node.blendMode !== 'NORMAL' && !node.isMaskBaked && !node.isMultiplyBaked) {
+    if (node.blendMode && node.blendMode !== 'NORMAL' && node.blendMode !== 'PASS_THROUGH' && !node.isMaskBaked && !node.isMultiplyBaked) {
         styles['mix-blend-mode'] = node.blendMode.toLowerCase().replace('_', '-');
     }
     const hasLuminosity = node.blendMode === 'LUMINOSITY' || (Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.visible !== false && f.blendMode === 'LUMINOSITY'));
     if (hasLuminosity) {
         styles['filter'] = styles['filter'] ? `${styles['filter']} grayscale(1)` : 'grayscale(1)';
-    }
-    if ((node.clipsContent || node.frameMaskDisabled === false) && node.frameMaskDisabled !== true) {
-        styles['overflow'] = 'hidden';
     }
 
     // 6. Typography
@@ -665,6 +696,25 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             styles['letter-spacing'] = `${Math.round(emVal * 1000) / 1000}em`;
         }
 
+        if (node.leadingTrim === 'CAP_HEIGHT') {
+            styles['text-box-trim'] = 'trim-both';
+            styles['text-box-edge'] = 'cap alphabetic';
+        }
+
+        const hasListLines = Array.isArray(node.textData?.lines) && node.textData.lines.length > 0 &&
+            node.textData.lines.every(l => l.lineType === 'ORDERED_LIST' || l.lineType === 'UNORDERED_LIST');
+        if (hasListLines) {
+            const isOrderedList = node.textData.lines.every(l => l.lineType === 'ORDERED_LIST');
+            styles['list-style-type'] = isOrderedList ? 'decimal' : 'disc';
+            styles['margin'] = '0';
+            styles['padding-left'] = '20px';
+            if (node.listSpacing && node.listSpacing > 0) {
+                styles['display'] = 'flex';
+                styles['flex-direction'] = 'column';
+                styles['gap'] = `${Math.round(node.listSpacing)}px`;
+            }
+        }
+
         if (node.textAlignHorizontal) {
             const align = node.textAlignHorizontal.toLowerCase();
             if (align === 'center' || align === 'right' || align === 'justify') {
@@ -707,6 +757,17 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                 styles['overflow'] = 'hidden';
                 styles['text-overflow'] = 'ellipsis';
                 styles['white-space'] = 'nowrap';
+            }
+        } else if (node.textAutoResize === 'WIDTH_AND_HEIGHT') {
+            const rawChars = String(node.textData?.characters ?? node.characters ?? '');
+            const isSingleLine = !rawChars.includes('\n') && (!node.size?.y || !node.fontSize || node.size.y <= node.fontSize * 1.85);
+            if (isSingleLine && parentNode && parentNode.size?.x && node.size?.x) {
+                const pLeft = parentNode.stackHorizontalPadding ?? parentNode.paddingLeft ?? 0;
+                const pRight = parentNode.stackPaddingRight ?? parentNode.stackHorizontalPadding ?? parentNode.paddingRight ?? 0;
+                const parentInnerW = parentNode.size.x - pLeft - pRight;
+                if (parentInnerW > 0 && node.size.x >= parentInnerW - 4) {
+                    styles['white-space'] = 'nowrap';
+                }
             }
         }
     }
@@ -849,12 +910,32 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         styles['position'] = 'relative';
     }
 
+    const siblings = Array.isArray(parentNode?.children)
+        ? parentNode.children.filter(c => c && c.visible !== false && c.mask !== true && c.isMask !== true)
+        : [];
+    const childIndex = siblings.indexOf(node);
+    const inFlowIndices = [];
+    siblings.forEach((c, i) => {
+        const isChildAbs = c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay || c.isDecorativeUnderlay || c.isBleedingOverlay || (!parentIsAutoLayout && !parentHasMask);
+        if (!isChildAbs) inFlowIndices.push(i);
+    });
+    const hasInFlow = inFlowIndices.length > 0;
+    const minInFlow = hasInFlow ? inFlowIndices[0] : -1;
+    const maxInFlow = hasInFlow ? inFlowIndices[inFlowIndices.length - 1] : -1;
+
     // Overflow clipping for frames with corner radius, slides/cards, masks, or clipsContent
-    // Note: Synthesized virtual frames should NEVER clip content unless explicitly marked clipsContent
+    // Note: Synthesized virtual frames and Figma Groups (resizeToFit === true) should NEVER clip content unless explicitly a mask
     // In Figma, frameMaskDisabled === true means "Clip Content" was explicitly unchecked by the user!
-    const isClipExplicitlyDisabled = node.frameMaskDisabled === true;
     const isMaskNode = hasMaskChild || (node.name && /mask(\s*group)?/i.test(node.name)) || node.mask === true || node.isMask === true;
-    const isUnderlayNode = Boolean(node.isDecorativeUnderlay || parentNode?.isDecorativeUnderlay);
+    const isClipExplicitlyDisabled = node.frameMaskDisabled === true || (node.resizeToFit === true && !isMaskNode);
+    const isUnderlayNode = Boolean(
+        node.isDecorativeUnderlay ||
+        parentNode?.isDecorativeUnderlay ||
+        (isAbsolute && hasInFlow && childIndex >= 0 && childIndex < minInFlow)
+    );
+    if (isUnderlayNode) {
+        node.isDecorativeUnderlay = true;
+    }
 
     if (!isClipExplicitlyDisabled && !isUnderlayNode && !node.isSynthesized && (node.clipsContent || node.frameMaskDisabled === false || isSlideOrCard || isMaskNode || (node.type === 'FRAME' && (node.cornerRadius || node.rectangleCornerRadiiIndependent) && node.children?.length))) {
         styles['overflow'] = 'hidden';
@@ -920,17 +1001,6 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             styles['overflow'] = 'hidden';
         }
     }
-
-    const siblings = Array.isArray(parentNode?.children) ? parentNode.children : [];
-    const childIndex = siblings.indexOf(node);
-    const inFlowIndices = [];
-    siblings.forEach((c, i) => {
-        const isChildAbs = c.stackPositioning === 'ABSOLUTE' || c.isDecorativeOverlay || c.isDecorativeUnderlay || c.isBleedingOverlay || (!parentIsAutoLayout && !parentHasMask);
-        if (!isChildAbs) inFlowIndices.push(i);
-    });
-    const hasInFlow = inFlowIndices.length > 0;
-    const minInFlow = hasInFlow ? inFlowIndices[0] : -1;
-    const maxInFlow = hasInFlow ? inFlowIndices[inFlowIndices.length - 1] : -1;
 
     // In-flow positioning relative to absolute siblings (or preceding siblings with unclipped bleeding absolute children)
     const parentHasAbsoluteChildren = parentNode && Array.isArray(parentNode.children) && parentNode.children.some(c => c.stackPositioning === 'ABSOLUTE' || c.isDecorativeUnderlay || c.isDecorativeOverlay);
@@ -999,8 +1069,20 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                 // (luminosity, soft-light, screen, etc.) on or inside underlays to blend with the parent backdrop!
             } else if (!hasInFlow) {
                 // Freeform / non-auto-layout canvas: layer index based on Figma layer order (1, 2, 3...)
-                // For bottom layer (childIndex === 0), leave as auto to prevent isolating stacking context
-                if (childIndex > 0) {
+                // For bottom layer (childIndex === 0) or pass-through groups with blended descendants,
+                // leave as auto to prevent isolating stacking context
+                const hasBlendedChild = (function checkBlend(n) {
+                    if (!n || !Array.isArray(n.children)) return false;
+                    for (const c of n.children) {
+                        if (!c || c.visible === false) continue;
+                        if (c.blendMode && c.blendMode !== 'NORMAL' && c.blendMode !== 'PASS_THROUGH') return true;
+                        if (Array.isArray(c.fillPaints) && c.fillPaints.some(f => f.visible !== false && f.blendMode && f.blendMode !== 'NORMAL' && f.blendMode !== 'PASS_THROUGH')) return true;
+                        if (checkBlend(c)) return true;
+                    }
+                    return false;
+                })(node);
+                const isPassThroughBlend = (!node.blendMode || node.blendMode === 'NORMAL' || node.blendMode === 'PASS_THROUGH') && hasBlendedChild;
+                if (childIndex > 0 && !isPassThroughBlend) {
                     styles['z-index'] = String(childIndex + 1);
                 }
             } else if (childIndex > maxInFlow) {
@@ -1162,7 +1244,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             } else {
                 // In horizontal container, cross-axis is vertical (height)
                 const isCrossHugY = nodeVerticalSizing === 'RESIZE_TO_FIT' || (node.type === 'TEXT' && (node.textAutoResize === 'WIDTH_AND_HEIGHT' || node.textAutoResize === 'HEIGHT'));
-                if (isCrossHugY && parentNode.stackCounterAlignItems) {
+                if (isCrossHugY) {
                     styles['align-self'] = parentNode.stackCounterAlignItems === 'CENTER'
                         ? 'center'
                         : (parentNode.stackCounterAlignItems === 'MAX' ? 'flex-end' : 'flex-start');
@@ -1207,6 +1289,15 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
         }
 
         // Primary & counter axis sizing
+        const minW = node.minSize?.value?.x ?? node.minSize?.x ?? node.minWidth;
+        const minH = node.minSize?.value?.y ?? node.minSize?.y ?? node.minHeight;
+        const maxW = node.maxSize?.value?.x ?? node.maxSize?.x ?? node.maxWidth;
+        const maxH = node.maxSize?.value?.y ?? node.maxSize?.y ?? node.maxHeight;
+        if (minW && minW > 0) styles['min-width'] = fmtW(minW);
+        if (minH && minH > 0) styles['min-height'] = fmtH(minH);
+        if (maxW && maxW > 0) styles['max-width'] = fmtW(maxW);
+        if (maxH && maxH > 0) styles['max-height'] = fmtH(maxH);
+
         if (parentIsGrid) {
             styles['width'] = '100%';
             if (isFixedY && node.size?.y && !node.isEqualHeightGroup && !isButton && !node.isSynthesized) {
@@ -1218,6 +1309,9 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
                 if (isFixedX && node.size?.x && !isButton && !node.isSynthesized) {
                     styles['width'] = fmtW(node.size.x);
                     styles['flex-shrink'] = '0';
+                    if (isIconContainer || isSvgVector) {
+                        styles['max-width'] = 'none';
+                    }
                 }
             }
             // Counter axis: Height
@@ -1238,6 +1332,9 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
             if (styles['align-self'] !== 'stretch' && !node.isEqualWidthGroup && !isButton && !node.isSynthesized) {
                 if (isFixedX && node.size?.x) {
                     styles['width'] = fmtW(node.size.x);
+                    if (isIconContainer || isSvgVector) {
+                        styles['max-width'] = 'none';
+                    }
                 }
             }
         }

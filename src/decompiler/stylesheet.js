@@ -376,8 +376,8 @@ class StylesheetManager {
 
         if (!matched) {
             let className = baseName;
-            if (variants.length > 0) {
-                // Style collision detected: same layer name, different styles!
+            if (variants.length > 0 || this.uniqueRules.has(className)) {
+                // Style collision detected: same layer name (or collided with numbered suffix), different styles!
                 if (isMulti && this.classScope === 'modifier' && pageSlug) {
                     const modCandidate = `${baseName}--${pageSlug}`;
                     if (!this.uniqueRules.has(modCandidate)) {
@@ -391,8 +391,13 @@ class StylesheetManager {
                     }
                 } else if (isMulti && this.classScope === 'scoped' && pageSlug) {
                     className = `${baseName}--${pageSlug}`;
+                    let counter = 2;
+                    while (this.uniqueRules.has(className)) {
+                        className = `${baseName}--${pageSlug}-${counter}`;
+                        counter++;
+                    }
                 } else {
-                    let counter = variants.length + 1;
+                    let counter = Math.max(2, variants.length + 1);
                     while (this.uniqueRules.has(`${baseName}-${counter}`)) {
                         counter++;
                     }
@@ -455,9 +460,19 @@ class StylesheetManager {
         this.dimVariables.clear();
 
         // 1. Fonts (if used >= 2 times)
-        for (const [font, count] of Object.entries(this.fontCounts)) {
+        let displayFontIndex = 0;
+        let monoFontIndex = 0;
+        for (const [font, count] of Object.entries(this.fontCounts).sort((a, b) => b[1] - a[1])) {
             if (count >= 2) {
-                const varName = font.includes('Mono') || font.includes('mono') ? '--font-mono' : '--font-display';
+                const isMono = font.includes('Mono') || font.includes('mono');
+                let varName;
+                if (isMono) {
+                    monoFontIndex++;
+                    varName = monoFontIndex === 1 ? '--font-mono' : `--font-mono-${monoFontIndex}`;
+                } else {
+                    displayFontIndex++;
+                    varName = displayFontIndex === 1 ? '--font-display' : `--font-display-${displayFontIndex}`;
+                }
                 this.fontVariables.set(font, varName);
                 this.rootVariables.set(font, varName);
             }
@@ -498,6 +513,11 @@ class StylesheetManager {
 
         // 5. Re-inject Native Figma Variables and Design Tokens
         for (const [varName, info] of this.nativeVariables.entries()) {
+            const isBaseWhiteOrBlack = info.value === '#ffffff' || info.value === '#000000';
+            const hasMultiModeOverride = info.modes && Object.keys(info.modes).length > 1;
+            if (isBaseWhiteOrBlack && hasMultiModeOverride && this.colorVariables.has(info.value)) {
+                continue;
+            }
             this.rootVariables.set(info.value, varName);
             if (info.type === 'COLOR') {
                 this.colorVariables.set(info.value, varName);
@@ -551,7 +571,7 @@ class StylesheetManager {
                 }
                 return s;
             }
-            if (prop === 'box-shadow') {
+            if (prop === 'box-shadow' || prop === 'text-shadow') {
                 let s = value;
                 for (const [col, vName] of this.colorVariables.entries()) {
                     if (s.includes(col)) {
@@ -596,10 +616,7 @@ class StylesheetManager {
         // 1.1 Theme Mode Blocks (e.g. Dark theme / Mode overrides)
         if (this.themeModeRules.size > 0) {
             for (const [modeName, vars] of this.themeModeRules.entries()) {
-                const isDark = /dark/i.test(modeName);
-                const selector = isDark
-                    ? `[data-theme="${modeName}"], @media (prefers-color-scheme: dark)`
-                    : `[data-theme="${modeName}"]`;
+                const selector = `[data-theme="${modeName}"]`;
                 lines.push(`  ${selector} {`);
                 for (const [varName, val] of vars.entries()) {
                     lines.push(`    ${varName}: ${val};`);

@@ -11,10 +11,32 @@ function isVectorNode(node) {
     if (node.type === 'VECTOR' || node.type === 'STAR' || node.type === 'REGULAR_POLYGON' || node.type === 'BOOLEAN_OPERATION') {
         return true;
     }
+    if (node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE' || node.type === 'ELLIPSE') {
+        return false;
+    }
     if (node.vectorData && (!node.children || node.children.length === 0)) {
         return true;
     }
     return false;
+}
+
+/**
+ * Checks if a node is a pure transparent grouping container whose descendants are all vector shapes
+ * @param {object} node
+ * @returns {boolean}
+ */
+function isPureVectorSubgroup(node) {
+    if (!node || !Array.isArray(node.children) || node.children.length === 0) return false;
+    const isFrame = ['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'BOOLEAN_OPERATION'].includes(node.type);
+    if (!isFrame) return false;
+    if (node.mask === true || node.isMask === true) return false;
+    const hasVisibleFills = Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.visible !== false);
+    const hasVisibleStrokes = Array.isArray(node.strokePaints) && node.strokePaints.some(s => s.visible !== false);
+    const hasVisibleEffects = Array.isArray(node.effects) && node.effects.some(e => e.visible !== false);
+    if (hasVisibleFills || hasVisibleStrokes || hasVisibleEffects) return false;
+    const visibleChildren = node.children.filter(c => c && c.visible !== false);
+    if (visibleChildren.length === 0) return false;
+    return visibleChildren.every(c => isVectorNode(c) || c.type === 'LINE' || isPureVectorSubgroup(c));
 }
 
 /**
@@ -31,8 +53,22 @@ function isVectorContainer(node) {
     const hasImageFill = Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false);
     if (hasImageFill) return false;
 
+    const visibleChildren = node.children.filter(c => c && c.visible !== false);
+    if (visibleChildren.length === 0) return false;
+
     // Direct children must all be vectors or lines
-    return node.children.every(c => isVectorNode(c) || c.type === 'LINE');
+    if (visibleChildren.every(c => isVectorNode(c) || c.type === 'LINE')) {
+        return true;
+    }
+
+    // Icon container (<= 200x200) with no own fills/strokes/effects whose children are vectors or pure vector subgroups
+    const w = node.size?.x || 0;
+    const h = node.size?.y || 0;
+    if (w > 0 && w <= 200 && h > 0 && h <= 200 && isPureVectorSubgroup(node)) {
+        return true;
+    }
+
+    return false;
 }
 
 /**
@@ -147,7 +183,7 @@ function parseCommandsBlob(rawBlob) {
  * @param {Buffer|Uint8Array} rawBlob
  * @returns {string} SVG path d attribute
  */
-function parseVectorNetworkBlob(rawBlob) {
+function parseVectorNetworkBlob(rawBlob, node = null) {
     if (!rawBlob) return '';
     const buf = Buffer.isBuffer(rawBlob) ? rawBlob : Buffer.from(rawBlob);
     if (buf.length < 12) return '';
@@ -287,6 +323,68 @@ function parseVectorNetworkBlob(rawBlob) {
         }
     }
 
+    // Synthesize arrowheads for open endpoint vertices with ARROW_LINES / ARROW_EQUILATERAL / TRIANGLE_FILLED strokeCap
+    if (node) {
+        const capByStyleId = new Map();
+        if (Array.isArray(node.vectorData?.styleOverrideTable)) {
+            for (const entry of node.vectorData.styleOverrideTable) {
+                if (entry && entry.styleID !== undefined && entry.strokeCap) {
+                    capByStyleId.set(entry.styleID, entry.strokeCap);
+                }
+            }
+        }
+
+        const sx = (node.vectorData?.normalizedSize?.x && node.size?.x)
+            ? (node.size.x / node.vectorData.normalizedSize.x)
+            : ((node.vectorData?.normalizedSize?.y && node.size?.y)
+                ? (node.size.y / node.vectorData.normalizedSize.y)
+                : 1);
+        const normSw = (node.strokeWeight || 2) / (sx || 1);
+        const arm = normSw * 3.182;
+
+        for (let vIdx = 0; vIdx < vertices.length; vIdx++) {
+            if (vertexDegree[vIdx] !== 1) continue;
+            const v = vertices[vIdx];
+            const cap = capByStyleId.get(v.styleID) || node.strokeCap;
+            if (cap !== 'ARROW_LINES' && cap !== 'ARROW_EQUILATERAL' && cap !== 'TRIANGLE_FILLED') continue;
+
+            const seg = segments.find(s => s.start === vIdx || s.end === vIdx);
+            if (!seg) continue;
+
+            let dx = 0;
+            let dy = 0;
+            if (seg.end === vIdx) {
+                const sv = vertices[seg.start];
+                if (!sv) continue;
+                dx = v.x - (seg.teX ? (v.x + seg.teX) : sv.x);
+                dy = v.y - (seg.teY ? (v.y + seg.teY) : sv.y);
+            } else {
+                const ev = vertices[seg.end];
+                if (!ev) continue;
+                dx = v.x - (seg.tsX ? (v.x + seg.tsX) : ev.x);
+                dy = v.y - (seg.tsY ? (v.y + seg.tsY) : ev.y);
+            }
+
+            const len = Math.hypot(dx, dy);
+            if (len < 1e-4) continue;
+            const ux = dx / len;
+            const uy = dy / len;
+            const px = -uy;
+            const py = ux;
+
+            const p1x = r(v.x - ux * arm + px * arm);
+            const p1y = r(v.y - uy * arm + py * arm);
+            const p2x = r(v.x - ux * arm - px * arm);
+            const p2y = r(v.y - uy * arm - py * arm);
+
+            if (cap === 'ARROW_EQUILATERAL' || cap === 'TRIANGLE_FILLED') {
+                pathParts.push(`M ${p1x} ${p1y} L ${r(v.x)} ${r(v.y)} L ${p2x} ${p2y} Z`);
+            } else {
+                pathParts.push(`M ${p1x} ${p1y} L ${r(v.x)} ${r(v.y)} L ${p2x} ${p2y}`);
+            }
+        }
+    }
+
     return pathParts.join(' ');
 }
 
@@ -297,13 +395,23 @@ function parseVectorNetworkBlob(rawBlob) {
  * @returns {{ d: string, isNormalized: boolean }}
  */
 function extractVectorPathInfo(node, blobs = []) {
-    if (!node || !Array.isArray(blobs)) return { d: '', isNormalized: false };
+    if (!node || !Array.isArray(blobs)) return { d: '', isNormalized: false, fillRule: null };
+
+    const hasOddWinding = Array.isArray(node.fillGeometry) &&
+        node.fillGeometry.some(g => g.windingRule === 'ODD' || g.windingRule === 'EVENODD');
+    const resolveFillRule = (d) => {
+        if (hasOddWinding) return 'evenodd';
+        if ((d.match(/Z/g) || []).length >= 2 && Array.isArray(node.fillPaints) && node.fillPaints.some(f => f.visible !== false)) {
+            return 'evenodd';
+        }
+        return null;
+    };
 
     // 1. If stroked vector without fillGeometry, prefer raw centerline vectorNetworkBlob
     if (node.strokePaints?.length && (!node.fillGeometry || node.fillGeometry.length === 0)) {
         if (node.vectorData?.vectorNetworkBlob !== undefined && blobs[node.vectorData.vectorNetworkBlob]) {
-            const d = parseVectorNetworkBlob(blobs[node.vectorData.vectorNetworkBlob]);
-            if (d) return { d, isNormalized: true };
+            const d = parseVectorNetworkBlob(blobs[node.vectorData.vectorNetworkBlob], node);
+            if (d) return { d, isNormalized: true, fillRule: resolveFillRule(d) };
         }
     }
 
@@ -316,13 +424,16 @@ function extractVectorPathInfo(node, blobs = []) {
                 if (d) parts.push(d);
             }
         }
-        if (parts.length > 0) return { d: parts.join(' '), isNormalized: false };
+        if (parts.length > 0) {
+            const d = parts.join(' ');
+            return { d, isNormalized: false, fillRule: resolveFillRule(d) };
+        }
     }
 
     // 3. Try vectorNetworkBlob
     if (node.vectorData?.vectorNetworkBlob !== undefined && blobs[node.vectorData.vectorNetworkBlob]) {
-        const d = parseVectorNetworkBlob(blobs[node.vectorData.vectorNetworkBlob]);
-        if (d) return { d, isNormalized: true };
+        const d = parseVectorNetworkBlob(blobs[node.vectorData.vectorNetworkBlob], node);
+        if (d) return { d, isNormalized: true, fillRule: resolveFillRule(d) };
     }
 
     // 4. Try strokeGeometry commandsBlob
@@ -334,10 +445,77 @@ function extractVectorPathInfo(node, blobs = []) {
                 if (d) parts.push(d);
             }
         }
-        if (parts.length > 0) return { d: parts.join(' '), isNormalized: false };
+        if (parts.length > 0) {
+            const d = parts.join(' ');
+            return { d, isNormalized: false, fillRule: resolveFillRule(d) };
+        }
     }
 
-    return { d: '', isNormalized: false };
+    // 5. Parametric STAR / REGULAR_POLYGON fallback when geometry blobs are not baked in .fig
+    if (node.type === 'STAR' || node.type === 'REGULAR_POLYGON') {
+        const d = buildParametricPolygonOrStarPath(node);
+        if (d) return { d, isNormalized: false, fillRule: null };
+    }
+
+    return { d: '', isNormalized: false, fillRule: null };
+}
+
+/**
+ * Synthesizes SVG path string for parametric STAR or REGULAR_POLYGON nodes
+ * @param {object} node
+ * @returns {string}
+ */
+function buildParametricPolygonOrStarPath(node) {
+    if (!node || (node.type !== 'STAR' && node.type !== 'REGULAR_POLYGON')) return '';
+    const w = node.size?.x || 24;
+    const h = node.size?.y || 24;
+    const cx = w / 2;
+    const cy = h / 2;
+    const rx = w / 2;
+    const ry = h / 2;
+    const count = Math.max(3, Math.round(node.count || 5));
+    const isStar = node.type === 'STAR';
+    const innerScale = isStar ? (node.starInnerScale ?? 0.381966) : 1;
+    const totalPoints = isStar ? count * 2 : count;
+    const pts = [];
+    for (let i = 0; i < totalPoints; i++) {
+        const angle = -Math.PI / 2 + (i * 2 * Math.PI) / totalPoints;
+        const scale = (isStar && (i % 2 === 1)) ? innerScale : 1;
+        pts.push({
+            x: cx + Math.cos(angle) * rx * scale,
+            y: cy + Math.sin(angle) * ry * scale
+        });
+    }
+    const r = n => Math.round(n * 100) / 100;
+    const cr = node.cornerRadius || 0;
+    if (cr > 0 && pts.length >= 3) {
+        const parts = [];
+        for (let i = 0; i < pts.length; i++) {
+            const prev = pts[(i - 1 + pts.length) % pts.length];
+            const curr = pts[i];
+            const next = pts[(i + 1) % pts.length];
+            const dx1 = prev.x - curr.x;
+            const dy1 = prev.y - curr.y;
+            const len1 = Math.hypot(dx1, dy1);
+            const dx2 = next.x - curr.x;
+            const dy2 = next.y - curr.y;
+            const len2 = Math.hypot(dx2, dy2);
+            const cut = Math.min(cr, len1 * 0.4, len2 * 0.4);
+            const p1x = curr.x + (dx1 / (len1 || 1)) * cut;
+            const p1y = curr.y + (dy1 / (len1 || 1)) * cut;
+            const p2x = curr.x + (dx2 / (len2 || 1)) * cut;
+            const p2y = curr.y + (dy2 / (len2 || 1)) * cut;
+            if (i === 0) {
+                parts.push(`M ${r(p1x)} ${r(p1y)}`);
+            } else {
+                parts.push(`L ${r(p1x)} ${r(p1y)}`);
+            }
+            parts.push(`Q ${r(curr.x)} ${r(curr.y)} ${r(p2x)} ${r(p2y)}`);
+        }
+        parts.push('Z');
+        return parts.join(' ');
+    }
+    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${r(p.x)} ${r(p.y)}`).join(' ') + ' Z';
 }
 
 /**
@@ -369,10 +547,15 @@ function getVectorStrokeAttributes(node) {
         }
     }
 
-    if (node.strokeCap === 'ROUND') strokeLinecap = 'round';
+    const overrideCaps = Array.isArray(node.vectorData?.styleOverrideTable)
+        ? node.vectorData.styleOverrideTable.map(e => e?.strokeCap).filter(Boolean)
+        : [];
+    const hasRoundOrArrowOverride = overrideCaps.some(c => c === 'ROUND' || c === 'ARROW_LINES' || c === 'ARROW_EQUILATERAL');
+
+    if (node.strokeCap === 'ROUND' || hasRoundOrArrowOverride) strokeLinecap = 'round';
     else if (node.strokeCap === 'SQUARE') strokeLinecap = 'square';
 
-    if (node.strokeJoin === 'ROUND') strokeLinejoin = 'round';
+    if (node.strokeJoin === 'ROUND' || hasRoundOrArrowOverride) strokeLinejoin = 'round';
     else if (node.strokeJoin === 'BEVEL') strokeLinejoin = 'bevel';
 
     return { stroke, strokeWidth, strokeLinecap, strokeLinejoin };

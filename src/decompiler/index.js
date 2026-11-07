@@ -13,6 +13,7 @@ const { detectAndExtractContainers } = require('./container-detector');
 const { BoundingBox } = require('./geometry');
 const {
     detectPages,
+    isSinglePageArtboard,
     stripPageTag,
     hasExcludeTag,
     filterScreenOutliers,
@@ -139,7 +140,7 @@ async function convertFigToHtml(figInput, options = {}) {
             : rootNodes;
 
         // If single wrapper container (e.g. body or canvas frame) and children contain screen frames
-        if (candidateFrames.length === 1 && Array.isArray(candidateFrames[0].children) && candidateFrames[0].children.length >= 2) {
+        if (candidateFrames.length === 1 && Array.isArray(candidateFrames[0].children) && candidateFrames[0].children.length >= 2 && !isSinglePageArtboard(candidateFrames[0])) {
             candidateFrames = candidateFrames[0].children;
         }
 

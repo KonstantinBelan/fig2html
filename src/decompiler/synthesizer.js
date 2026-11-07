@@ -179,18 +179,18 @@ function isOverlayNode(node, containerW, containerH, allChildren, epsilon = 3) {
     const nodeBox = BoundingBox.fromNode(node);
     if (!nodeBox || nodeBox.width <= 0 || nodeBox.height <= 0) return false;
 
-    // Full-width spanning elements are flow sections, not overlays
-    if (containerW > 0 && nodeBox.width >= containerW - epsilon * 2) {
+    const isBleedingX = containerW > 0 && (nodeBox.xMax > containerW + epsilon || nodeBox.xMin < -epsilon);
+    const isBleedingY = containerH > 0 && (nodeBox.yMax > containerH + epsilon || nodeBox.yMin < -epsilon);
+
+    // Full-width spanning elements (within container bounds) are flow sections, not overlays
+    if (!isBleedingX && !isBleedingY && containerW > 0 && nodeBox.width >= containerW - epsilon * 2) {
         return false;
     }
 
     // 2. Bleeding outside container / artboard boundaries:
     // If an element protrudes beyond artboard edges (left < 0, top < 0, right > W, bottom > H),
     // it cannot be an in-flow flex child — it must be positioned absolutely.
-    if (containerW > 0 && (nodeBox.xMax > containerW + epsilon || nodeBox.xMin < -epsilon)) {
-        return true;
-    }
-    if (containerH > 0 && (nodeBox.yMax > containerH + epsilon || nodeBox.yMin < -epsilon)) {
+    if (isBleedingX || isBleedingY) {
         return true;
     }
 
@@ -244,9 +244,21 @@ function isOverlayNode(node, containerW, containerH, allChildren, epsilon = 3) {
 function isMaskContainer(node) {
     if (!node) return false;
     if (node.name && /mask(\s*group)?/i.test(node.name)) return true;
-    if (node.mask === true || node.isMask === true) return true;
-    if (Array.isArray(node.children) && node.children.some(c => c.mask === true || c.isMask === true)) return true;
+    if (node.mask === true || node.isMask === true || node.isMaskBaked === true) return true;
+    if (Array.isArray(node.children) && node.children.some(c => c.mask === true || c.isMask === true || c.isMaskBaked === true)) return true;
     return false;
+}
+
+/**
+ * Recursively marks a node and all of its descendants as a decorative underlay
+ * @param {object} n
+ */
+function markUnderlaySubtree(n) {
+    if (!n) return;
+    n.isDecorativeUnderlay = true;
+    if (Array.isArray(n.children)) {
+        for (const c of n.children) markUnderlaySubtree(c);
+    }
 }
 
 /**
@@ -269,6 +281,7 @@ function hasTransformRotation(node) {
  */
 function shouldSkipLayoutSynthesis(node) {
     if (!node) return true;
+    if (node.isDecorativeUnderlay) return true;
     if (isVectorContainer(node) || isMaskContainer(node) || hasTransformRotation(node)) return true;
     if (Array.isArray(node.children) && node.children.some(c => isMaskContainer(c) || hasTransformRotation(c))) {
         return true;
@@ -304,13 +317,6 @@ function synthesizeContainerLayout(containerNode, options = {}) {
         if (isOverlayNode(child, containerW, containerH, containerNode.children, epsilon)) {
             child.stackPositioning = 'ABSOLUTE';
             if (flowNodes.length === 0) {
-                child.isDecorativeUnderlay = true;
-                const markUnderlaySubtree = (n) => {
-                    n.isDecorativeUnderlay = true;
-                    if (Array.isArray(n.children)) {
-                        for (const c of n.children) markUnderlaySubtree(c);
-                    }
-                };
                 markUnderlaySubtree(child);
                 underlayNodes.push(child);
             } else {
@@ -516,6 +522,11 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                 if (containerW > 0 && nodeBox.width >= (containerW - pl - pr - epsilon * 2) && !singleNode.isButton) {
                     singleNode.stackCounterSizing = 'FIXED';
                     singleNode.layoutAlign = 'STRETCH';
+                } else if (containerNode.stackCounterAlignItems === 'MIN' && !allLeftsAligned) {
+                    const leftOffset = Math.round(nodeBox.xMin - pl);
+                    if (leftOffset > epsilon) {
+                        singleNode.stackChildMarginLeft = leftOffset;
+                    }
                 }
 
                 if (singleNode.children && singleNode.children.length > 0 && singleNode.stackMode === 'NONE') {
@@ -685,6 +696,13 @@ function synthesizeContainerLayout(containerNode, options = {}) {
                 if (colMarginLeft > 0) {
                     singleNode.stackChildMarginLeft = colMarginLeft;
                 }
+                if (containerNode.stackCounterAlignItems === 'MIN' && !allTopsAligned) {
+                    const nodeBox = BoundingBox.fromNode(singleNode);
+                    const topOffset = Math.round(nodeBox.yMin - pt);
+                    if (topOffset > epsilon) {
+                        singleNode.stackChildMarginTop = topOffset;
+                    }
+                }
                 if (singleNode.children && singleNode.children.length > 0 && singleNode.stackMode === 'NONE') {
                     synthesizeContainerLayout(singleNode, options);
                 }
@@ -771,7 +789,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
             const canOmitFixedHeight = (n) => {
                 if (n.isSynthesized || n.isSynthesizedLayout) return true;
                 if (n.stackMode === 'VERTICAL' && n.stackPrimarySizing === 'FIXED') return false;
-                if (n.stackMode === 'HORIZONTAL' && n.stackCounterSizing === 'FIXED') return false;
+                if (n.stackMode === 'HORIZONTAL' && n.stackCounterSizing !== 'RESIZE_TO_FIT' && n.stackCounterSizing !== 'RESIZE_TO_FIT_WITH_IMPLICIT_SIZE') return false;
                 return true;
             };
 
@@ -820,15 +838,30 @@ function synthesizeLayoutTree(node, options = {}) {
     if (!node) return node;
     if (isVectorContainer(node) || isMaskContainer(node) || hasTransformRotation(node)) return node;
 
+    const isAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
+    if (isAutoLayout && Array.isArray(node.children)) {
+        // In native Auto-Layout frames, any absolute children placed before the first visible in-flow child
+        // act as decorative underlays; mark their subtrees so z-index and overflow behave consistently.
+        let seenInFlow = false;
+        for (const child of node.children) {
+            if (!child || child.visible === false) continue;
+            const isAbs = child.stackPositioning === 'ABSOLUTE' || child.isDecorativeUnderlay || child.isDecorativeOverlay;
+            if (!isAbs) {
+                seenInFlow = true;
+            } else if (!seenInFlow) {
+                markUnderlaySubtree(child);
+            }
+        }
+    }
+
     const skipContainerSynthesis = shouldSkipLayoutSynthesis(node);
 
-    // 1. If node has children, detect and extract underlays / card backgrounds first
-    if (!skipContainerSynthesis && Array.isArray(node.children) && node.children.length > 1) {
+    // 1. If node lacks native Auto Layout and has children, detect and extract underlays / card backgrounds first
+    if (!skipContainerSynthesis && !isAutoLayout && Array.isArray(node.children) && node.children.length > 1) {
         node.children = detectAndExtractContainers(node.children, node.size, options.epsilon || 3);
     }
 
     // 2. Synthesize layout for this node if it lacks native Auto Layout
-    const isAutoLayout = node.stackMode === 'HORIZONTAL' || node.stackMode === 'VERTICAL';
     if (!skipContainerSynthesis && !isAutoLayout && Array.isArray(node.children) && node.children.length > 0) {
         synthesizeContainerLayout(node, options);
     }
