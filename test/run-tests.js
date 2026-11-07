@@ -1446,6 +1446,8 @@ async function runAllTests() {
     });
 
     await itAsync('decompiles native Figma variables and exports design tokens JSON via --tokens', async () => {
+        if (!fs.existsSync('fleader.fig')) return;
+
         const tokensPath = path.resolve('test/test-extracted-tokens.json');
         const res = await convertFigToHtml('fleader.fig', {
             tokens: tokensPath,
@@ -2112,6 +2114,7 @@ async function runAllTests() {
     });
 
     await itAsync('decompiles unorganized.fig with clean Flexbox, no redundant width/height, and accurate section margins', async () => {
+        if (!fs.existsSync('unorganized.fig')) return;
         const res = await convertFigToHtml('unorganized.fig', { smartLayout: true });
         const html = res.html;
         assert(!html.includes('height: 215px'), 'Should not contain hardcoded height: 215px');
@@ -2135,6 +2138,7 @@ async function runAllTests() {
     });
 
     await itAsync('decompiles demo-absolute.fig without redundant height on rows, with elevated overlay z-index and paintFilter', async () => {
+        if (!fs.existsSync('demo-absolute.fig')) return;
         const res = await convertFigToHtml('demo-absolute.fig', { smartLayout: true });
         const html = res.html;
 
