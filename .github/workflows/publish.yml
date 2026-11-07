@@ -49,6 +49,6 @@ jobs:
             echo "🚀 New version $CURRENT_VERSION detected (npm has $NPM_VERSION). Publishing..."
           fi
 
-      - name: Publish to npm with Provenance via Trusted Publisher (OIDC)
+      - name: Publish to npm via Trusted Publisher (OIDC)
         if: steps.check-version.outputs.should_publish == 'true'
-        run: npm publish --provenance --access public
+        run: npm publish --access public
