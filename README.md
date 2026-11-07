@@ -1,14 +1,16 @@
 <div align="center">
 
-# 🎨 fig2html
+<img src="docs/logo.jpeg" alt="figmatik logo" width="180" style="border-radius: 20px; margin-bottom: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
+
+# 🎨 figmatik
 ### Figma to Clean Responsive HTML/CSS & Bi-Directional Engine 2.0
 
-[![npm version](https://img.shields.io/npm/v/fig2html.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/fig2html)
+[![npm version](https://img.shields.io/npm/v/figmatik.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/figmatik)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 138 passed](https://img.shields.io/badge/tests-138%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 143 passed](https://img.shields.io/badge/tests-143%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/fig2html/pulls)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/figmatik/pulls)
 
 <p align="center">
   Высокопроизводительный декомпилятор нативных бинарных файлов Figma (<code>.fig</code>) в <b>чистый семантический адаптивный HTML5/CSS</b> и двусторонний компилятор <b>HTML/CSS ➔ .fig</b> по спецификации <b>Kiwi Schema v101</b>.<br>
@@ -44,7 +46,7 @@ $ html-to-fig showcase.html showcase.fig
 
 ┌──────────────────────────────────────────┐
 │             HTML to Figma CLI            │
-│               v1.5.2                     │
+│               v1.5.3                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
 [██░░░░░░░░]  20% • Loading Kiwi schema...
@@ -74,7 +76,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 
 ┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
-│               v1.5.2                     │
+│               v1.5.3                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
 [██░░░░░░░░]  20% • Decoding Kiwi binary AST...
@@ -176,6 +178,19 @@ Open dist/index.html in any browser.
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
+- **💎 Semantic Styles, Spacing Tokens & A11y Standards (v1.5.3)**:
+  - **Глобальная дедупликация стилей (DRY CSS & Class Reuse)**: алгоритмический анализ сигнатур стилей элементов. При совпадении стилей на 100% (например, повторяющиеся карточки, плашки или кнопки `.frame-116047453`, `.frame-116047454-2`) движок объединяет их в единый переиспользуемый CSS-класс в HTML и CSS, избавляя проект от сотен строк мертвого дублирующегося кода.
+  - **Шкала примитивных Spacing-токенов (`:root`)**: автоматическое извлечение повторяющихся значений отступов (`padding`, `margin`, `gap`, `row-gap`, `column-gap`) в шкалу примитивных токенов `:root { --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; ... }` и подстановка `var(--space-*)` в CSS-правила.
+  - **Предотвращение коллизий токенов в `:root`**: изолированное хранение переменных с одинаковыми числовыми значениями — токены скруглений (`--radius-16px: 16px;`) и отступов (`--space-4: 16px;`) корректно сосуществуют в `:root {}` без взаимной перезаписи.
+  - **Доступность как стандарт (Accessibility / A11y)**:
+    - Декоративная графика (фоны, паттерны, разделители) автоматически получает `alt=""` и `aria-hidden="true"`.
+    - Векторные SVG-иконки помечаются `aria-hidden="true" focusable="false"`.
+    - Кнопки-иконки без текста автоматически получают вычисляемый семантический `aria-label` (`aria-label="Close"`, `aria-label="Menu"`, `aria-label="Search"`).
+    - Навигационные контейнеры получают тег `<nav aria-label="...">`.
+    - Кликабельные кнопки строго используют нативный `type="button"`, а ссылки — `<a href="#">`.
+    - В глобальный CSS Reset встроен доступный фокус с клавиатуры: `:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }`.
+  - **Автоматическое определение языка (i18n)**: анализ соотношения кириллицы и латиницы в тексте макета. Автоматическая генерация `<html lang="en">` с английскими A11y-лейблами или `<html lang="ru">` с русскоязычными лейблами (`Навигация`, `Закрыть`, `Меню`). Добавлен CLI-флаг `--lang <code>` для явного переопределения.
+  - **Иерархический анализатор заголовков (`<h1>`–`<h4>`)**: гарантия ровно одного `<h1>` на страницу (определяется как главный заголовок верхнего уровня), строгая иерархия `<h2>`–`<h4>` для секций и карточек с фильтрацией цен (`$99/mo`), числовых счетчиков (`100+`) и мелких служебных плашек.
 - **🎯 Pixel-Perfect Decompilation & Complex Landing Page Synthesis (v1.5.2)**:
   - **Предотвращение коллизий CSS-классов с числовыми суффиксами**: строгое разделение авто-нумерованных классов (`.frame-2`, `.vector-3`) и слоев с явными именами (`Frame 2`, `Vector 3`), исключающее перезапись стилей шапки, навигации, иконок корзины, бейджей и футера.
   - **Синтез параметрических фигур (`STAR`, `REGULAR_POLYGON`)**: генерация векторных SVG-путей для звёзд рейтинга и многоугольников даже при отсутствии запечённых геометрических блобов в `.fig`, включая поддержку скругления углов (`cornerRadius`).
@@ -286,85 +301,94 @@ Open dist/index.html in any browser.
 ### Установка через npm
 
 ```bash
-# Глобальная установка CLI утилит (fig2html, fig-to-html, html-to-fig, html2fig):
-npm install -g fig2html
+# Глобальная установка CLI утилит (figmatik, fig2html, fig-to-html, html-to-fig, html2fig):
+npm install -g figmatik
 
 # Или установка в проект как зависимость:
-npm install fig2html
+npm install figmatik
 
 # Или запуск без установки через npx:
-npx fig2html design.fig -s --webp
+npx figmatik design.fig -s --webp
 ```
 
 ---
 
 ### Запуск через CLI
 
-#### 1. Декомпиляция: .fig ➔ чистый HTML/CSS (`fig2html` / `fig-to-html`)
+Утилита предоставляет универсальную команду **`figmatik`** (автоматически определяющую направление по расширению входного файла), а также специализированные команды-алиасы:
+
+#### 1. Декомпиляция: .fig ➔ чистый HTML/CSS (`figmatik` / `fig2html` / `fig-to-html`)
 ```bash
 # Базовый запуск: создание автономного HTML-файла с встроенными стилями и картинками:
+figmatik design.fig
+# или:
 fig2html design.fig
 
 # С вынесением внешнего CSS (css/style.css) и картинок (img/*) в формате WebP:
-fig2html design.fig -s --webp
+figmatik design.fig -s --webp
 
 # Автоматическое слияние связанных экранов (Desktop, Tablet, Mobile) в единый responsive сайт (v1.4.0):
-fig2html design.fig index.html --responsive -s --webp
+figmatik design.fig index.html --responsive -s --webp
+
+# Указание языка документа (или автоопределение по тексту: en / ru):
+figmatik design.fig index.html --lang en -s --webp
 
 # Явное указание целевых брейкпоинтов:
-fig2html design.fig index.html --breakpoints 1440,1024,768,375 -s --webp
+figmatik design.fig index.html --breakpoints 1440,1024,768,375 -s --webp
 
 # Подход Mobile-first (min-width вместо max-width):
-fig2html design.fig index.html --mobile-first -s --webp
+figmatik design.fig index.html --mobile-first -s --webp
 
 # Полноценная резиновая (fluid) вёрстка на всю ширину (100vw / 100dvh, clamp(), min(), max(), rem):
-fig2html design.fig index.html --fluid -s --webp
+figmatik design.fig index.html --fluid -s --webp
 
 # Использование относительных единиц измерения (rem, em, vw, vh вместо px):
-fig2html design.fig index.html --relative -s --webp
+figmatik design.fig index.html --relative -s --webp
 
 # Декомпиляция с генерацией адаптивной CSS Grid сетки вместо Flexbox:
-fig2html design.fig index.html --grid -s --webp
+figmatik design.fig index.html --grid -s --webp
 # или:
-fig2html design.fig index.html --layout grid -s --webp
+figmatik design.fig index.html --layout grid -s --webp
 
 # Многостраничный экспорт в модульный сайт (dist/*.html + dist/css/style.css + dist/img/*):
-fig2html website.fig dist -s --webp
+figmatik website.fig dist -s --webp
 
 # Экспорт всех Canvas-вкладок документа Figma:
-fig2html website.fig dist --all-canvases -s --webp
+figmatik website.fig dist --all-canvases -s --webp
 
 # Экспорт только выбранных страниц через фильтр:
-fig2html website.fig dist --pages "Home, About, Pricing" -s --webp
+figmatik website.fig dist --pages "Home, About, Pricing" -s --webp
 
 # Экспорт нативных Figma Variables в файл дизайн-токенов JSON (W3C Design Tokens format):
-fig2html design.fig index.html --tokens tokens.json
+figmatik design.fig index.html --tokens tokens.json
 
 # Экспорт с картинками в формате AVIF и сжатием без потери качества (lossless):
-fig2html design.fig index.html -s --avif --compress
+figmatik design.fig index.html -s --avif --compress
 
 # Отключение адаптивного srcset (генерирует единую четкую 2x Retina картинку в src):
-fig2html design.fig index.html -s --no-srcset
+figmatik design.fig index.html -s --no-srcset
 
 # Декомпиляция макетов без Auto Layout в чистый Flexbox/Grid (включено по умолчанию):
-fig2html unorganized.fig index.html -s --webp
+figmatik unorganized.fig index.html -s --webp
 
 # Принудительный откат к традиционному position: absolute:
-fig2html unorganized.fig index.html --no-smart-layout
+figmatik unorganized.fig index.html --no-smart-layout
 
 # Тонкая настройка путей к CSS и картинкам:
-fig2html test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir assets
+figmatik test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir assets
 ```
 
-#### 2. Прямая компиляция: HTML ➔ .fig (`html-to-fig` / `html2fig`)
+#### 2. Прямая компиляция: HTML ➔ .fig (`figmatik` / `html-to-fig` / `html2fig`)
 ```bash
 # Простой запуск для HTML файла:
+figmatik index.html
+# или:
 html-to-fig index.html
 # или:
 html2fig index.html
 
 # Указание имени выходного файла:
-html-to-fig landing.html landing.fig
+figmatik landing.html landing.fig
 ```
 
 > 📖 **Подробное руководство для дизайнеров**: советы по созданию макетов для идеального 100% Pixel-Perfect экспорта в HTML/CSS читайте в [**docs/figma-design-guide.md**](docs/figma-design-guide.md).
@@ -373,12 +397,13 @@ html-to-fig landing.html landing.fig
 
 ## 💻 CLI Справка
 
-### fig2html (fig-to-html)
+### figmatik / fig2html (fig-to-html)
 ```text
 USAGE:
+  $ figmatik <input.fig> [output.html] [options]
   $ fig2html <input.fig> [output.html] [options]
   $ fig-to-html <input.fig> [output.html] [options]
-  $ npx fig2html <input.fig> [output.html] [options]
+  $ npx figmatik <input.fig> [output.html] [options]
 
 ARGUMENTS:
   <input.fig>       Путь к исходному .fig файлу
@@ -420,6 +445,9 @@ OPTIONS:
   --relative, --rem        Шорткат для --layout relative (rem, em, vw/vh вместо px)
   --grid                   Шорткат для --layout grid (CSS Grid разметка)
   --tokens [path]          Экспорт Figma Variables в файл дизайн-токенов JSON (по умолчанию: tokens.json)
+  --spacing-tokens         Генерация шкалы примитивных :root отступов (--space-*) (по умолчанию: включено)
+  --no-spacing-tokens      Отключить генерацию :root spacing-токенов
+  --lang <code>            Язык HTML документа (например: en, ru; автоопределение по умолчанию)
   --smart-layout           Синтез адаптивного Flexbox/Grid без position: absolute (по умолчанию: включен)
   --no-smart-layout        Отключить синтез разметки и использовать абсолютное позиционирование
   -v, --verbose            Подробные логи процесса
@@ -427,9 +455,10 @@ OPTIONS:
   -V, --version            Версия утилиты
 ```
 
-### html-to-fig (html2fig)
+### figmatik / html-to-fig (html2fig)
 ```text
 USAGE:
+  $ figmatik <input.html> [output.fig] [options]
   $ html-to-fig <input.html> [output.fig] [options]
   $ html2fig <input.html> [output.fig] [options]
 
@@ -457,7 +486,7 @@ OPTIONS:
 
 ### 1. Обратная декомпиляция (.fig ➔ HTML/CSS)
 ```javascript
-const { convertFigToHtml } = require('fig2html');
+const { convertFigToHtml } = require('figmatik');
 
 async function decompile() {
     // 1. Автономный единый HTML файл (все стили в <head><style>, картинки в Base64):
@@ -515,7 +544,7 @@ decompile();
 
 ### 2. Прямая компиляция (HTML ➔ .fig)
 ```javascript
-const { generateFigFile } = require('fig2html');
+const { generateFigFile } = require('figmatik');
 
 async function build() {
     const result = await generateFigFile({
@@ -537,7 +566,7 @@ build();
 
 ## 🧪 Тестирование
 
-Проект покрыт всесторонними автоматическими тестами (138 тестов):
+Проект покрыт всесторонними автоматическими тестами (143 теста):
 - Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
 - Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
 - Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
@@ -624,6 +653,13 @@ build();
   - Сохранение вырезов составных векторных иконок через `fill-rule="evenodd"` и `clip-rule="evenodd"`
   - Снятие паразитной изоляции стекового контекста для режимов наложения `mix-blend-mode`
   - Расширенная библиотека Google Fonts (`Jura`, `Bahianita`, `Manrope`, `Outfit`, `Unbounded` и др.)
+- **Semantic Styles, Spacing Tokens & A11y Standards (v1.5.3)**:
+  - Алгоритмическая дедупликация идентичных стилей безымянных/повторяющихся слоев в единый общий класс
+  - Извлечение примитивных токенов `--space-*` в `:root` и подстановка в `padding`, `margin`, `gap`
+  - Предотвращение коллизий в `:root` между `--radius-*` и `--space-*` при совпадении числовых значений (например, 16px)
+  - Стандарты доступности A11y: `aria-hidden` и `focusable="false"` для декоративной графики и SVG, авто-лейблы `aria-label` для кнопок-иконок
+  - Автоматическое определение языка документа (`<html lang="en">` vs `<html lang="ru">`) и локализация A11y атрибутов
+  - Строгий иерархический контроль ровно одного `<h1>` на страницу и фильтрация цен/числовых метрик
 - **Graphic Subtree Collapsing & Cumulative Baking Engine (v1.5.1)**:
   - Математическое умножение 2D-матриц Figma Kiwi и кумулятивное накопление трансформаций
   - Вычисление результирующего угла поворота $\theta = \text{atan2}(b, a)$, масштаба и трансляции
@@ -651,12 +687,13 @@ npm test
 ## 📁 Структура проекта
 
 ```text
-fig2html/
-├── cli.js                  # Главный CLI интерфейс (HTML -> FIG и автодетекция)
-├── cli-reverse.js          # CLI интерфейс декомпилятора (FIG -> HTML)
+figmatik/
+├── cli.js                  # Главный CLI интерфейс (figmatik: HTML -> FIG и автодетекция)
+├── cli-reverse.js          # CLI интерфейс декомпилятора (fig2html: FIG -> HTML)
 ├── index.js                # Главная точка входа программного API (двусторонний)
 ├── package.json            # Зависимости и метаданные проекта
 ├── docs/
+│   ├── logo.jpeg           # Официальный логотип проекта
 │   └── cli-demo.svg        # Векторная демонстрация работы терминала (SVG)
 ├── templates/
 │   └── template.fig        # Эталонный бинарный шаблон Figma контейнера
@@ -692,7 +729,7 @@ fig2html/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (138 тестов)
+    ├── run-tests.js        # Автоматический тестовый запуск (143 теста)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)

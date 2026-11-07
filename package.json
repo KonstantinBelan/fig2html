@@ -1,19 +1,20 @@
 {
-    "name": "fig2html",
-    "version": "1.5.2",
+    "name": "figmatik",
+    "version": "1.5.3",
     "description": "Figma (.fig) to clean responsive HTML/CSS decompiler and bidirectional HTML-to-Figma compiler",
     "license": "MIT",
     "author": "Konstantin Belan <kosbelan@yandex.ru>",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/KonstantinBelan/fig2html.git"
+        "url": "git+https://github.com/KonstantinBelan/figmatik.git"
     },
     "bugs": {
-        "url": "https://github.com/KonstantinBelan/fig2html/issues"
+        "url": "https://github.com/KonstantinBelan/figmatik/issues"
     },
-    "homepage": "https://github.com/KonstantinBelan/fig2html#readme",
+    "homepage": "https://github.com/KonstantinBelan/figmatik#readme",
     "main": "index.js",
     "bin": {
+        "figmatik": "cli.js",
         "fig2html": "cli-reverse.js",
         "fig-to-html": "cli-reverse.js",
         "html-to-fig": "cli.js",
@@ -33,6 +34,7 @@
         "test": "node test/run-tests.js"
     },
     "keywords": [
+        "figmatik",
         "fig2html",
         "figma",
         "figma-to-html",
