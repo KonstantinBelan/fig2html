@@ -1,25 +1,53 @@
 {
-    "name": "html-to-fig",
+    "name": "fig2html",
     "version": "1.5.0",
-    "description": "HTML to .fig binary generator via Kiwi schema and Figma specifications",
+    "description": "Figma (.fig) to clean responsive HTML/CSS decompiler and bidirectional HTML-to-Figma compiler",
     "license": "MIT",
+    "author": "Konstantin Belan <kosbelan@yandex.ru>",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/KonstantinBelan/fig2html.git"
+    },
+    "bugs": {
+        "url": "https://github.com/KonstantinBelan/fig2html/issues"
+    },
+    "homepage": "https://github.com/KonstantinBelan/fig2html#readme",
     "main": "index.js",
     "bin": {
+        "fig2html": "./cli-reverse.js",
+        "fig-to-html": "./cli-reverse.js",
         "html-to-fig": "./cli.js",
-        "fig-to-html": "./cli-reverse.js"
+        "html2fig": "./cli.js"
     },
+    "files": [
+        "cli.js",
+        "cli-reverse.js",
+        "index.js",
+        "src",
+        "LICENSE",
+        "README.md"
+    ],
     "scripts": {
-        "start": "node cli.js",
+        "start": "node cli-reverse.js",
         "build": "node index.js",
         "test": "node test/run-tests.js"
     },
     "keywords": [
+        "fig2html",
         "figma",
+        "figma-to-html",
+        "figma-decompiler",
+        "fig-to-html",
         "html-to-fig",
+        "html2fig",
         "fig",
         "kiwi",
         "converter",
         "auto-layout",
+        "flexbox",
+        "responsive",
+        "css-grid",
+        "sharp",
         "cli"
     ],
     "dependencies": {

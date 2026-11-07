@@ -1,23 +1,23 @@
 <div align="center">
 
-# 🎨 HTML to .fig & .fig to HTML
-### Figma Bi-Directional Engine 2.0
+# 🎨 fig2html
+### Figma to Clean Responsive HTML/CSS & Bi-Directional Engine 2.0
 
-[![Version](https://img.shields.io/badge/version-1.5.0-6366f1.svg?style=for-the-badge)](package.json)
+[![npm version](https://img.shields.io/npm/v/fig2html.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/fig2html)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
 [![Tests: 131 passed](https://img.shields.io/badge/tests-131%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/html-to-fig/pulls)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/fig2html/pulls)
 
 <p align="center">
-  Высокопроизводительный двусторонний компилятор и декомпилятор нативных бинарных файлов Figma (<code>.fig</code>).<br>
-  <b>HTML/CSS ➔ .fig</b> по спецификации <b>Kiwi Schema v101</b> и <b>.fig ➔ семантический адаптивный HTML5</b> с поддержкой Flexbox Auto Layout v4, Retina 2x, WebP/AVIF и Fluid-вёрстки.
+  Высокопроизводительный декомпилятор нативных бинарных файлов Figma (<code>.fig</code>) в <b>чистый семантический адаптивный HTML5/CSS</b> и двусторонний компилятор <b>HTML/CSS ➔ .fig</b> по спецификации <b>Kiwi Schema v101</b>.<br>
+  Синтезирует чистый Flexbox и CSS Grid без <code>position: absolute</code>, сохраняет Figma Constraints, асимметричные отступы, аффинные вращения, запекает Retina @2x WebP/AVIF и объединяет экраны в единый адаптивный сайт.
 </p>
 
 <p align="center">
-  <a href="#-демонстрация-cli">📺 Демонстрация CLI</a> •
-  <a href="#-установка-и-быстрый-старт">🚀 Быстрый старт</a> •
+  <a href="#-установка-и-быстрый-старт">🚀 Установка и старт</a> •
+  <a href="#-демонстрация-cli">📺 Демонстрация</a> •
   <a href="#-особенности-и-возможности">⚡ Возможности</a> •
   <a href="docs/figma-design-guide.md">🎨 Руководство дизайнера</a> •
   <a href="#-cli-справка">💻 CLI Справка</a> •
@@ -271,127 +271,106 @@ Open dist/index.html in any browser.
 
 ## 🚀 Установка и быстрый старт
 
-### Запуск через CLI
+### Установка через npm
 
-#### 1. Прямая конвертация: HTML ➔ .fig
 ```bash
-# Простой запуск для HTML файла:
-node cli.js index.html
+# Глобальная установка CLI утилит (fig2html, fig-to-html, html-to-fig, html2fig):
+npm install -g fig2html
 
-# Указание имени выходного файла:
-node cli.js landing.html landing.fig
+# Или установка в проект как зависимость:
+npm install fig2html
 
-# Или через npm script:
-npm run build
+# Или запуск без установки через npx:
+npx fig2html design.fig -s --webp
 ```
 
-#### 2. Обратная конвертация: .fig ➔ HTML
+---
+
+### Запуск через CLI
+
+#### 1. Декомпиляция: .fig ➔ чистый HTML/CSS (`fig2html` / `fig-to-html`)
 ```bash
-# Декомпиляция .fig файла в чистый автономный HTML (Retina 2x + адаптивный srcset / sizes):
-node cli-reverse.js design.fig
+# Базовый запуск: создание автономного HTML-файла с встроенными стилями и картинками:
+fig2html design.fig
+
+# С вынесением внешнего CSS (css/style.css) и картинок (img/*) в формате WebP:
+fig2html design.fig -s --webp
 
 # Автоматическое слияние связанных экранов (Desktop, Tablet, Mobile) в единый responsive сайт (v1.4.0):
-node cli-reverse.js design.fig index.html --responsive
+fig2html design.fig index.html --responsive -s --webp
 
 # Явное указание целевых брейкпоинтов:
-node cli-reverse.js design.fig index.html --breakpoints 1440,1024,768,375
+fig2html design.fig index.html --breakpoints 1440,1024,768,375 -s --webp
 
 # Подход Mobile-first (min-width вместо max-width):
-node cli-reverse.js design.fig index.html --mobile-first -s
+fig2html design.fig index.html --mobile-first -s --webp
 
 # Полноценная резиновая (fluid) вёрстка на всю ширину (100vw / 100dvh, clamp(), min(), max(), rem):
-node cli-reverse.js design.fig index.html --fluid
+fig2html design.fig index.html --fluid -s --webp
 
 # Использование относительных единиц измерения (rem, em, vw, vh вместо px):
-node cli-reverse.js design.fig index.html --relative
+fig2html design.fig index.html --relative -s --webp
 
 # Декомпиляция с генерацией адаптивной CSS Grid сетки вместо Flexbox:
-node cli-reverse.js design.fig index.html --grid
+fig2html design.fig index.html --grid -s --webp
 # или:
-node cli-reverse.js design.fig index.html --layout grid
+fig2html design.fig index.html --layout grid -s --webp
 
 # Многостраничный экспорт в модульный сайт (dist/*.html + dist/css/style.css + dist/img/*):
-node cli-reverse.js website.fig dist -s --webp
+fig2html website.fig dist -s --webp
 
 # Экспорт всех Canvas-вкладок документа Figma:
-node cli-reverse.js website.fig dist --all-canvases -s
+fig2html website.fig dist --all-canvases -s --webp
 
 # Экспорт только выбранных страниц через фильтр:
-node cli-reverse.js website.fig dist --pages "Home, About, Pricing" -s
+fig2html website.fig dist --pages "Home, About, Pricing" -s --webp
 
 # Экспорт нативных Figma Variables в файл дизайн-токенов JSON (W3C Design Tokens format):
-node cli-reverse.js design.fig index.html --tokens tokens.json
-
-# Декомпиляция с вынесением CSS в отдельный файл css/style.css и картинок в img/*:
-node cli-reverse.js design.fig -s
-# или:
-node cli-reverse.js design.fig index.html --separate-files
-
-# Резиновая вёрстка с отдельными WebP картинками и внешним CSS:
-node cli-reverse.js design.fig index.html -s --fluid --webp
-
-# Экспорт с картинками в современном формате WebP:
-node cli-reverse.js design.fig index.html -s --webp
+fig2html design.fig index.html --tokens tokens.json
 
 # Экспорт с картинками в формате AVIF и сжатием без потери качества (lossless):
-node cli-reverse.js design.fig index.html -s --avif --compress
+fig2html design.fig index.html -s --avif --compress
 
 # Отключение адаптивного srcset (генерирует единую четкую 2x Retina картинку в src):
-node cli-reverse.js design.fig index.html --no-srcset
+fig2html design.fig index.html -s --no-srcset
 
 # Декомпиляция макетов без Auto Layout в чистый Flexbox/Grid (включено по умолчанию):
-node cli-reverse.js unorganized.fig index.html
+fig2html unorganized.fig index.html -s --webp
 
 # Принудительный откат к традиционному position: absolute:
-node cli-reverse.js unorganized.fig index.html --no-smart-layout
-
-# Указание имени выходного файла и страницы:
-node cli-reverse.js showcase.fig output.html --page "Page 1"
+fig2html unorganized.fig index.html --no-smart-layout
 
 # Тонкая настройка путей к CSS и картинкам:
-node cli-reverse.js test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir assets
+fig2html test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir assets
+```
+
+#### 2. Прямая компиляция: HTML ➔ .fig (`html-to-fig` / `html2fig`)
+```bash
+# Простой запуск для HTML файла:
+html-to-fig index.html
+# или:
+html2fig index.html
+
+# Указание имени выходного файла:
+html-to-fig landing.html landing.fig
 ```
 
 > 📖 **Подробное руководство для дизайнеров**: советы по созданию макетов для идеального 100% Pixel-Perfect экспорта в HTML/CSS читайте в [**docs/figma-design-guide.md**](docs/figma-design-guide.md).
-
-Вы также можете связать утилиты глобально:
-```bash
-npm link
-html-to-fig input.html output.fig
-fig-to-html input.fig output.html
-```
 
 ---
 
 ## 💻 CLI Справка
 
-### html-to-fig
+### fig2html (fig-to-html)
 ```text
 USAGE:
-  $ html-to-fig <input.html|.fig> [output] [options]
-  $ html-to-fig -i <input.html> -o <output.fig>
+  $ fig2html <input.fig> [output.html] [options]
+  $ fig-to-html <input.fig> [output.html] [options]
+  $ npx fig2html <input.fig> [output.html] [options]
 
 ARGUMENTS:
-  <input>           Путь к исходному HTML или .fig файлу
-  [output]          Путь к создаваемому файлу (по умолчанию: <имя-файла>.fig или .html)
-
-OPTIONS:
-  -i, --input <file>       Входной файл
-  -o, --output <file>      Выходной файл
-  -t, --template <file>    Файл шаблона .fig (по умолчанию: templates/template.fig)
-  -p, --page <name>        Имя страницы в Figma (по умолчанию: "Page 1")
-  -w, --watch              Режим наблюдения (автосборка при изменении)
-  --no-remote-images     Отключить скачивание внешних картинок (HTTP/HTTPS)
-  -v, --verbose            Подробные логи процесса сборки
-  -h, --help               Справка по командам
-  -V, --version            Версия утилиты
-```
-
-### fig-to-html
-```text
-USAGE:
-  $ fig-to-html <input.fig> [output.html] [options]
-  $ fig-to-html -i <input.fig> -o <output.html>
+  <input.fig>       Путь к исходному .fig файлу
+  [output.html]     Путь для выходного HTML файла (по умолчанию: <имя-файла>.html) или папка
 
 OPTIONS:
   -i, --input <file>       Входной .fig файл
@@ -436,35 +415,37 @@ OPTIONS:
   -V, --version            Версия утилиты
 ```
 
+### html-to-fig (html2fig)
+```text
+USAGE:
+  $ html-to-fig <input.html> [output.fig] [options]
+  $ html2fig <input.html> [output.fig] [options]
+
+ARGUMENTS:
+  <input.html>      Путь к исходному HTML файлу
+  [output.fig]      Путь к создаваемому .fig файлу (по умолчанию: <имя-файла>.fig)
+
+OPTIONS:
+  -i, --input <file>       Входной файл
+  -o, --output <file>      Выходной файл
+  -t, --template <file>    Файл шаблона .fig (по умолчанию: templates/template.fig)
+  -p, --page <name>        Имя страницы в Figma (по умолчанию: "Page 1")
+  -w, --watch              Режим наблюдения (автосборка при изменении)
+  --no-remote-images     Отключить скачивание внешних картинок (HTTP/HTTPS)
+  -v, --verbose            Подробные логи процесса сборки
+  -h, --help               Справка по командам
+  -V, --version            Версия утилиты
+```
+
 ---
 
 ## 🛠 Программный API (Node.js)
 
-Вы можете использовать библиотеку в своих скриптах и бэкендах для обоих направлений:
+Вы можете использовать библиотеку в своих скриптах и бэкендах:
 
-### Прямая конвертация (HTML ➔ .fig)
+### 1. Обратная декомпиляция (.fig ➔ HTML/CSS)
 ```javascript
-const { generateFigFile } = require('html-to-fig');
-
-async function build() {
-    const result = await generateFigFile({
-        htmlPath: 'test/hard.html',
-        outputPath: 'output.fig',
-        templatePath: 'templates/template.fig', // опционально
-        pageName: 'Page 1',
-        verbose: true
-    });
-
-    console.log(`Создано ${result.generatedNodes} нод за ${result.durationMs}мс!`);
-    console.log(`Файл: ${result.outputPath} (${result.fileSizeBytes} байт)`);
-}
-
-build();
-```
-
-### Обратная конвертация (.fig ➔ HTML)
-```javascript
-const { convertFigToHtml } = require('html-to-fig');
+const { convertFigToHtml } = require('fig2html');
 
 async function decompile() {
     // 1. Автономный единый HTML файл (все стили в <head><style>, картинки в Base64):
@@ -518,6 +499,26 @@ async function decompile() {
 }
 
 decompile();
+```
+
+### 2. Прямая компиляция (HTML ➔ .fig)
+```javascript
+const { generateFigFile } = require('fig2html');
+
+async function build() {
+    const result = await generateFigFile({
+        htmlPath: 'test/hard.html',
+        outputPath: 'output.fig',
+        templatePath: 'templates/template.fig', // опционально
+        pageName: 'Page 1',
+        verbose: true
+    });
+
+    console.log(`Создано ${result.generatedNodes} нод за ${result.durationMs}мс!`);
+    console.log(`Файл: ${result.outputPath} (${result.fileSizeBytes} байт)`);
+}
+
+build();
 ```
 
 ---
@@ -627,7 +628,7 @@ npm test
 ## 📁 Структура проекта
 
 ```text
-html-to-fig/
+fig2html/
 ├── cli.js                  # Главный CLI интерфейс (HTML -> FIG и автодетекция)
 ├── cli-reverse.js          # CLI интерфейс декомпилятора (FIG -> HTML)
 ├── index.js                # Главная точка входа программного API (двусторонний)

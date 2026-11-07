@@ -31,8 +31,9 @@ function printHelp() {
     printBanner();
     console.log(`
 ${colors.bold}USAGE:${colors.reset}
+  $ fig2html <input.fig> [output.html] [options]
   $ fig-to-html <input.fig> [output.html] [options]
-  $ fig-to-html -i <input.fig> -o <output.html>
+  $ npx fig2html <input.fig> [output.html] [options]
 
 ${colors.bold}ARGUMENTS:${colors.reset}
   ${colors.green}<input.fig>${colors.reset}       Path to the source .fig file
@@ -82,19 +83,19 @@ ${colors.bold}OPTIONS:${colors.reset}
 
 ${colors.bold}EXAMPLES:${colors.reset}
   ${colors.gray}# Simple reverse conversion (single self-contained HTML):${colors.reset}
-  $ fig-to-html design.fig
+  $ fig2html design.fig
 
   ${colors.gray}# Extract separate CSS (css/style.css) and images (img/*) with WebP format:${colors.reset}
-  $ fig-to-html design.fig -s --webp
+  $ fig2html design.fig -s --webp
 
   ${colors.gray}# Lossless image compression with modern AVIF format:${colors.reset}
-  $ fig-to-html design.fig -s --avif --compress
+  $ fig2html design.fig -s --avif --compress
 
   ${colors.gray}# Disable responsive srcset (generate single 2x retina image):${colors.reset}
-  $ fig-to-html design.fig --no-srcset
+  $ fig2html design.fig --no-srcset
 
   ${colors.gray}# Custom CSS file and assets directory:${colors.reset}
-  $ fig-to-html test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir img
+  $ fig2html test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir img
 `);
 }
 
@@ -388,7 +389,7 @@ async function main() {
 
     if (!options.input) {
         console.error(`${colors.red}Error: No input .fig file specified.${colors.reset}`);
-        console.log(`Run ${colors.magenta}fig-to-html --help${colors.reset} for usage information.`);
+        console.log(`Run ${colors.magenta}fig2html --help${colors.reset} for usage information.`);
         process.exit(1);
     }
 

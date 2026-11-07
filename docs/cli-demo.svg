@@ -46,7 +46,7 @@
   <circle cx="84" cy="35" r="6" fill="#10b981"/>
 
   <!-- Window Title -->
-  <text x="480" y="39" class="win-title">html-to-fig ⇄ fig-to-html — bi-directional engine</text>
+  <text x="480" y="39" class="win-title">fig2html — Figma ⇄ HTML bi-directional engine</text>
 
   <!-- Vertical Divider Between Two CLI Flows -->
   <line x1="479" y1="66" x2="479" y2="550" class="divider"/>
@@ -149,7 +149,7 @@
   <!-- Prompt & Command -->
   <text x="504" y="85">
     <tspan class="prompt">$ </tspan>
-    <tspan class="cmd">fig-to-html showcase.fig -s --fluid --webp</tspan>
+    <tspan class="cmd">fig2html showcase.fig -s --fluid --webp</tspan>
   </text>
 
   <!-- Banner Box -->
