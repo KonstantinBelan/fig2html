@@ -14,10 +14,10 @@
     "homepage": "https://github.com/KonstantinBelan/fig2html#readme",
     "main": "index.js",
     "bin": {
-        "fig2html": "./cli-reverse.js",
-        "fig-to-html": "./cli-reverse.js",
-        "html-to-fig": "./cli.js",
-        "html2fig": "./cli.js"
+        "fig2html": "cli-reverse.js",
+        "fig-to-html": "cli-reverse.js",
+        "html-to-fig": "cli.js",
+        "html2fig": "cli.js"
     },
     "files": [
         "cli.js",
