@@ -75,6 +75,8 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--relative, --rem${colors.reset}         Shortcut for --layout relative (rem, em, vw/vh instead of px)
   ${colors.cyan}--grid${colors.reset}                    Shortcut for --layout grid (CSS Grid layout)
   ${colors.cyan}--tokens [path]${colors.reset}           Extract Figma Variables into design tokens JSON (default: tokens.json)
+  ${colors.cyan}--spacing-tokens${colors.reset}          Generate primitive :root spacing tokens (--space-*) for padding/margin/gap (default: on)
+  ${colors.cyan}--no-spacing-tokens${colors.reset}       Disable automatic :root spacing tokens extraction
   ${colors.cyan}--smart-layout${colors.reset}           Synthesize clean Flexbox & Grid without absolute positioning (default: enabled)
   ${colors.cyan}--no-smart-layout${colors.reset}        Disable Smart Layout Synthesis and fallback to absolute positioning
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
@@ -226,6 +228,10 @@ function parseArgs(args) {
             } else {
                 options.tokens = true;
             }
+        } else if (arg === '--spacing-tokens' || arg === '--spacing') {
+            options.spacingTokens = true;
+        } else if (arg === '--no-spacing-tokens' || arg === '--no-spacing') {
+            options.spacingTokens = false;
         } else if (arg === '--smart-layout' || arg === '--smart') {
             options.smartLayout = true;
         } else if (arg === '--no-smart-layout' || arg === '--no-smart') {
@@ -308,6 +314,7 @@ async function runConversion(options) {
             mobileFirst: options.mobileFirst,
             extractTokens: options.extractTokens,
             tokens: options.tokens,
+            spacingTokens: options.spacingTokens,
             onProgress: (pct, msg) => bar && bar.update(pct, msg)
         });
     } finally {

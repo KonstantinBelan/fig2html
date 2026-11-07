@@ -51,6 +51,57 @@ function styleSignature(styles) {
 }
 
 /**
+ * Standard Primitive Spacing Scale (4px / 8px grid)
+ */
+const SPACING_SCALE = {
+    2: '--space-0-5',
+    4: '--space-1',
+    6: '--space-1-5',
+    8: '--space-2',
+    10: '--space-2-5',
+    12: '--space-3',
+    14: '--space-3-5',
+    16: '--space-4',
+    20: '--space-5',
+    24: '--space-6',
+    28: '--space-7',
+    32: '--space-8',
+    36: '--space-9',
+    40: '--space-10',
+    48: '--space-12',
+    56: '--space-14',
+    64: '--space-16',
+    72: '--space-18',
+    80: '--space-20',
+    96: '--space-24',
+    112: '--space-28',
+    128: '--space-32'
+};
+
+/**
+ * Derives canonical CSS custom property name for a spacing value
+ * @param {number} num
+ * @returns {string}
+ */
+function getSpacingVarName(num) {
+    if (SPACING_SCALE[num]) return SPACING_SCALE[num];
+    if (num % 4 === 0) return `--space-${num / 4}`;
+    if (num % 2 === 0) return `--space-${(num / 4).toString().replace('.', '-')}`;
+    return `--space-${num}px`;
+}
+
+/**
+ * Checks if class name is an anonymous/auto-generated identifier
+ * @param {string} cls
+ * @returns {boolean}
+ */
+function isAnonymousClassName(cls) {
+    if (!cls || typeof cls !== 'string') return true;
+    return /^(frame|rectangle|group|vector|ellipse|component|instance|el|text)(-\d+)+$/i.test(cls) ||
+           /^(frame|rectangle|group|vector|ellipse|component|instance|el|text)-\d+$/i.test(cls);
+}
+
+/**
  * Manages CSS class naming, style deduplication, and :root variable extraction
  */
 class StylesheetManager {
@@ -69,16 +120,21 @@ class StylesheetManager {
         this.rootVariables = new Map(); // value -> varName
 
         // Typed variable maps to prevent cross-property pollution
-        this.colorVariables = new Map();  // color -> varName
-        this.fontVariables = new Map();   // font -> varName
-        this.radiusVariables = new Map(); // radius -> varName
-        this.dimVariables = new Map();    // dim -> varName
+        this.colorVariables = new Map();   // color -> varName
+        this.fontVariables = new Map();    // font -> varName
+        this.radiusVariables = new Map();  // radius -> varName
+        this.dimVariables = new Map();     // dim -> varName
+        this.spacingVariables = new Map(); // '16px' -> '--space-4'
 
         // Frequencies for :root extraction
         this.colorCounts = {};
         this.fontCounts = {};
         this.radiusCounts = {};
         this.dimCounts = {};
+        this.spacingCounts = {};
+
+        // Global style deduplication registry: sig -> { className, baseName, styles, count }
+        this.globalSignatureMap = new Map();
 
         // Native Figma Variables & Design Tokens
         this.nativeVariables = new Map(); // varName -> { name, rawName, type, value, modes }
@@ -219,6 +275,14 @@ class StylesheetManager {
             }
         }
 
+        // Export derived spacing variables
+        for (const [pxVal, varName] of this.spacingVariables.entries()) {
+            const shortKey = varName.replace(/^--/, '');
+            if (!tokens.spacing[shortKey]) {
+                tokens.spacing[shortKey] = { value: pxVal };
+            }
+        }
+
         return tokens;
     }
 
@@ -311,6 +375,16 @@ class StylesheetManager {
                     this.dimCounts[val] = (this.dimCounts[val] || 0) + 1;
                 }
             }
+
+            const isSpacingProp = /^(padding|margin|gap|row-gap|column-gap)(-(top|right|bottom|left))?$/.test(prop);
+            if (isSpacingProp && typeof val === 'string') {
+                const pxMatches = val.match(/\b\d+px\b/g);
+                if (pxMatches) {
+                    for (const px of pxMatches) {
+                        this.spacingCounts[px] = (this.spacingCounts[px] || 0) + 1;
+                    }
+                }
+            }
         }
     }
 
@@ -366,6 +440,39 @@ class StylesheetManager {
 
         const baseName = isRoot ? (options.rootClassName || 'main-container') : toBaseClassName(node.name, node.type);
         const sig = styleSignature(styles);
+        const hasStyles = Object.keys(styles).length > 0;
+
+        // Global Style Deduplication (DRY CSS)
+        // Check if an identical style signature has already been registered project-wide
+        if (hasStyles && !isRoot && this.globalSignatureMap.has(sig)) {
+            const globalEntry = this.globalSignatureMap.get(sig);
+            const isCurrentAnon = isAnonymousClassName(baseName);
+            const isExistingAnon = isAnonymousClassName(globalEntry.baseName);
+
+            // If current element is anonymous (e.g. frame-116047454), or same baseName, reuse existing class directly!
+            if (isCurrentAnon || globalEntry.className === baseName || isExistingAnon) {
+                if (isExistingAnon && !isCurrentAnon) {
+                    // Promote to cleaner semantic name
+                    const oldClass = globalEntry.className;
+                    const newClass = baseName;
+                    if (!this.uniqueRules.has(newClass)) {
+                        this.uniqueRules.delete(oldClass);
+                        this.uniqueRules.set(newClass, styles);
+                        globalEntry.className = newClass;
+                        globalEntry.baseName = baseName;
+                    }
+                }
+
+                globalEntry.count++;
+                const key = this.getNodeKey(node);
+                this.classesByNode.set(node, globalEntry.className);
+                this.stylesByNode.set(node, styles);
+                this.classesByNodeGuid.set(key, globalEntry.className);
+                this.stylesByNodeGuid.set(key, styles);
+                this._countRecurringStyles(styles);
+                return globalEntry.className;
+            }
+        }
 
         if (!this.classRegistry.has(baseName)) {
             this.classRegistry.set(baseName, []);
@@ -408,6 +515,14 @@ class StylesheetManager {
             matched = { signature: sig, className, styles, count: 1, pageSlug };
             variants.push(matched);
             this.uniqueRules.set(className, styles);
+            if (hasStyles && !this.globalSignatureMap.has(sig)) {
+                this.globalSignatureMap.set(sig, {
+                    className,
+                    baseName,
+                    styles,
+                    count: 1
+                });
+            }
         } else {
             matched.count++;
         }
@@ -511,7 +626,20 @@ class StylesheetManager {
             }
         }
 
-        // 5. Re-inject Native Figma Variables and Design Tokens
+        // 5. Spacing Tokens (padding, margin, gap if used >= 2 times)
+        this.spacingVariables.clear();
+        for (const [pxVal, count] of Object.entries(this.spacingCounts).sort((a, b) => parseInt(a[0], 10) - parseInt(b[0], 10))) {
+            if (count >= 2) {
+                const num = parseInt(pxVal, 10);
+                if (num > 0 && num <= 160) {
+                    const varName = getSpacingVarName(num);
+                    this.spacingVariables.set(pxVal, varName);
+                    this.rootVariables.set(pxVal, varName);
+                }
+            }
+        }
+
+        // 6. Re-inject Native Figma Variables and Design Tokens
         for (const [varName, info] of this.nativeVariables.entries()) {
             const isBaseWhiteOrBlack = info.value === '#ffffff' || info.value === '#000000';
             const hasMultiModeOverride = info.modes && Object.keys(info.modes).length > 1;
@@ -580,7 +708,13 @@ class StylesheetManager {
                 }
                 return s;
             }
-            // All other properties (gap, padding, margin, font-size, width < 500px, etc.): preserve original value
+            const isSpacingProp = /^(padding|margin|gap|row-gap|column-gap)(-(top|right|bottom|left))?$/.test(prop);
+            if (isSpacingProp && this.spacingVariables.size > 0) {
+                return value.replace(/\b\d+px\b/g, (match) => {
+                    return this.spacingVariables.has(match) ? `var(${this.spacingVariables.get(match)})` : match;
+                });
+            }
+            // All other properties (font-size, width < 500px, etc.): preserve original value
             return value;
         }
 
@@ -694,6 +828,11 @@ class StylesheetManager {
         lines.push('  a {');
         lines.push('    color: inherit;');
         lines.push('    text-decoration: inherit;');
+        lines.push('  }\n');
+
+        lines.push('  :focus-visible {');
+        lines.push('    outline: 2px solid currentColor;');
+        lines.push('    outline-offset: 2px;');
         lines.push('  }\n');
 
         // 3. Class rules

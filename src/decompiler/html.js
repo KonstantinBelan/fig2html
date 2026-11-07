@@ -166,27 +166,121 @@ function renderRichText(textData, defaultNode, stylesheetManager = null) {
 }
 
 /**
- * Determines appropriate HTML tag for a text node
+ * Checks if text is a standalone metric, price, percentage, or numeric counter
+ * @param {string} text
+ * @returns {boolean}
+ */
+function isPriceOrMetricText(text) {
+    if (!text || typeof text !== 'string') return false;
+    const clean = text.trim();
+    if (!clean) return false;
+    // e.g. "100+", "$99", "4 990 ₽", "99.9%", "01", "12/24", "FREE", "+15%"
+    return /^[$€₽£¥]?\s*[-+]?\d+([.,\s]\d+)?\s*([%$€₽£¥+]|\/mo|\/yr|\/мес|\/год|\/день)?$/i.test(clean) ||
+           /^\d{1,2}\s*[\/\-.]\s*\d{1,2}(\s*[\/\-.]\s*\d{2,4})?$/.test(clean);
+}
+
+/**
+ * Checks if a subtree contains readable text
  * @param {object} node
+ * @returns {boolean}
+ */
+function hasTextChild(node) {
+    if (!node) return false;
+    if (node.type === 'TEXT' && node.textData?.characters?.trim()) return true;
+    if (Array.isArray(node.children)) {
+        return node.children.some(c => hasTextChild(c));
+    }
+    return false;
+}
+
+/**
+ * Derives a clean accessibility label for an action button
+ * @param {object} node
+ * @returns {string}
+ */
+function getButtonAriaLabel(node) {
+    if (!node) return 'Действие';
+    const name = (node.name || '').trim();
+    const clean = name.replace(/[-_]*(btn|button)[-_]*/gi, ' ').trim();
+    if (!clean || /^(btn|button|frame|group|vector|rectangle|el)[-_ ]?\d*$/i.test(name)) {
+        return 'Действие';
+    }
+    return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+/**
+ * Computes accessible alt text and aria attributes for images
+ * @param {object} node
+ * @param {string} defaultName
+ * @returns {string}
+ */
+function getAccessibleImageAttributes(node, defaultName) {
+    if (node.altText !== undefined) {
+        return ` alt="${escapeHtml(node.altText)}"`;
+    }
+    const clean = (defaultName || '').trim();
+    const isDecorative = !clean ||
+        /^(image|frame|group|rectangle|shape|vector|slice|mask|underlay|bg|background|decor|decoration|pattern|texture|blob|ellipse)[-_ ]?\d*$/i.test(clean) ||
+        /^(img[-_ ]?\d+|pic[-_ ]?\d+)$/i.test(clean);
+    if (isDecorative) {
+        return ' alt="" aria-hidden="true"';
+    }
+    return ` alt="${escapeHtml(clean)}"`;
+}
+
+/**
+ * Determines appropriate HTML tag for a text node with heading hierarchy scoring
+ * @param {object} node
+ * @param {object} [context={}]
  * @returns {string} Tag name (h1..h6, p, span)
  */
-function determineTextTag(node) {
+function determineTextTag(node, context = {}) {
     const name = (node.name || '').toLowerCase().trim();
 
     if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'label', 'blockquote', 'code'].includes(name)) {
+        if (name === 'h1') context.pageH1Assigned = true;
         return name;
+    }
+
+    const text = node.textData?.characters || '';
+    const cleanText = text.trim();
+
+    // Standalone numbers, prices, or metrics should never be h1/h2 headings
+    if (isPriceOrMetricText(cleanText)) {
+        return 'span';
+    }
+
+    // Name-based hints
+    if (name.includes('h1') || name.includes('hero-title') || name.includes('main-title')) {
+        context.pageH1Assigned = true;
+        return 'h1';
+    }
+    if (name.includes('h2') || name.includes('section-title') || name.includes('section-heading')) {
+        return 'h2';
+    }
+    if (name.includes('h3') || name.includes('card-title') || name.includes('item-title')) {
+        return 'h3';
+    }
+    if (name.includes('h4') || name.includes('widget-title') || name.includes('subtitle')) {
+        return 'h4';
     }
 
     const fs = node.fontSize || 16;
     const { fontWeight } = parseFontWeightAndStyle(node.fontName?.style);
 
-    if (fs >= 32 && fontWeight >= 600) return 'h1';
-    if (fs >= 24 && fontWeight >= 600) return 'h2';
-    if (fs >= 18 && fontWeight >= 600) return 'h3';
+    // Font size & weight hierarchy: exactly ONE h1 per document, subsequent large titles receive h2
+    if (fs >= 32 && fontWeight >= 600) {
+        if (!context.pageH1Assigned) {
+            context.pageH1Assigned = true;
+            return 'h1';
+        }
+        return 'h2';
+    }
+    if (fs >= 24 && fontWeight >= 500) return 'h2';
+    if (fs >= 18 && fontWeight >= 500) return 'h3';
     if (fs >= 15 && fontWeight >= 600) return 'h4';
 
-    const text = node.textData?.characters || '';
-    if (text.includes('\n') || text.length > 80) {
+    if (cleanText.includes('\n') || cleanText.length > 80) {
         return 'p';
     }
 
@@ -196,17 +290,83 @@ function determineTextTag(node) {
 /**
  * Determines appropriate HTML tag for a frame or container node
  * @param {object} node
- * @returns {string} Tag name (div, header, nav, section, etc.)
+ * @param {object} [parentNode=null]
+ * @param {object} [options={}]
+ * @returns {string} Tag name (div, header, nav, section, article, main, form, button, a)
  */
-function determineContainerTag(node) {
+function determineContainerTag(node, parentNode = null, options = {}) {
     const name = (node.name || '').toLowerCase().trim();
 
+    // 1. Exact semantic tag names
     if (['header', 'nav', 'footer', 'section', 'article', 'aside', 'main', 'form'].includes(name)) {
         return name;
     }
 
-    if (name.startsWith('btn') || name === 'button') {
+    // 2. Button checks
+    if (/^(btn|button)([-_ ]|$)/i.test(name) || /[-_ ](btn|button)$/i.test(name)) {
         return 'button';
+    }
+
+    // 3. Link checks
+    if (/^(link|nav[-_ ]?link|url|btn[-_ ]?link)([-_ ]|$)/i.test(name) || /[-_ ]link$/i.test(name)) {
+        return 'a';
+    }
+
+    // 4. Header patterns
+    if (/^(header|top[-_ ]?bar|navbar|nav[-_ ]?bar|app[-_ ]?bar)($|[-_ ])/i.test(name)) {
+        return 'header';
+    }
+
+    // 5. Footer patterns
+    if (/^(footer|bottom[-_ ]?bar)($|[-_ ])/i.test(name)) {
+        return 'footer';
+    }
+
+    // 6. Navigation patterns
+    if (/^(nav|navigation|nav[-_ ]?links?|nav[-_ ]?menu|menu[-_ ]?links?)($|[-_ ])/i.test(name)) {
+        return 'nav';
+    }
+
+    // 7. Form patterns
+    if (/^(form|contact[-_ ]?form|subscribe[-_ ]?form|feedback[-_ ]?form|search[-_ ]?form|login[-_ ]?form|signup[-_ ]?form)$/i.test(name)) {
+        return 'form';
+    }
+
+    // 8. Main content patterns
+    if (/^(main|main[-_ ]?content|content[-_ ]?wrapper|page[-_ ]?body)$/i.test(name)) {
+        return 'main';
+    }
+
+    // 9. Named section patterns
+    const isSectionName = name.includes('section') ||
+        /^(hero|features?|pricing|testimonials?|reviews?|faq|cta|call[-_ ]?to[-_ ]?action|about|about[-_ ]?us|contact|contact[-_ ]?us|services?|portfolio|gallery|team|partners?|clients?|stats|how[-_ ]?it[-_ ]?works|benefits?|advantages?|catalog|products?)([-_ ]|$)/i.test(name);
+    if (isSectionName && Array.isArray(node.children) && node.children.length > 0) {
+        return 'section';
+    }
+
+    // 10. Structural/positional heuristics for direct root children
+    const isDirectChildOfRoot = Boolean(parentNode && (parentNode.isRoot || !parentNode.parentNode));
+    if (isDirectChildOfRoot && Array.isArray(node.children) && node.children.length > 0) {
+        const y = node.y !== undefined ? node.y : (node.transform?.m12 ?? 0);
+        const height = node.size?.y || 0;
+
+        // Topmost bar < 180px height
+        if (y <= 30 && height > 0 && height <= 180 && !options.hasRootHeader) {
+            options.hasRootHeader = true;
+            return 'header';
+        }
+
+        // Bottom bar
+        const pageHeight = parentNode.size?.y || 0;
+        if (pageHeight > 0 && (y + height >= pageHeight - 60) && height >= 60 && !options.hasRootFooter) {
+            options.hasRootFooter = true;
+            return 'footer';
+        }
+
+        // Other major top-level blocks
+        if (height >= 120) {
+            return 'section';
+        }
     }
 
     return 'div';
@@ -307,8 +467,8 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
                 }
             }
 
-            const altText = node.altText || nodeName;
-            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr} alt="${escapeHtml(altText)}"${classAttr}${styleAttr}>\n`;
+            const imgAttrs = getAccessibleImageAttributes(node, nodeName);
+            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr}${imgAttrs}${classAttr}${styleAttr}>\n`;
         }
     }
 
@@ -387,7 +547,7 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
             }
 
             if (pathElements.length > 0) {
-                return `${indent}<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" xmlns="http://www.w3.org/2000/svg"${classAttr}${styleAttr}>\n${pathElements.join('\n')}\n${indent}</svg>\n`;
+                return `${indent}<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"${classAttr}${styleAttr}>\n${pathElements.join('\n')}\n${indent}</svg>\n`;
             }
         }
     }
@@ -433,7 +593,7 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
             if (strokeLinecap) pathAttrs += ` stroke-linecap="${strokeLinecap}"`;
             if (strokeLinejoin) pathAttrs += ` stroke-linejoin="${strokeLinejoin}"`;
 
-            return `${indent}<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" xmlns="http://www.w3.org/2000/svg"${classAttr}${styleAttr}>\n${indent}  <path ${pathAttrs} />\n${indent}</svg>\n`;
+            return `${indent}<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"${classAttr}${styleAttr}>\n${indent}  <path ${pathAttrs} />\n${indent}</svg>\n`;
         }
     }
 
@@ -449,18 +609,29 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
             return `${indent}<${listTag}${classAttr}${styleAttr}>\n${liHtml}\n${indent}</${listTag}>\n`;
         }
 
-        const tag = determineTextTag(node);
+        const tag = determineTextTag(node, options.headingContext);
         const textContent = renderRichText(node.textData || { characters: node.name }, node, stylesheetManager);
 
         return `${indent}<${tag}${classAttr}${styleAttr}>${textContent}</${tag}>\n`;
     }
 
     // 6. GENERAL CONTAINER (FRAME / GROUP / COMPONENT / INSTANCE / ELLIPSE)
-    const tag = determineContainerTag(node);
+    const tag = determineContainerTag(node, parentNode, options);
+    let extraAttrs = '';
+    if (tag === 'button') {
+        extraAttrs += ' type="button"';
+        if (!hasTextChild(node)) {
+            extraAttrs += ` aria-label="${escapeHtml(getButtonAriaLabel(node))}"`;
+        }
+    } else if (tag === 'a') {
+        extraAttrs += ' href="#"';
+    } else if (tag === 'nav') {
+        extraAttrs += ' aria-label="Навигация"';
+    }
 
     // Self-closing if empty and not a container tag
     if ((!node.children || node.children.length === 0) && tag !== 'div' && tag !== 'button') {
-        return `${indent}<${tag}${classAttr}${styleAttr}></${tag}>\n`;
+        return `${indent}<${tag}${extraAttrs}${classAttr}${styleAttr}></${tag}>\n`;
     }
 
     let innerHtml = '';
@@ -471,10 +642,10 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
     }
 
     if (!innerHtml.trim()) {
-        return `${indent}<${tag}${classAttr}${styleAttr}></${tag}>\n`;
+        return `${indent}<${tag}${extraAttrs}${classAttr}${styleAttr}></${tag}>\n`;
     }
 
-    return `${indent}<${tag}${classAttr}${styleAttr}>\n${innerHtml}${indent}</${tag}>\n`;
+    return `${indent}<${tag}${extraAttrs}${classAttr}${styleAttr}>\n${innerHtml}${indent}</${tag}>\n`;
 }
 
 /**
@@ -591,13 +762,14 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
     let cssContent = options.cssContent || '';
     if (!cssContent) {
         if (options.inlineStyles) {
-            cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n    line-height: 1.5;\n  }\n  button, input, optgroup, select, textarea {\n    font-family: inherit;\n    font-size: 100%;\n    line-height: inherit;\n    color: inherit;\n    margin: 0;\n    padding: 0;\n    border: 0;\n    background: transparent;\n    vertical-align: baseline;\n  }\n  button, [type="button"], [type="reset"], [type="submit"] {\n    -webkit-appearance: button;\n    appearance: button;\n    cursor: pointer;\n    background: transparent;\n    border: none;\n    outline: none;\n  }\n  input, textarea {\n    outline: none;\n    background: transparent;\n    border: none;\n  }\n  h1, h2, h3, h4, h5, h6, p {\n    margin: 0;\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  ul, ol {\n    list-style: none;\n    margin: 0;\n    padding: 0;\n  }\n  img, svg {\n    max-width: 100%;\n    display: block;\n  }\n  a {\n    color: inherit;\n    text-decoration: inherit;\n  }`;
+            cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n    line-height: 1.5;\n  }\n  button, input, optgroup, select, textarea {\n    font-family: inherit;\n    font-size: 100%;\n    line-height: inherit;\n    color: inherit;\n    margin: 0;\n    padding: 0;\n    border: 0;\n    background: transparent;\n    vertical-align: baseline;\n  }\n  button, [type="button"], [type="reset"], [type="submit"] {\n    -webkit-appearance: button;\n    appearance: button;\n    cursor: pointer;\n    background: transparent;\n    border: none;\n    outline: none;\n  }\n  input, textarea {\n    outline: none;\n    background: transparent;\n    border: none;\n  }\n  h1, h2, h3, h4, h5, h6, p {\n    margin: 0;\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  ul, ol {\n    list-style: none;\n    margin: 0;\n    padding: 0;\n  }\n  img, svg {\n    max-width: 100%;\n    display: block;\n  }\n  a {\n    color: inherit;\n    text-decoration: inherit;\n  }\n  :focus-visible {\n    outline: 2px solid currentColor;\n    outline-offset: 2px;\n  }`;
         } else {
             cssContent = stylesheetManager.generateFullStylesheet(rootBg);
         }
     }
 
     // Pass 2: Render semantic HTML
+    options.headingContext = options.headingContext || { pageH1Assigned: false };
     let bodyContent = '';
     for (const root of rootNodes) {
         if (root.isStateGroup) continue;
