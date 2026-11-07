@@ -25,6 +25,7 @@
         "cli-reverse.js",
         "index.js",
         "src",
+        "templates",
         "LICENSE",
         "README.md"
     ],

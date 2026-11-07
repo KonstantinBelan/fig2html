@@ -2,7 +2,104 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const net = require('net');
 const { renderSvgToPng } = require('./svg');
+
+/**
+ * Checks if a target file path resides strictly inside a base directory to prevent Path Traversal
+ * @param {string} targetPath
+ * @param {string} baseDir
+ * @returns {boolean}
+ */
+function isPathInsideBaseDir(targetPath, baseDir) {
+    if (!targetPath || !baseDir) return false;
+    const resolvedBase = path.resolve(baseDir);
+    const resolvedTarget = path.isAbsolute(targetPath)
+        ? path.resolve(targetPath)
+        : path.resolve(resolvedBase, targetPath);
+    const rel = path.relative(resolvedBase, resolvedTarget);
+    return !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+/**
+ * Parses dotted-quad IPv4 string into 32-bit unsigned integer
+ * @param {string} ipStr
+ * @returns {number|null}
+ */
+function parseIpv4Int(ipStr) {
+    const parts = ipStr.split('.').map(p => Number(p));
+    if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return null;
+    return (((parts[0] << 24) >>> 0) + (parts[1] << 16) + (parts[2] << 8) + parts[3]) >>> 0;
+}
+
+/**
+ * Checks if a hostname or IP address resolves to private, loopback, or cloud metadata ranges (SSRF protection)
+ * @param {string} hostname
+ * @returns {boolean}
+ */
+function isPrivateOrRestrictedHost(hostname) {
+    if (!hostname || typeof hostname !== 'string') return true;
+    const clean = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
+
+    // 1. Localhost and local domain names
+    if (clean === 'localhost' || clean.endsWith('.localhost') || clean.endsWith('.local') || clean.endsWith('.internal')) {
+        return true;
+    }
+
+    // 2. Numeric/hex/octal integer IP representations (e.g. 2130706433 or 0x7f000001)
+    if (/^\d+$/.test(clean) || /^0x[0-9a-fA-F]+$/i.test(clean)) {
+        return true;
+    }
+
+    const ipFamily = net.isIP(clean);
+
+    // 3. IPv4 range checks
+    if (ipFamily === 4) {
+        const ipInt = parseIpv4Int(clean);
+        if (ipInt === null) return true;
+
+        // 0.0.0.0/8 (current network)
+        if ((ipInt >>> 24) === 0) return true;
+        // 127.0.0.0/8 (loopback)
+        if ((ipInt >>> 24) === 127) return true;
+        // 10.0.0.0/8 (private)
+        if ((ipInt >>> 24) === 10) return true;
+        // 172.16.0.0/12 (private: 172.16.0.0 - 172.31.255.255)
+        if ((ipInt >>> 20) === ((172 << 4) | 1)) return true;
+        // 192.168.0.0/16 (private)
+        if ((ipInt >>> 16) === ((192 << 8) | 168)) return true;
+        // 169.254.0.0/16 (link-local, AWS/GCP cloud metadata 169.254.169.254)
+        if ((ipInt >>> 16) === ((169 << 8) | 254)) return true;
+        // 100.64.0.0/10 (carrier-grade NAT)
+        if ((ipInt >>> 22) === ((100 << 4) | 1)) return true;
+        // 224.0.0.0/4 (multicast) & 240.0.0.0/4 (reserved)
+        if ((ipInt >>> 28) >= 14) return true;
+        // 255.255.255.255 (broadcast)
+        if (ipInt === 0xFFFFFFFF) return true;
+
+        return false;
+    }
+
+    // 4. IPv6 range checks
+    if (ipFamily === 6) {
+        // ::1 (loopback), :: (unspecified)
+        if (clean === '::1' || clean === '::' || clean === '0000:0000:0000:0000:0000:0000:0000:0001') return true;
+        // fe80::/10 (link-local)
+        if (/^fe[89ab]/i.test(clean)) return true;
+        // fc00::/7 (unique local address)
+        if (/^f[cd]/i.test(clean)) return true;
+        // IPv4-mapped IPv6 (::ffff:127.0.0.1)
+        if (clean.includes('::ffff:')) {
+            const mapped = clean.split('::ffff:')[1];
+            if (mapped && net.isIPv4(mapped)) {
+                return isPrivateOrRestrictedHost(mapped);
+            }
+        }
+        return false;
+    }
+
+    return false;
+}
 
 /**
  * Extracts width and height from common image formats (PNG, JPEG, GIF, WebP, SVG)
@@ -99,6 +196,8 @@ class ImageRegistry {
     constructor(options = {}) {
         this.baseDir = options.baseDir || process.cwd();
         this.allowRemote = options.allowRemote !== false;
+        this.allowExternalPaths = options.allowExternalPaths === true;
+        this.allowPrivateHosts = options.allowPrivateHosts === true;
         this.images = new Map(); // sha1Hex -> Buffer
         this.sourceCache = new Map(); // srcKey -> { sha1Hex, sha1Buffer, width, height }
     }
@@ -159,27 +258,36 @@ class ImageRegistry {
                 }
             }
         }
-        // 2. Remote URL (http / https)
+        // 2. Remote URL (http / https) with SSRF & private host protection
         else if (cleanSrc.startsWith('http://') || cleanSrc.startsWith('https://')) {
             if (this.allowRemote && typeof fetch === 'function') {
                 try {
-                    const res = await fetch(cleanSrc, { signal: AbortSignal.timeout(5000) });
-                    if (res.ok) {
-                        const arrayBuf = await res.arrayBuffer();
-                        buffer = Buffer.from(arrayBuf);
+                    const parsedUrl = new URL(cleanSrc);
+                    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+                        console.warn(`[WARN] Blocked unsupported URL protocol "${parsedUrl.protocol}" for image "${cleanSrc}".`);
+                    } else if (!this.allowPrivateHosts && isPrivateOrRestrictedHost(parsedUrl.hostname)) {
+                        console.warn(`[WARN] Blocked remote image "${cleanSrc}": resolved to private, local, or restricted host.`);
+                    } else {
+                        const res = await fetch(cleanSrc, { signal: AbortSignal.timeout(5000) });
+                        if (res.ok) {
+                            const arrayBuf = await res.arrayBuffer();
+                            buffer = Buffer.from(arrayBuf);
+                        }
                     }
                 } catch (e) {
                     console.warn(`[WARN] Failed to fetch remote image "${cleanSrc}": ${e.message}`);
                 }
             }
         }
-        // 3. Local file path
+        // 3. Local file path with Path Traversal protection
         else {
             const localPath = path.isAbsolute(cleanSrc)
                 ? cleanSrc
                 : path.resolve(this.baseDir, cleanSrc);
 
-            if (fs.existsSync(localPath)) {
+            if (!this.allowExternalPaths && !isPathInsideBaseDir(localPath, this.baseDir)) {
+                console.warn(`[WARN] Blocked reading local image "${cleanSrc}": path traverses outside baseDir "${this.baseDir}".`);
+            } else if (fs.existsSync(localPath)) {
                 try {
                     buffer = fs.readFileSync(localPath);
                 } catch (e) {
@@ -223,5 +331,7 @@ class ImageRegistry {
 module.exports = {
     ImageRegistry,
     getImageDimensions,
-    createFallbackImage
+    createFallbackImage,
+    isPathInsideBaseDir,
+    isPrivateOrRestrictedHost
 };

@@ -136,10 +136,16 @@ async function generateFigFile(options = {}) {
         baseDir: baseDir,
         allowRemoteImages: options.allowRemoteImages !== false,
         imageRegistry: imageRegistry,
+        blobOffset: templateTree.blobs ? templateTree.blobs.length : 0,
         verbose: options.verbose
     });
 
     const allNodeChanges = [...templateTree.nodeChanges, ...conversion.nodeChanges];
+
+    const allBlobs = [...(templateTree.blobs || []), ...(conversion.blobs || [])].map(b => {
+        if (b && b.bytes) return b;
+        return { bytes: b };
+    });
 
     // 5. Build NODE_CHANGES message
     const messageToEncode = {
@@ -147,7 +153,7 @@ async function generateFigFile(options = {}) {
         sessionID: 0,
         ackID: 0,
         nodeChanges: allNodeChanges,
-        blobs: templateTree.blobs || []
+        blobs: allBlobs
     };
 
     // 6. Encode message with compiled schema

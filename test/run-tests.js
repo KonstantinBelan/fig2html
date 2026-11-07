@@ -4360,6 +4360,92 @@ async function runAllTests() {
         assert.strictEqual(determineContainerTag({ name: 'Submit Button' }), 'button');
     });
 
+    console.log('\n\x1b[1m38. Security Guards & Native Vector Compilation Engine Tests\x1b[0m');
+    it('verifies Path Traversal protection in ImageRegistry', () => {
+        const { isPathInsideBaseDir } = require('../src/parsers/images');
+        const baseDir = '/Users/test/project';
+
+        assert.strictEqual(isPathInsideBaseDir('img/logo.png', baseDir), true);
+        assert.strictEqual(isPathInsideBaseDir('/Users/test/project/assets/photo.jpg', baseDir), true);
+        assert.strictEqual(isPathInsideBaseDir('../../etc/passwd', baseDir), false);
+        assert.strictEqual(isPathInsideBaseDir('/etc/passwd', baseDir), false);
+        assert.strictEqual(isPathInsideBaseDir('/Users/test/other-secret/.env', baseDir), false);
+    });
+
+    it('verifies SSRF and private/restricted host blocking', () => {
+        const { isPrivateOrRestrictedHost } = require('../src/parsers/images');
+
+        // Loopback and internal names
+        assert.strictEqual(isPrivateOrRestrictedHost('localhost'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('sub.localhost'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('service.local'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('api.internal'), true);
+
+        // IPv4 private & reserved
+        assert.strictEqual(isPrivateOrRestrictedHost('127.0.0.1'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('10.10.1.1'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('172.16.5.4'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('172.31.255.1'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('192.168.0.1'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('169.254.169.254'), true); // AWS metadata
+        assert.strictEqual(isPrivateOrRestrictedHost('0.0.0.0'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('255.255.255.255'), true);
+
+        // Integer and hex IP evasions
+        assert.strictEqual(isPrivateOrRestrictedHost('2130706433'), true); // 127.0.0.1 in decimal
+        assert.strictEqual(isPrivateOrRestrictedHost('0x7f000001'), true); // 127.0.0.1 in hex
+
+        // IPv6 loopback & link-local
+        assert.strictEqual(isPrivateOrRestrictedHost('::1'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('fe80::1'), true);
+        assert.strictEqual(isPrivateOrRestrictedHost('fc00::1'), true);
+
+        // Public domains & IPs
+        assert.strictEqual(isPrivateOrRestrictedHost('example.com'), false);
+        assert.strictEqual(isPrivateOrRestrictedHost('github.com'), false);
+        assert.strictEqual(isPrivateOrRestrictedHost('93.184.216.34'), false);
+    });
+
+    await itAsync('compiles SVG path and shapes to native Kiwi VECTOR nodes with binary blobs', async () => {
+        const { convertHtmlToNodes } = require('../src/converter');
+        const { parseCommandsBlob, parseVectorNetworkBlob } = require('../src/decompiler/vector');
+
+        const html = `
+        <div style="display: flex; gap: 10px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" id="custom-icon">
+            <path d="M12 2L2 22h20Z" fill="#ff0000" stroke="#00ff00" stroke-width="2"/>
+            <circle cx="12" cy="12" r="10" stroke="#0000ff" stroke-width="1.5"/>
+          </svg>
+        </div>
+        `;
+
+        const res = await convertHtmlToNodes(html, { sessionID: 0, localID: 1 });
+        assert(res.blobs && res.blobs.length >= 4, 'Should generate binary commandsBlob and vectorNetworkBlob for shapes');
+
+        const vectors = res.nodeChanges.filter(n => n.type === 'VECTOR');
+        assert.strictEqual(vectors.length, 2, 'Should create 2 native VECTOR nodes (path and circle)');
+
+        // First vector: path
+        const pathNode = vectors[0];
+        assert.strictEqual(pathNode.type, 'VECTOR');
+        assert(pathNode.fillGeometry && pathNode.fillGeometry.length === 1);
+        assert.strictEqual(pathNode.strokeWeight, 2);
+        assert(pathNode.vectorData && typeof pathNode.vectorData.vectorNetworkBlob === 'number');
+
+        // Verify commandsBlob decodes to valid path
+        const decodedCommands = parseCommandsBlob(res.blobs[pathNode.fillGeometry[0].commandsBlob]);
+        assert(decodedCommands.includes('M') && decodedCommands.includes('Z'));
+
+        // Verify vectorNetworkBlob decodes to valid topology
+        const decodedVN = parseVectorNetworkBlob(res.blobs[pathNode.vectorData.vectorNetworkBlob]);
+        assert(decodedVN.includes('M') && decodedVN.includes('L'));
+
+        // Second vector: circle
+        const circleNode = vectors[1];
+        assert.strictEqual(circleNode.type, 'VECTOR');
+        assert.strictEqual(circleNode.strokeWeight, 1.5);
+    });
+
     console.log(`\n\x1b[1mTest Results: ${passedTests}/${totalTests} passed\x1b[0m`);
     if (passedTests === totalTests) {
         console.log('\x1b[32m\x1b[1mAll tests passed successfully! 🚀\x1b[0m\n');
