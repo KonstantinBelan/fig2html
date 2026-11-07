@@ -37,16 +37,18 @@ jobs:
       - name: Check version against npm registry
         id: check-version
         run: |
+          PACKAGE_NAME=$(node -p "require('./package.json').name")
           CURRENT_VERSION=$(node -p "require('./package.json').version")
-          NPM_VERSION=$(npm view fig2html version 2>/dev/null || echo "0.0.0")
+          NPM_VERSION=$(npm view "$PACKAGE_NAME" version 2>/dev/null || echo "0.0.0")
+          echo "package_name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "npm_version=$NPM_VERSION" >> $GITHUB_OUTPUT
           if [ "$CURRENT_VERSION" = "$NPM_VERSION" ]; then
             echo "should_publish=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ Version $CURRENT_VERSION is already live on npm. Skipping publish."
+            echo "ℹ️ Version $CURRENT_VERSION of $PACKAGE_NAME is already live on npm. Skipping publish."
           else
             echo "should_publish=true" >> $GITHUB_OUTPUT
-            echo "🚀 New version $CURRENT_VERSION detected (npm has $NPM_VERSION). Publishing..."
+            echo "🚀 New version $CURRENT_VERSION detected for $PACKAGE_NAME (npm has $NPM_VERSION). Publishing..."
           fi
 
       - name: Publish to npm via Trusted Publisher (OIDC)
