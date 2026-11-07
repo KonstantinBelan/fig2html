@@ -1,0 +1,53 @@
+name: Publish to npm
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  test-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Check version against npm registry
+        id: check-version
+        run: |
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          NPM_VERSION=$(npm view fig2html version 2>/dev/null || echo "0.0.0")
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "npm_version=$NPM_VERSION" >> $GITHUB_OUTPUT
+          if [ "$CURRENT_VERSION" = "$NPM_VERSION" ]; then
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+            echo "ℹ️ Version $CURRENT_VERSION is already live on npm. Skipping publish."
+          else
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+            echo "🚀 New version $CURRENT_VERSION detected (npm has $NPM_VERSION). Publishing..."
+          fi
+
+      - name: Publish to npm with Provenance
+        if: steps.check-version.outputs.should_publish == 'true'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
