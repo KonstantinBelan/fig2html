@@ -193,17 +193,93 @@ function hasTextChild(node) {
     return false;
 }
 
+const A11Y_I18N = {
+    ru: {
+        navigation: 'Навигация',
+        action: 'Действие',
+        close: 'Закрыть',
+        menu: 'Меню',
+        search: 'Поиск'
+    },
+    en: {
+        navigation: 'Navigation',
+        action: 'Action',
+        close: 'Close',
+        menu: 'Menu',
+        search: 'Search'
+    }
+};
+
+/**
+ * Returns localized accessibility string
+ * @param {string} key
+ * @param {string} [lang='en']
+ * @returns {string}
+ */
+function getAccessibleLabel(key, lang = 'en') {
+    const cleanLang = (lang || 'en').toLowerCase().startsWith('ru') ? 'ru' : 'en';
+    const dict = A11Y_I18N[cleanLang] || A11Y_I18N.en;
+    return dict[key] || A11Y_I18N.en[key] || key;
+}
+
+/**
+ * Automatically detects primary document language from text content (en vs ru)
+ * @param {Array<object>|object} rootNodes
+ * @param {object} [options={}]
+ * @returns {string} ISO language code (e.g. 'en', 'ru')
+ */
+function detectDocumentLanguage(rootNodes, options = {}) {
+    if (options.lang && typeof options.lang === 'string') {
+        return options.lang.toLowerCase().trim();
+    }
+
+    let cyrillicCount = 0;
+    let latinCount = 0;
+
+    function walk(node) {
+        if (!node) return;
+        if (node.type === 'TEXT' && node.textData?.characters) {
+            const str = node.textData.characters;
+            const cyr = str.match(/[\u0400-\u04FF]/g);
+            if (cyr) cyrillicCount += cyr.length;
+            const lat = str.match(/[a-zA-Z]/g);
+            if (lat) latinCount += lat.length;
+        }
+        if (Array.isArray(node.children)) {
+            for (const child of node.children) walk(child);
+        }
+    }
+
+    if (Array.isArray(rootNodes)) {
+        for (const root of rootNodes) walk(root);
+    } else if (rootNodes) {
+        walk(rootNodes);
+    }
+
+    if (cyrillicCount > 0 && (cyrillicCount >= latinCount || cyrillicCount >= 15)) {
+        return 'ru';
+    }
+
+    return 'en';
+}
+
 /**
  * Derives a clean accessibility label for an action button
  * @param {object} node
+ * @param {string} [lang='en']
  * @returns {string}
  */
-function getButtonAriaLabel(node) {
-    if (!node) return 'Действие';
-    const name = (node.name || '').trim();
-    const clean = name.replace(/[-_]*(btn|button)[-_]*/gi, ' ').trim();
-    if (!clean || /^(btn|button|frame|group|vector|rectangle|el)[-_ ]?\d*$/i.test(name)) {
-        return 'Действие';
+function getButtonAriaLabel(node, lang = 'en') {
+    if (!node) return getAccessibleLabel('action', lang);
+    const name = (node.name || '').toLowerCase().trim();
+    if (name.includes('close') || name.includes('закрыт')) return getAccessibleLabel('close', lang);
+    if (name.includes('menu') || name.includes('меню') || name.includes('burger')) return getAccessibleLabel('menu', lang);
+    if (name.includes('search') || name.includes('поиск')) return getAccessibleLabel('search', lang);
+
+    const origName = (node.name || '').trim();
+    const clean = origName.replace(/[-_]*(btn|button)[-_]*/gi, ' ').trim();
+    if (!clean || /^(btn|button|frame|group|vector|rectangle|el)[-_ ]?\d*$/i.test(origName)) {
+        return getAccessibleLabel('action', lang);
     }
     return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
@@ -391,7 +467,11 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
 
     if (stylesheetManagerOrOptions && typeof stylesheetManagerOrOptions.getNodeClass === 'function') {
         stylesheetManager = stylesheetManagerOrOptions;
-        options = maybeOptions || {};
+        options = (maybeOptions && typeof maybeOptions === 'object') ? maybeOptions : {};
+        if (typeof maybeIndent === 'number') indentLevel = maybeIndent;
+    } else if (maybeOptions && typeof maybeOptions === 'object' && !Array.isArray(maybeOptions)) {
+        options = { ...(stylesheetManagerOrOptions || {}), ...maybeOptions };
+        stylesheetManager = options.stylesheetManager || null;
         if (typeof maybeIndent === 'number') indentLevel = maybeIndent;
     } else {
         options = stylesheetManagerOrOptions || {};
@@ -617,16 +697,17 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
 
     // 6. GENERAL CONTAINER (FRAME / GROUP / COMPONENT / INSTANCE / ELLIPSE)
     const tag = determineContainerTag(node, parentNode, options);
+    const docLang = options.lang || (node ? detectDocumentLanguage(node, options) : 'en');
     let extraAttrs = '';
     if (tag === 'button') {
         extraAttrs += ' type="button"';
         if (!hasTextChild(node)) {
-            extraAttrs += ` aria-label="${escapeHtml(getButtonAriaLabel(node))}"`;
+            extraAttrs += ` aria-label="${escapeHtml(getButtonAriaLabel(node, docLang))}"`;
         }
     } else if (tag === 'a') {
         extraAttrs += ' href="#"';
     } else if (tag === 'nav') {
-        extraAttrs += ' aria-label="Навигация"';
+        extraAttrs += ` aria-label="${escapeHtml(getAccessibleLabel('navigation', docLang))}"`;
     }
 
     // Self-closing if empty and not a container tag
@@ -769,6 +850,8 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
     }
 
     // Pass 2: Render semantic HTML
+    const docLang = options.lang || detectDocumentLanguage(rootNodes, options);
+    options.lang = docLang;
     options.headingContext = options.headingContext || { pageH1Assigned: false };
     let bodyContent = '';
     for (const root of rootNodes) {
@@ -785,7 +868,7 @@ function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
     const bodyClassAttr = bodyClass ? ` class="${escapeHtml(bodyClass)}"` : '';
 
     const html = `<!DOCTYPE html>
-<html lang="ru">
+<html lang="${escapeHtml(docLang)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -819,5 +902,6 @@ module.exports = {
     renderNodeToHtml,
     collectFontFamilies,
     generateGoogleFontsUrl,
+    detectDocumentLanguage,
     generateFullHtmlDocument
 };

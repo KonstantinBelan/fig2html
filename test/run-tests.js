@@ -4297,9 +4297,37 @@ async function runAllTests() {
                 { name: 'link-home', type: 'FRAME', size: { x: 60, y: 20 } }
             ]
         };
-        const navHtml = renderNodeToHtml(navMenu, null, new Map());
-        assert(navHtml.includes('<nav aria-label="Навигация"'), 'Navigation container must render <nav aria-label="...">');
-        assert(navHtml.includes('<a href="#"'), 'Navigation item named link must render <a href="#">');
+        const navHtmlRu = renderNodeToHtml(navMenu, null, new Map(), {}, { lang: 'ru' });
+        assert(navHtmlRu.includes('<nav aria-label="Навигация"'), 'Russian nav container must render <nav aria-label="Навигация">');
+        assert(navHtmlRu.includes('<a href="#"'), 'Navigation item named link must render <a href="#">');
+
+        const navHtmlEn = renderNodeToHtml(navMenu, null, new Map(), {}, { lang: 'en' });
+        assert(navHtmlEn.includes('<nav aria-label="Navigation"'), 'English nav container must render <nav aria-label="Navigation">');
+
+        // 2.1 Language detection & HTML tag
+        const { detectDocumentLanguage, generateFullHtmlDocument } = require('../src/decompiler/html');
+        const enPage = {
+            name: 'English Landing',
+            type: 'FRAME',
+            size: { x: 1440, y: 900 },
+            children: [
+                { name: 'Title', type: 'TEXT', textData: { characters: 'Welcome to our international platform' } }
+            ]
+        };
+        const enHtml = generateFullHtmlDocument([enPage], new Map());
+        assert(enHtml.includes('<html lang="en">'), 'English design should generate <html lang="en">');
+        assert(enHtml.includes('<!DOCTYPE html>'));
+
+        const ruPage = {
+            name: 'Русская страница',
+            type: 'FRAME',
+            size: { x: 1440, y: 900 },
+            children: [
+                { name: 'Title', type: 'TEXT', textData: { characters: 'Добро пожаловать на наш сервис' } }
+            ]
+        };
+        const ruHtml = generateFullHtmlDocument([ruPage], new Map());
+        assert(ruHtml.includes('<html lang="ru">'), 'Russian design should generate <html lang="ru">');
 
         // 3. SVG vector accessible attributes
         const svgNode = {

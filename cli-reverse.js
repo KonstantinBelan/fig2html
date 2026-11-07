@@ -77,6 +77,7 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--tokens [path]${colors.reset}           Extract Figma Variables into design tokens JSON (default: tokens.json)
   ${colors.cyan}--spacing-tokens${colors.reset}          Generate primitive :root spacing tokens (--space-*) for padding/margin/gap (default: on)
   ${colors.cyan}--no-spacing-tokens${colors.reset}       Disable automatic :root spacing tokens extraction
+  ${colors.cyan}--lang <code>${colors.reset}             HTML document language code (e.g. en, ru; auto-detected by default)
   ${colors.cyan}--smart-layout${colors.reset}           Synthesize clean Flexbox & Grid without absolute positioning (default: enabled)
   ${colors.cyan}--no-smart-layout${colors.reset}        Disable Smart Layout Synthesis and fallback to absolute positioning
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
@@ -232,6 +233,8 @@ function parseArgs(args) {
             options.spacingTokens = true;
         } else if (arg === '--no-spacing-tokens' || arg === '--no-spacing') {
             options.spacingTokens = false;
+        } else if (arg === '--lang' && args[i + 1] && !args[i + 1].startsWith('-')) {
+            options.lang = args[++i];
         } else if (arg === '--smart-layout' || arg === '--smart') {
             options.smartLayout = true;
         } else if (arg === '--no-smart-layout' || arg === '--no-smart') {
@@ -315,6 +318,7 @@ async function runConversion(options) {
             extractTokens: options.extractTokens,
             tokens: options.tokens,
             spacingTokens: options.spacingTokens,
+            lang: options.lang,
             onProgress: (pct, msg) => bar && bar.update(pct, msg)
         });
     } finally {
