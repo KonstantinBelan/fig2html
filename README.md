@@ -1,8 +1,7 @@
 <div align="center">
 
-<img src="docs/logo.jpeg" alt="figmatik logo" width="180" style="border-radius: 20px; margin-bottom: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
+<img src="docs/logo.jpeg" alt="figmatik logo" width="420" style="border-radius: 20px; margin-bottom: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
 
-# 🎨 figmatik
 ### Figma to Clean Responsive HTML/CSS & Bi-Directional Engine 2.0
 
 [![npm version](https://img.shields.io/npm/v/figmatik.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/figmatik)
