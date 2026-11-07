@@ -22,8 +22,11 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure modern npm CLI for Trusted Publishing (OIDC)
+        run: npm install -g npm@latest
 
       - name: Install dependencies
         run: npm ci
@@ -46,8 +49,6 @@ jobs:
             echo "🚀 New version $CURRENT_VERSION detected (npm has $NPM_VERSION). Publishing..."
           fi
 
-      - name: Publish to npm with Provenance
+      - name: Publish to npm with Provenance via Trusted Publisher (OIDC)
         if: steps.check-version.outputs.should_publish == 'true'
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
