@@ -117,7 +117,7 @@ class StylesheetManager {
         this.classesByNodeGuid = new Map(); // guidKey -> className
         this.stylesByNodeGuid = new Map();  // guidKey -> styles
         this.uniqueRules = new Map();   // className -> styles
-        this.rootVariables = new Map(); // value -> varName
+        this.rootVariables = new Map(); // varName -> value
 
         // Typed variable maps to prevent cross-property pollution
         this.colorVariables = new Map();   // color -> varName
@@ -216,7 +216,7 @@ class StylesheetManager {
                     const modeName = (modeIdKey && modeMap.get(modeIdKey)) || `Mode ${i + 1}`;
 
                     if (i === 0) {
-                        this.rootVariables.set(val, varName);
+                        this.rootVariables.set(varName, val);
                         this.nativeVariables.set(varName, {
                             name: varName,
                             rawName: v.name,
@@ -589,7 +589,7 @@ class StylesheetManager {
                     varName = displayFontIndex === 1 ? '--font-display' : `--font-display-${displayFontIndex}`;
                 }
                 this.fontVariables.set(font, varName);
-                this.rootVariables.set(font, varName);
+                this.rootVariables.set(varName, font);
             }
         }
 
@@ -602,7 +602,7 @@ class StylesheetManager {
                 else if (col === '#000000') varName = '--color-black';
                 else varName = `--color-${colorIndex++}`;
                 this.colorVariables.set(col, varName);
-                this.rootVariables.set(col, varName);
+                this.rootVariables.set(varName, col);
             }
         }
 
@@ -612,7 +612,7 @@ class StylesheetManager {
                 const cleanRad = rad.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
                 let varName = rad === '50%' ? '--radius-circle' : rad === '9999px' ? '--radius-pill' : `--radius-${cleanRad}`;
                 this.radiusVariables.set(rad, varName);
-                this.rootVariables.set(rad, varName);
+                this.rootVariables.set(varName, rad);
             }
         }
 
@@ -622,7 +622,7 @@ class StylesheetManager {
                 const cleanDim = dim.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '');
                 let varName = dim === '1080px' ? '--slide-w' : dim === '1350px' ? '--slide-h' : `--dim-${cleanDim}`;
                 this.dimVariables.set(dim, varName);
-                this.rootVariables.set(dim, varName);
+                this.rootVariables.set(varName, dim);
             }
         }
 
@@ -634,7 +634,7 @@ class StylesheetManager {
                 if (num > 0 && num <= 160) {
                     const varName = getSpacingVarName(num);
                     this.spacingVariables.set(pxVal, varName);
-                    this.rootVariables.set(pxVal, varName);
+                    this.rootVariables.set(varName, pxVal);
                 }
             }
         }
@@ -646,7 +646,7 @@ class StylesheetManager {
             if (isBaseWhiteOrBlack && hasMultiModeOverride && this.colorVariables.has(info.value)) {
                 continue;
             }
-            this.rootVariables.set(info.value, varName);
+            this.rootVariables.set(varName, info.value);
             if (info.type === 'COLOR') {
                 this.colorVariables.set(info.value, varName);
             } else if (info.type === 'FLOAT') {
@@ -741,7 +741,7 @@ class StylesheetManager {
         // 1. :root block
         if (this.rootVariables.size > 0) {
             lines.push('  :root {');
-            for (const [val, varName] of this.rootVariables.entries()) {
+            for (const [varName, val] of this.rootVariables.entries()) {
                 lines.push(`    ${varName}: ${val};`);
             }
             lines.push('  }\n');

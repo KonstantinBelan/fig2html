@@ -4226,6 +4226,7 @@ async function runAllTests() {
                 type: 'FRAME',
                 stackMode: 'VERTICAL',
                 size: { x: 200, y: 100 },
+                cornerRadius: 16,
                 stackVerticalPadding: 12,
                 stackHorizontalPadding: 20,
                 stackSpacing: 16
@@ -4236,6 +4237,8 @@ async function runAllTests() {
         assert(css.includes('--space-3: 12px;'), ':root should declare --space-3: 12px');
         assert(css.includes('--space-4: 16px;'), ':root should declare --space-4: 16px');
         assert(css.includes('--space-5: 20px;'), ':root should declare --space-5: 20px');
+        assert(css.includes('--radius-16px: 16px;'), ':root should declare --radius-16px: 16px without being overwritten by --space-4');
+        assert(css.includes('border-radius: var(--radius-16px);'), 'border-radius should substitute var(--radius-16px)');
         assert(css.includes('gap: var(--space-4);'), 'itemSpacing: 16 should substitute var(--space-4)');
         assert(css.includes('padding: var(--space-3) var(--space-5);'), 'padding should substitute var(--space-3) var(--space-5)');
 
