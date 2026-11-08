@@ -1,5 +1,13 @@
 #!/usr/bin/env node
 
+/**
+ * figmatik - Figma to HTML CLI
+ * 
+ * @author Konstantin Belan <kosbelan@yandex.ru>
+ * @see https://t.me/konstantin_belan
+ * @see https://github.com/KonstantinBelan/figmatik
+ */
+
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,6 +36,8 @@ function printBanner() {
 ${colors.magenta}${colors.bold}┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
 │               v${pkg.version.padEnd(25)} │
+│       Author: Konstantin Belan           │
+│     Telegram: @konstantin_belan          │
 └──────────────────────────────────────────┘${colors.reset}`);
 }
 
@@ -103,6 +113,11 @@ ${colors.bold}EXAMPLES:${colors.reset}
 
   ${colors.gray}# Custom CSS file and assets directory:${colors.reset}
   $ fig2html test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir img
+
+${colors.bold}AUTHOR & COMMUNITY:${colors.reset}
+  Konstantin Belan <kosbelan@yandex.ru>
+  Telegram: https://t.me/konstantin_belan
+  GitHub:   https://github.com/KonstantinBelan/figmatik
 `);
 }
 

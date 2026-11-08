@@ -9,6 +9,7 @@
 [![Tests: 146 passed](https://img.shields.io/badge/tests-146%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/runner.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript: Ready](https://img.shields.io/badge/TypeScript-Ready-3178c6.svg?style=for-the-badge&logo=typescript&logoColor=white)](index.d.ts)
+[![Telegram](https://img.shields.io/badge/Telegram-@konstantin__belan-229ED9.svg?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/konstantin_belan)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/figmatik/pulls)
 
@@ -18,13 +19,18 @@
 </p>
 
 <p align="center">
+  <b>Автор проекта</b>: <a href="https://t.me/konstantin_belan">Константин Белан (Konstantin Belan)</a> • Telegram: <a href="https://t.me/konstantin_belan"><b>@konstantin_belan</b></a> • Email: <a href="mailto:kosbelan@yandex.ru">kosbelan@yandex.ru</a>
+</p>
+
+<p align="center">
   <a href="#-установка-и-быстрый-старт">🚀 Установка и старт</a> •
   <a href="#-демонстрация-cli">📺 Демонстрация</a> •
   <a href="#-особенности-и-возможности">⚡ Возможности</a> •
   <a href="docs/figma-design-guide.md">🎨 Руководство дизайнера</a> •
   <a href="#-cli-справка">💻 CLI Справка</a> •
   <a href="#-программный-api-nodejs">🛠 API</a> •
-  <a href="#-тестирование">🧪 Тесты</a>
+  <a href="#-тестирование">🧪 Тесты</a> •
+  <a href="#-автор-и-контакты--author">👤 Автор</a>
 </p>
 
 </div>
@@ -46,7 +52,7 @@ $ html-to-fig showcase.html showcase.fig
 
 ┌──────────────────────────────────────────┐
 │             HTML to Figma CLI            │
-│               v1.5.4                     │
+│               v1.5.5                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
 [██░░░░░░░░]  20% • Loading Kiwi schema...
@@ -76,7 +82,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 
 ┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
-│               v1.5.4                     │
+│               v1.5.5                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
 [██░░░░░░░░]  20% • Decoding Kiwi binary AST...
@@ -178,6 +184,9 @@ Open dist/index.html in any browser.
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
+- **⚡ Pure ES Modules & TypeScript Ready (v1.5.5)**:
+  - **100% Pure ESM**: полный переход всей кодовой базы на нативные стандарты ECMAScript Modules (`import`/`export`, `node:path`, `node:url`, `"type": "module"`, Node.js 18+).
+  - **Официальные TypeScript-декларации (`index.d.ts`)**: строгая типизация публичного API (`generateFigFile`, `convertFigToHtml`, опций компилятора и декомпилятора, Kiwi AST типов), `tsconfig.json` и автоматическая валидация типов в CI (`npm run test:types`).
 - **💎 Semantic Styles, Spacing Tokens & A11y Standards (v1.5.4)**:
   - **Глобальная дедупликация стилей (DRY CSS & Class Reuse)**: алгоритмический анализ сигнатур стилей элементов. При совпадении стилей на 100% (например, повторяющиеся карточки, плашки или кнопки `.frame-116047453`, `.frame-116047454-2`) движок объединяет их в единый переиспользуемый CSS-класс в HTML и CSS, избавляя проект от сотен строк мертвого дублирующегося кода.
   - **Шкала примитивных Spacing-токенов (`:root`)**: автоматическое извлечение повторяющихся значений отступов (`padding`, `margin`, `gap`, `row-gap`, `column-gap`) в шкалу примитивных токенов `:root { --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; ... }` и подстановка `var(--space-*)` в CSS-правила.
@@ -653,6 +662,10 @@ build();
   - Сохранение вырезов составных векторных иконок через `fill-rule="evenodd"` и `clip-rule="evenodd"`
   - Снятие паразитной изоляции стекового контекста для режимов наложения `mix-blend-mode`
   - Расширенная библиотека Google Fonts (`Jura`, `Bahianita`, `Manrope`, `Outfit`, `Unbounded` и др.)
+- **Pure ES Modules & TypeScript Ready (v1.5.5)**:
+  - 100% Pure ESM архитектура без сборщиков (No Build Step) и прямое выполнение в Node.js 18, 20, 22
+  - Официальный файл типов `index.d.ts` для NodeNext и TypeScript-проектов
+  - Автоматическая проверка типов в CI workflow через `npm run test:types`
 - **Semantic Styles, Spacing Tokens & A11y Standards (v1.5.4)**:
   - Алгоритмическая дедупликация идентичных стилей безымянных/повторяющихся слоев в единый общий класс
   - Извлечение примитивных токенов `--space-*` в `:root` и подстановка в `padding`, `margin`, `gap`
@@ -785,6 +798,18 @@ figmatik/
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
 ```
+
+---
+
+## 👤 Автор и контакты / Author
+
+**Константин Белан (Konstantin Belan)**
+
+- 💬 **Telegram**: [@konstantin_belan](https://t.me/konstantin_belan)
+- ✉️ **Email**: [kosbelan@yandex.ru](mailto:kosbelan@yandex.ru)
+- 🐙 **GitHub**: [@KonstantinBelan](https://github.com/KonstantinBelan)
+
+По вопросам сотрудничества, предложений по улучшению декомпилятора и компилятора Figma, а также коммерческой интеграции — пишите напрямую в Telegram [@konstantin_belan](https://t.me/konstantin_belan).
 
 ---
 

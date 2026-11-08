@@ -1,3 +1,13 @@
+/**
+ * figmatik - Official TypeScript Declarations
+ * Figma (.fig) to clean responsive HTML/CSS decompiler and bidirectional HTML-to-Figma compiler
+ * 
+ * @author Konstantin Belan <kosbelan@yandex.ru>
+ * @see https://t.me/konstantin_belan
+ * @see https://github.com/KonstantinBelan/figmatik
+ * @license MIT
+ */
+
 /// <reference types="node" />
 
 export type ImageFormat = 'original' | 'webp' | 'avif';
