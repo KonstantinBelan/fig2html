@@ -5,6 +5,7 @@ import { ImageRegistry } from '../parsers/images.js';
 import { extractWebFonts } from '../parsers/typography.js';
 import { collectVariables } from './variables-collector.js';
 import { resolveElementStyles } from './style-resolver.js';
+import { injectTailwindStylesToDom } from './tailwind-preprocessor.js';
 
 import { isImageElement, processImageElement } from './element-processors/image.js';
 import { isSvgElement, processSvgElement } from './element-processors/svg.js';
@@ -24,6 +25,10 @@ export async function convertHtmlToNodes(htmlString, parentCanvasGuid, options =
     const dom = new JSDOM(htmlString);
     const win = dom.window;
     const doc = win.document;
+
+    // 0. Automatically compile and inject Tailwind utility classes into JSDOM styles
+    injectTailwindStylesToDom(doc);
+
     const guidGen = new GuidGenerator(options.sessionId || 1, options.startLocalId || 100);
     const conversionBlobs = [];
     const blobOffset = options.blobOffset || 0;
