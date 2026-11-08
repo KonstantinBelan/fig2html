@@ -14,8 +14,12 @@
     "homepage": "https://github.com/KonstantinBelan/figmatik#readme",
     "type": "module",
     "main": "index.js",
+    "types": "./index.d.ts",
     "exports": {
-        ".": "./index.js",
+        ".": {
+            "types": "./index.d.ts",
+            "default": "./index.js"
+        },
         "./package.json": "./package.json"
     },
     "bin": {
@@ -29,6 +33,7 @@
         "cli.js",
         "cli-reverse.js",
         "index.js",
+        "index.d.ts",
         "src",
         "templates",
         "LICENSE",
@@ -70,5 +75,9 @@
     },
     "engines": {
         "node": ">=18.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^26.6.6",
+        "typescript": "^7.0.2"
     }
 }
