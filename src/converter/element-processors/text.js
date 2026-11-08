@@ -1,16 +1,16 @@
 // src/converter/element-processors/text.js
-const { parseColor } = require('../../parsers/color');
-const {
+import { parseColor } from '../../parsers/color.js';
+import {
     parseFontStyle,
     parseLineHeight,
     parseLetterSpacing,
     parseTextDecoration,
     parseTextTransform,
     estimateTextDimensions
-} = require('../../parsers/typography');
-const { isRichTextContainer, extractRichText } = require('../rich-text');
+} from '../../parsers/typography.js';
+import { isRichTextContainer, extractRichText } from '../rich-text.js';
 
-function isTextElement(element, styles) {
+export function isTextElement(element, styles) {
     const tagName = element.tagName.toLowerCase();
     const isTextTag = ['p', 'span', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'a', 'label', 'strong', 'b', 'em', 'i', 'small', 'code', 'pre', 'blockquote'].includes(tagName);
     const hasNoChildren = element.children.length === 0;
@@ -21,7 +21,7 @@ function isTextElement(element, styles) {
     return (isTextTag && hasNoChildren && textContent.length > 0) || (hasRichChildren && !styles.fills.length && styles.borderWidth === 0) || isChildlessTextDiv;
 }
 
-function processTextElement(element, parentGuid, orderPosition, parentContext, styles, context) {
+export function processTextElement(element, parentGuid, orderPosition, parentContext, styles, context) {
     const {
         win,
         guidGen,
@@ -276,8 +276,3 @@ function processTextElement(element, parentGuid, orderPosition, parentContext, s
         marginRight: 0
     };
 }
-
-module.exports = {
-    isTextElement,
-    processTextElement
-};

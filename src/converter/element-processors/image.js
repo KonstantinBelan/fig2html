@@ -1,11 +1,11 @@
 // src/converter/element-processors/image.js
 
-function isImageElement(element) {
+export function isImageElement(element) {
     const tagName = element.tagName.toLowerCase();
     return tagName === 'img' || tagName === 'picture';
 }
 
-async function processImageElement(element, parentGuid, orderPosition, parentContext, styles, context) {
+export async function processImageElement(element, parentGuid, orderPosition, parentContext, styles, context) {
     const {
         guidGen,
         imageRegistry,
@@ -116,8 +116,3 @@ async function processImageElement(element, parentGuid, orderPosition, parentCon
         marginRight: marginOffsets.right
     };
 }
-
-module.exports = {
-    isImageElement,
-    processImageElement
-};

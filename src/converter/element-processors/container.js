@@ -1,26 +1,26 @@
 // src/converter/element-processors/container.js
-const { FractionalIndexer } = require('../../utils/guid');
-const { parseColor } = require('../../parsers/color');
-const {
+import { FractionalIndexer } from '../../utils/guid.js';
+import { parseColor } from '../../parsers/color.js';
+import {
     parseFontStyle,
     parseLineHeight,
     parseLetterSpacing,
     estimateTextDimensions
-} = require('../../parsers/typography');
-const {
+} from '../../parsers/typography.js';
+import {
     cloneNode,
     parseGridColumns,
     extractVarName
-} = require('../style-resolver');
-const {
+} from '../style-resolver.js';
+import {
     computeContainerDimensions,
     setupAutoLayout,
     applyChildSizing,
     applyVariableConsumptions,
     recalculateContainerDimensions
-} = require('../layout-engine');
+} from '../layout-engine.js';
 
-async function processContainerElement(element, parentGuid, orderPosition, parentContext, styles, context) {
+export async function processContainerElement(element, parentGuid, orderPosition, parentContext, styles, context) {
     const {
         doc,
         guidGen,
@@ -503,7 +503,3 @@ async function processContainerElement(element, parentGuid, orderPosition, paren
         marginRight: marginOffsets.right
     };
 }
-
-module.exports = {
-    processContainerElement
-};

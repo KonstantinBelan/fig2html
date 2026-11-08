@@ -1,14 +1,14 @@
 // src/converter/element-processors/svg.js
-const { FractionalIndexer } = require('../../utils/guid');
-const { parseColor } = require('../../parsers/color');
-const { serializeSvgElement, getSvgDimensions, renderSvgToPng } = require('../../parsers/svg');
-const { encodeCommandsBlob, encodeVectorNetworkBlob, extractSvgShapeElements } = require('../../parsers/svg-path');
+import { FractionalIndexer } from '../../utils/guid.js';
+import { parseColor } from '../../parsers/color.js';
+import { serializeSvgElement, getSvgDimensions, renderSvgToPng } from '../../parsers/svg.js';
+import { encodeCommandsBlob, encodeVectorNetworkBlob, extractSvgShapeElements } from '../../parsers/svg-path.js';
 
-function isSvgElement(element) {
+export function isSvgElement(element) {
     return element.tagName.toLowerCase() === 'svg';
 }
 
-async function processSvgElement(element, parentGuid, orderPosition, parentContext, styles, context) {
+export async function processSvgElement(element, parentGuid, orderPosition, parentContext, styles, context) {
     const {
         win,
         guidGen,
@@ -248,8 +248,3 @@ async function processSvgElement(element, parentGuid, orderPosition, parentConte
         marginRight: marginOffsets.right
     };
 }
-
-module.exports = {
-    isSvgElement,
-    processSvgElement
-};

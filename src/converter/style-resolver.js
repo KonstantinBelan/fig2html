@@ -1,9 +1,9 @@
 // src/converter/style-resolver.js
-const { parseColor, clamp01 } = require('../parsers/color');
-const { parseGradient, splitTopLevelCommas } = require('../parsers/gradient');
-const { parseAllEffects } = require('../parsers/effects');
+import { parseColor, clamp01 } from '../parsers/color.js';
+import { parseGradient, splitTopLevelCommas } from '../parsers/gradient.js';
+import { parseAllEffects } from '../parsers/effects.js';
 
-function cloneNode(obj) {
+export function cloneNode(obj) {
     return JSON.parse(JSON.stringify(obj));
 }
 
@@ -12,7 +12,7 @@ function cloneNode(obj) {
  * @param {string} gridCols
  * @returns {string[]}
  */
-function parseGridColumns(gridCols) {
+export function parseGridColumns(gridCols) {
     if (!gridCols || gridCols === 'none') return ['1fr'];
     const clean = String(gridCols).trim();
 
@@ -27,7 +27,7 @@ function parseGridColumns(gridCols) {
     return tokens.length > 0 ? tokens : ['1fr'];
 }
 
-const BLEND_MODE_MAP = {
+export const BLEND_MODE_MAP = {
     'normal': 'NORMAL',
     'multiply': 'MULTIPLY',
     'screen': 'SCREEN',
@@ -49,7 +49,7 @@ const BLEND_MODE_MAP = {
 /**
  * Parses CSS box shorthands (padding, margin) with 1, 2, 3, or 4 tokens into 4 offsets
  */
-function parseBoxOffsets(shorthand, top, right, bottom, left) {
+export function parseBoxOffsets(shorthand, top, right, bottom, left) {
     let t = 0, r = 0, b = 0, l = 0;
     if (shorthand && shorthand !== '0' && shorthand !== 'none') {
         const parts = shorthand.trim().split(/\s+/).map(p => parseFloat(p) || 0);
@@ -79,7 +79,7 @@ function parseBoxOffsets(shorthand, top, right, bottom, left) {
 /**
  * Parses CSS border shorthand (e.g. "1px solid var(--border)") into width, style, and color
  */
-function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
+export function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
     let width = parseFloat(widthStr) || 0;
     let style = styleStr || '';
     let color = colorStr || '';
@@ -104,7 +104,7 @@ function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
     return { width, style: style || 'none', color };
 }
 
-function extractVarName(rawStr) {
+export function extractVarName(rawStr) {
     if (!rawStr || typeof rawStr !== 'string') return null;
     const match = rawStr.match(/var\(\s*(--[a-zA-Z0-9-_]+)/);
     return match ? match[1] : null;
@@ -113,7 +113,7 @@ function extractVarName(rawStr) {
 /**
  * Resolves full computed style dictionary and parsed Figma properties for an element
  */
-async function resolveElementStyles(element, win, context, parentContext = null) {
+export async function resolveElementStyles(element, win, context, parentContext = null) {
     const inline = element.style;
     const computed = win.getComputedStyle(element);
 
@@ -496,13 +496,3 @@ async function resolveElementStyles(element, win, context, parentContext = null)
         effects
     };
 }
-
-module.exports = {
-    cloneNode,
-    parseGridColumns,
-    BLEND_MODE_MAP,
-    parseBoxOffsets,
-    parseBorderProperty,
-    extractVarName,
-    resolveElementStyles
-};

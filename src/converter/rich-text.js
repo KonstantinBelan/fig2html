@@ -1,11 +1,11 @@
 // src/converter/rich-text.js
-const { parseColor } = require('../parsers/color');
-const { parseFontStyle, parseTextDecoration } = require('../parsers/typography');
+import { parseColor } from '../parsers/color.js';
+import { parseFontStyle, parseTextDecoration } from '../parsers/typography.js';
 
 /**
  * Checks if an element is a pure inline text container with mixed inline child nodes
  */
-function isRichTextContainer(element) {
+export function isRichTextContainer(element) {
     if (!element || !element.children || element.children.length === 0) return false;
     const text = element.textContent.trim();
     if (!text) return false;
@@ -43,7 +43,7 @@ function isRichTextContainer(element) {
 /**
  * Extracts rich text with character-level style overrides
  */
-function extractRichText(element, win, defaultStyles, resolveVar = null, varMap = null, colorToVarMap = null, createColorVar = null) {
+export function extractRichText(element, win, defaultStyles, resolveVar = null, varMap = null, colorToVarMap = null, createColorVar = null) {
     let fullText = '';
     const charStyles = [];
     const styleOverrideTable = [];
@@ -166,8 +166,3 @@ function extractRichText(element, win, defaultStyles, resolveVar = null, varMap 
         styleOverrideTable: styleOverrideTable
     };
 }
-
-module.exports = {
-    isRichTextContainer,
-    extractRichText
-};

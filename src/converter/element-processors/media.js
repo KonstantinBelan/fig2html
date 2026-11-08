@@ -1,11 +1,11 @@
 // src/converter/element-processors/media.js
-const { parseColor } = require('../../parsers/color');
+import { parseColor } from '../../parsers/color.js';
 
-function isMediaElement(element) {
+export function isMediaElement(element) {
     return element.tagName.toLowerCase() === 'hr';
 }
 
-function processMediaElement(element, parentGuid, orderPosition, parentContext, styles, context) {
+export function processMediaElement(element, parentGuid, orderPosition, parentContext, styles, context) {
     const { stats, nodeChanges } = context;
     const {
         currentGuid,
@@ -75,8 +75,3 @@ function processMediaElement(element, parentGuid, orderPosition, parentContext, 
         marginRight: marginOffsets.right
     };
 }
-
-module.exports = {
-    isMediaElement,
-    processMediaElement
-};

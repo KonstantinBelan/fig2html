@@ -3,7 +3,7 @@
 /**
  * Computes initial container dimensions before child elements are processed
  */
-function computeContainerDimensions(element, styles, parentContext) {
+export function computeContainerDimensions(element, styles, parentContext) {
     const {
         width,
         height,
@@ -70,7 +70,7 @@ function computeContainerDimensions(element, styles, parentContext) {
 /**
  * Configures Auto Layout v4 on the container frame
  */
-function setupAutoLayout(frameNode, element, styles, layoutParams, parentContext) {
+export function setupAutoLayout(frameNode, element, styles, layoutParams, parentContext) {
     const tagName = element.tagName.toLowerCase();
     const {
         isFlex,
@@ -201,7 +201,7 @@ function setupAutoLayout(frameNode, element, styles, layoutParams, parentContext
 /**
  * Sets child margins and alignment relative to its parent flex container
  */
-function applyChildSizing(frameNode, styles, parentContext, isColumn) {
+export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
     const {
         marginOffsets,
         isMarginAuto,
@@ -280,7 +280,7 @@ function applyChildSizing(frameNode, styles, parentContext, isColumn) {
 /**
  * Binds Figma variable consumption tokens to the container frame
  */
-function applyVariableConsumptions(frameNode, styles, context) {
+export function applyVariableConsumptions(frameNode, styles, context) {
     const {
         getVarForProp,
         hasIndependentCorners,
@@ -427,7 +427,7 @@ function applyVariableConsumptions(frameNode, styles, context) {
 /**
  * Recalculates container size based on resolved flow children and computes child positions
  */
-function recalculateContainerDimensions(frameNode, element, styles, childResults, currentContext) {
+export function recalculateContainerDimensions(frameNode, element, styles, childResults, currentContext) {
     const tagName = element.tagName.toLowerCase();
     const {
         gap,
@@ -577,11 +577,3 @@ function recalculateContainerDimensions(frameNode, element, styles, childResults
         }
     }
 }
-
-module.exports = {
-    computeContainerDimensions,
-    setupAutoLayout,
-    applyChildSizing,
-    applyVariableConsumptions,
-    recalculateContainerDimensions
-};

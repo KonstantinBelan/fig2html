@@ -1,12 +1,12 @@
 // src/converter/element-processors/interactive.js
-const { parseFontStyle, parseLineHeight, parseLetterSpacing } = require('../../parsers/typography');
+import { parseFontStyle, parseLineHeight, parseLetterSpacing } from '../../parsers/typography.js';
 
-function isInteractiveElement(element) {
+export function isInteractiveElement(element) {
     const tagName = element.tagName.toLowerCase();
     return tagName === 'input';
 }
 
-function processInteractiveElement(element, parentGuid, orderPosition, parentContext, styles, context) {
+export function processInteractiveElement(element, parentGuid, orderPosition, parentContext, styles, context) {
     const {
         guidGen,
         stats,
@@ -217,8 +217,3 @@ function processInteractiveElement(element, parentGuid, orderPosition, parentCon
         marginRight: marginOffsets.right
     };
 }
-
-module.exports = {
-    isInteractiveElement,
-    processInteractiveElement
-};

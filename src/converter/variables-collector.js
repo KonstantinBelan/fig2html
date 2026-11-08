@@ -1,7 +1,7 @@
 // src/converter/variables-collector.js
-const { parseColor } = require('../parsers/color');
+import { parseColor } from '../parsers/color.js';
 
-function colorToHexKey(col) {
+export function colorToHexKey(col) {
     if (!col || typeof col.r !== 'number') return '';
     const r = Math.round(col.r * 255).toString(16).padStart(2, '0');
     const g = Math.round(col.g * 255).toString(16).padStart(2, '0');
@@ -9,7 +9,7 @@ function colorToHexKey(col) {
     return `#${r}${g}${b}`.toLowerCase();
 }
 
-function createColorVar(varInfo) {
+export function createColorVar(varInfo) {
     if (!varInfo || varInfo.varType !== 'COLOR') return undefined;
     return {
         value: {
@@ -22,7 +22,7 @@ function createColorVar(varInfo) {
     };
 }
 
-function createFloatVar(varInfo) {
+export function createFloatVar(varInfo) {
     if (!varInfo || varInfo.varType !== 'FLOAT') return undefined;
     return {
         value: {
@@ -38,7 +38,7 @@ function createFloatVar(varInfo) {
 /**
  * Collects CSS custom properties from stylesheets and builds Figma VARIABLE / VARIABLE_SET nodes
  */
-function collectVariables(doc, guidGen, options = {}) {
+export function collectVariables(doc, guidGen, options = {}) {
     const rootVars = {};
     const ruleVars = [];
 
@@ -228,10 +228,3 @@ function collectVariables(doc, guidGen, options = {}) {
         colorToHexKey
     };
 }
-
-module.exports = {
-    collectVariables,
-    colorToHexKey,
-    createColorVar,
-    createFloatVar
-};

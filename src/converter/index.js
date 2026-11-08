@@ -1,17 +1,17 @@
 // src/converter/index.js
-const { JSDOM } = require('jsdom');
-const { GuidGenerator, FractionalIndexer } = require('../utils/guid');
-const { ImageRegistry } = require('../parsers/images');
-const { extractWebFonts } = require('../parsers/typography');
-const { collectVariables } = require('./variables-collector');
-const { resolveElementStyles } = require('./style-resolver');
+import { JSDOM } from 'jsdom';
+import { GuidGenerator, FractionalIndexer } from '../utils/guid.js';
+import { ImageRegistry } from '../parsers/images.js';
+import { extractWebFonts } from '../parsers/typography.js';
+import { collectVariables } from './variables-collector.js';
+import { resolveElementStyles } from './style-resolver.js';
 
-const { isImageElement, processImageElement } = require('./element-processors/image');
-const { isSvgElement, processSvgElement } = require('./element-processors/svg');
-const { isMediaElement, processMediaElement } = require('./element-processors/media');
-const { isTextElement, processTextElement } = require('./element-processors/text');
-const { isInteractiveElement, processInteractiveElement } = require('./element-processors/interactive');
-const { processContainerElement } = require('./element-processors/container');
+import { isImageElement, processImageElement } from './element-processors/image.js';
+import { isSvgElement, processSvgElement } from './element-processors/svg.js';
+import { isMediaElement, processMediaElement } from './element-processors/media.js';
+import { isTextElement, processTextElement } from './element-processors/text.js';
+import { isInteractiveElement, processInteractiveElement } from './element-processors/interactive.js';
+import { processContainerElement } from './element-processors/container.js';
 
 /**
  * Main controller converting an HTML string into native Figma AST nodeChanges
@@ -20,7 +20,7 @@ const { processContainerElement } = require('./element-processors/container');
  * @param {object} [options={}]
  * @returns {Promise<{ nodeChanges: Array<object>, imageRegistry: ImageRegistry, blobs: Array<Buffer>, stats: object }>}
  */
-async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
+export async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
     const dom = new JSDOM(htmlString);
     const win = dom.window;
     const doc = win.document;
@@ -172,7 +172,3 @@ async function convertHtmlToNodes(htmlString, parentCanvasGuid, options = {}) {
         stats
     };
 }
-
-module.exports = {
-    convertHtmlToNodes
-};
