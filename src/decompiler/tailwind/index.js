@@ -69,6 +69,15 @@ export {
     injectTailwindCdn
 } from './scaffold.js';
 
+export {
+    convertStyleStringToJsx,
+    transformHtmlToJsx,
+    generateReactComponent,
+    generateVueComponent,
+    generateSvelteComponent
+} from './frameworks.js';
+
+
 
 
 
