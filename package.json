@@ -42,7 +42,8 @@
     "scripts": {
         "start": "node cli-reverse.js",
         "build": "node index.js",
-        "test": "node test/runner.js"
+        "test": "node test/runner.js",
+        "test:types": "tsc --noEmit"
     },
     "keywords": [
         "figmatik",

@@ -8,6 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
 [![Tests: 146 passed](https://img.shields.io/badge/tests-146%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/runner.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![TypeScript: Ready](https://img.shields.io/badge/TypeScript-Ready-3178c6.svg?style=for-the-badge&logo=typescript&logoColor=white)](index.d.ts)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/figmatik/pulls)
 
@@ -699,12 +700,16 @@ node test/runner.js -d e2e
 node test/unit/color.test.js
 node test/integration/tokens.test.js
 node test/e2e/roundtrip.test.js
+
+# 5. Проверка статических типов TypeScript:
+npm run test:types
 ```
 
 Структура тестов декомпозирована по трём уровням:
 - **`test/unit/` (29 тестов)**: модульные тесты парсеров (`color`, `gradient`, `effects`, `typography`, `images`, `cli`, `units`, `svg-path`, `security`).
 - **`test/integration/` (107 тестов)**: компонентные и интеграционные тесты подсистем (`decompiler`, `tokens`, `layout-synthesis`, `multi-page`, `responsive-breakpoints`, `graphic-collapser`, `visual-accuracy`, `semantic-styles`).
 - **`test/e2e/` (10 тестов)**: сквозные тесты прямой и обратной трансляции (`html-to-fig`, `fig-to-html`, `roundtrip`).
+- Проверка статических типов TypeScript: `npm run test:types` (компиляция без ошибок в режиме `--noEmit`)
 
 ---
 
