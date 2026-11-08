@@ -27,6 +27,11 @@ import {
 import { groupFramesIntoResponsivePages } from './breakpoint-detector.js';
 import { alignBreakpointTrees } from './ast-aligner.js';
 import { synthesizeResponsiveStyles } from './responsive-css.js';
+import {
+    extractFigmaVariablesTheme,
+    generateTailwindScaffold,
+    generateHybridApplyStylesheet
+} from './tailwind/index.js';
 
 /**
  * Converts a Figma .fig binary file into a clean, standalone HTML/CSS document (or multi-page project)
@@ -75,6 +80,17 @@ export async function convertFigToHtml(figInput, options = {}) {
         : (options.inlineImages !== undefined ? options.inlineImages : (options.assetsDir ? false : true));
     const assetsRelDir = options.assetsDir || 'img';
     const cssRelPath = options.cssFile || 'css/style.css';
+
+    const isTailwind = Boolean(
+        options.tailwind ||
+        options.scaffold ||
+        options.framework ||
+        options.tailwindVersion ||
+        options.tailwindMode
+    );
+    if (isTailwind) {
+        options.tailwind = true;
+    }
 
     const outputPath = options.outputHtmlPath ? path.resolve(options.outputHtmlPath) : null;
     const baseDir = outputPath
@@ -284,7 +300,12 @@ export async function convertFigToHtml(figInput, options = {}) {
             }
         }
 
-        const unifiedCss = stylesheetManager.generateFullStylesheet(rootBg);
+        let unifiedCss;
+        if (options.tailwind && options.tailwindMode === 'hybrid') {
+            unifiedCss = generateHybridApplyStylesheet(stylesheetManager.uniqueRules, options);
+        } else {
+            unifiedCss = stylesheetManager.generateFullStylesheet(rootBg);
+        }
         const tokens = stylesheetManager.exportDesignTokens();
 
         let extractedCssPath = null;
@@ -376,6 +397,7 @@ export async function convertFigToHtml(figInput, options = {}) {
                 breakpoints: page.breakpoints,
                 outputPath: pageOutputPath,
                 html: pageHtml,
+                componentCode: typeof docResult === 'object' ? (docResult.componentCode || null) : null,
                 rootNodes: page.rootNodes
             });
         }
@@ -398,6 +420,9 @@ export async function convertFigToHtml(figInput, options = {}) {
             isResponsive: true,
             isMultiPage: isMulti,
             pages: generatedPages,
+            tailwind: isTailwind,
+            framework: options.framework || 'html',
+            componentCode: mainPage.componentCode || null,
             stats: {
                 ...stats,
                 pagesCount: generatedPages.length,
@@ -517,7 +542,12 @@ export async function convertFigToHtml(figInput, options = {}) {
             }
         }
 
-        const unifiedCss = stylesheetManager.generateFullStylesheet(rootBg);
+        let unifiedCss;
+        if (options.tailwind && options.tailwindMode === 'hybrid') {
+            unifiedCss = generateHybridApplyStylesheet(stylesheetManager.uniqueRules, options);
+        } else {
+            unifiedCss = stylesheetManager.generateFullStylesheet(rootBg);
+        }
         const tokens = stylesheetManager.exportDesignTokens();
 
         // Write shared external CSS file if requested
@@ -614,6 +644,7 @@ export async function convertFigToHtml(figInput, options = {}) {
                 strategy: page.strategy,
                 outputPath: pageOutputPath,
                 html: pageHtml,
+                componentCode: typeof docResult === 'object' ? (docResult.componentCode || null) : null,
                 rootNodes: page.rootNodes
             });
         }
@@ -635,6 +666,9 @@ export async function convertFigToHtml(figInput, options = {}) {
             durationMs,
             isMultiPage: true,
             pages: generatedPages,
+            tailwind: isTailwind,
+            framework: options.framework || 'html',
+            componentCode: mainPage.componentCode || null,
             stats: {
                 ...stats,
                 pagesCount: generatedPages.length,
@@ -722,10 +756,12 @@ export async function convertFigToHtml(figInput, options = {}) {
     const canvasHeight = Math.round(canvas.size?.y || rootNodes[0]?.size?.y || 900);
 
     const docResult = generateFullHtmlDocument(rootNodes, processedImages, {
+        ...options,
         inlineImages: isInlineImages,
         inlineStyles: options.inlineStyles === true,
         extractCss: isExtractCss,
         returnTokens: true,
+        returnCss: true,
         cssHref: cssRelPath,
         assetUrlPrefix: assetsPrefix,
         cssAssetUrlPrefix: cssPrefix,
@@ -743,6 +779,7 @@ export async function convertFigToHtml(figInput, options = {}) {
     const html = typeof docResult === 'string' ? docResult : docResult.html;
     const css = typeof docResult === 'string' ? null : (docResult.css || null);
     const tokens = typeof docResult === 'string' ? null : (docResult.tokens || null);
+    const componentCode = typeof docResult === 'object' ? (docResult.componentCode || null) : null;
 
     // 7. Write external CSS file if requested
     let extractedCssPath = null;
@@ -773,8 +810,58 @@ export async function convertFigToHtml(figInput, options = {}) {
         log(`Saved design tokens to ${extractedTokensPath}`);
     }
 
+    // 7.2 Scaffold production Tailwind project if requested
+    let scaffoldDir = null;
+    let scaffoldFileNames = null;
+    if (options.scaffold) {
+        reportProgress(97, 'Generating Tailwind project scaffolding...');
+        scaffoldDir = typeof options.scaffold === 'string'
+            ? path.resolve(options.scaffold)
+            : (outputPath ? (outputPath.endsWith('.html') ? path.dirname(outputPath) : outputPath) : path.resolve(process.cwd(), 'tailwind-project'));
+
+        const themeData = extractFigmaVariablesTheme(variables || [], variableSets || []);
+        const scaffoldFiles = generateTailwindScaffold({
+            projectName: options.projectName || path.basename(scaffoldDir),
+            version: options.tailwindVersion || 'v4',
+            themeData,
+            htmlContent: html
+        });
+
+        for (const [relPath, content] of Object.entries(scaffoldFiles)) {
+            const destPath = path.join(scaffoldDir, relPath);
+            const dir = path.dirname(destPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            fs.writeFileSync(destPath, content, 'utf8');
+        }
+        scaffoldFileNames = Object.keys(scaffoldFiles);
+        log(`Scaffolded Tailwind project with ${scaffoldFileNames.length} files in ${scaffoldDir}`);
+    }
+
+    // 7.3 Write Framework Component file if requested
+    let targetComponentPath = null;
+    if (options.framework && options.framework !== 'html' && componentCode && outputPath) {
+        const isCompExt = /\.(tsx|jsx|vue|svelte)$/i.test(outputPath);
+        if (isCompExt) {
+            targetComponentPath = outputPath;
+        } else {
+            const extMap = { react: '.tsx', vue: '.vue', svelte: '.svelte' };
+            const ext = extMap[options.framework] || '.tsx';
+            const baseDirOut = outputPath.endsWith('.html') ? path.dirname(outputPath) : outputPath;
+            const compName = options.componentName || (rootNodes[0]?.name ? rootNodes[0].name.replace(/[^a-zA-Z0-9_]/g, '') : 'FigmaComponent') || 'FigmaComponent';
+            targetComponentPath = path.join(baseDirOut, `${compName}${ext}`);
+        }
+        const cDir = path.dirname(targetComponentPath);
+        if (!fs.existsSync(cDir)) {
+            fs.mkdirSync(cDir, { recursive: true });
+        }
+        fs.writeFileSync(targetComponentPath, componentCode, 'utf8');
+        log(`Saved ${options.framework} component to ${targetComponentPath}`);
+    }
+
     // 8. Write output HTML file if requested
-    if (outputPath) {
+    if (outputPath && !/\.(tsx|jsx|vue|svelte)$/i.test(outputPath)) {
         reportProgress(98, 'Writing standalone HTML file...');
         let targetHtmlPath = outputPath;
         if (!outputPath.toLowerCase().endsWith('.html')) {
@@ -803,6 +890,12 @@ export async function convertFigToHtml(figInput, options = {}) {
         imagesCount: processedImages.size,
         durationMs,
         isMultiPage: false,
+        tailwind: isTailwind,
+        framework: options.framework || 'html',
+        componentCode,
+        componentPath: targetComponentPath,
+        scaffoldDir,
+        scaffoldFiles: scaffoldFileNames,
         stats: {
             ...stats,
             variablesCount: variables?.length || 0,
@@ -833,5 +926,7 @@ export {
     DEFAULT_PAGE_TAGS,
     DEFAULT_EXCLUDE_TAGS,
     DEFAULT_MIN_PAGE_WIDTH,
-    DEFAULT_MIN_PAGE_HEIGHT
+    DEFAULT_MIN_PAGE_HEIGHT,
+    extractFigmaVariablesTheme,
+    generateTailwindScaffold
 };

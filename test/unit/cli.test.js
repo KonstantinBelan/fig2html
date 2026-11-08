@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from '../../cli.js';
+import { parseArgs as parseReverseArgs } from '../../cli-reverse.js';
 import { ProgressBar } from '../../src/utils/progress-bar.js';
 
 export default async function run(arg1, arg2) {
@@ -47,6 +48,33 @@ export default async function run(arg1, arg2) {
         barNonTTY.update(25, 'Milestone 25%');
         assert.strictEqual(barNonTTY.current, 25);
         barNonTTY.stop();
+    });
+
+    it('parses reverse CLI Tailwind, framework and scaffold flags', () => {
+        const opt1 = parseReverseArgs(['design.fig', '--tailwind', '--tailwind-version', 'v3', '--tailwind-mode', 'hybrid', '--tailwind-tolerance', '2', '--tailwind-arbitrary', 'snap', '--tailwind-prefix', 'tw-']);
+        assert.strictEqual(opt1.tailwind, true);
+        assert.strictEqual(opt1.tailwindVersion, 'v3');
+        assert.strictEqual(opt1.tailwindMode, 'hybrid');
+        assert.strictEqual(opt1.tailwindTolerance, 2);
+        assert.strictEqual(opt1.tailwindArbitrary, 'snap');
+        assert.strictEqual(opt1.tailwindPrefix, 'tw-');
+
+        const optReact = parseReverseArgs(['design.fig', '--react']);
+        assert.strictEqual(optReact.tailwind, true);
+        assert.strictEqual(optReact.framework, 'react');
+        assert.strictEqual(optReact.output, 'design.tsx');
+
+        const optVue = parseReverseArgs(['design.fig', '--vue']);
+        assert.strictEqual(optVue.framework, 'vue');
+        assert.strictEqual(optVue.output, 'design.vue');
+
+        const optSvelte = parseReverseArgs(['design.fig', '--svelte']);
+        assert.strictEqual(optSvelte.framework, 'svelte');
+        assert.strictEqual(optSvelte.output, 'design.svelte');
+
+        const optScaffold = parseReverseArgs(['design.fig', '--scaffold', './my-app']);
+        assert.strictEqual(optScaffold.tailwind, true);
+        assert.strictEqual(optScaffold.scaffold, './my-app');
     });
 
     // 7. End-to-End Generation & Kiwi Verification

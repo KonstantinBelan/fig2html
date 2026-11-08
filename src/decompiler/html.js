@@ -11,6 +11,17 @@ import {
     getVectorStrokeAttributes,
     getVectorFillAttribute
 } from './vector.js';
+import {
+    resolveNodeTailwindClasses,
+    mapStylesToTailwind,
+    injectTailwindCdn,
+    generateHybridApplyStylesheet,
+    extractFigmaVariablesTheme,
+    transformHtmlToJsx,
+    generateReactComponent,
+    generateVueComponent,
+    generateSvelteComponent
+} from './tailwind/index.js';
 
 /**
  * Escapes characters for safe HTML attribute and text content rendering
@@ -47,9 +58,10 @@ export function isValidClassName(name) {
  * @param {object} textData
  * @param {object} defaultNode
  * @param {StylesheetManager} [stylesheetManager=null]
+ * @param {object} [options={}]
  * @returns {string} HTML string with styled <span> tags where necessary
  */
-export function renderRichText(textData, defaultNode, stylesheetManager = null) {
+export function renderRichText(textData, defaultNode, stylesheetManager = null, options = {}) {
     if (!textData || !textData.characters) {
         return '';
     }
@@ -152,6 +164,17 @@ export function renderRichText(textData, defaultNode, stylesheetManager = null) 
 
             if (override.textDecoration === 'UNDERLINE') spanStyles['text-decoration'] = 'underline';
             else if (override.textDecoration === 'STRIKETHROUGH') spanStyles['text-decoration'] = 'line-through';
+
+            if (options.tailwind && options.tailwindMode !== 'hybrid' && Object.keys(spanStyles).length > 0) {
+                const { classes: spanTwClasses, remainingStyles: spanRemStyles } = mapStylesToTailwind(spanStyles, options);
+                if (spanTwClasses.length > 0) {
+                    const classProp = options.framework === 'react' ? 'className' : 'class';
+                    const remStyleStr = toStyleString(spanRemStyles);
+                    const remStyleAttr = remStyleStr ? ` style="${remStyleStr}"` : '';
+                    resultParts.push(`<span ${classProp}="${spanTwClasses.join(' ')}"${remStyleAttr}>${escaped}</span>`);
+                    continue;
+                }
+            }
 
             const styleStr = toStyleString(spanStyles);
             if (styleStr) {
@@ -481,16 +504,39 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
 
     const indent = '  '.repeat(indentLevel);
     const nodeName = node.name || '';
-    const assignedClass = stylesheetManager
+    const isTailwind = Boolean(options.tailwind);
+    const isHybrid = options.tailwindMode === 'hybrid';
+    const isReact = options.framework === 'react';
+    const classProp = isReact ? 'className' : 'class';
+
+    let assignedClass = stylesheetManager
         ? stylesheetManager.getNodeClass(node)
         : (isValidClassName(nodeName) ? nodeName : '');
-    const classAttr = assignedClass ? ` class="${assignedClass}"` : '';
 
     const styles = (stylesheetManager && stylesheetManager.getNodeStyles(node))
         || computeNodeStyles(node, parentNode, imageRegistry, options);
 
-    const isInline = stylesheetManager ? (options.inlineStyles === true) : (options.inlineStyles !== false);
-    const styleStr = toStyleString(styles);
+    let twClassString = '';
+    let remainingStyles = styles;
+
+    if (isTailwind && !isHybrid) {
+        const twResult = resolveNodeTailwindClasses(node, parentNode, imageRegistry, options);
+        twClassString = twResult.classString;
+        remainingStyles = twResult.remainingStyles || {};
+    }
+
+    const finalClass = isTailwind && !isHybrid
+        ? (options.keepSemanticClasses && assignedClass ? `${assignedClass} ${twClassString}`.trim() : (twClassString || assignedClass))
+        : assignedClass;
+
+    const classAttr = finalClass ? ` ${classProp}="${escapeHtml(finalClass)}"` : '';
+
+    const isInline = isTailwind && !isHybrid
+        ? (options.inlineStyles === true)
+        : (stylesheetManager ? (options.inlineStyles === true) : (options.inlineStyles !== false));
+
+    const stylesToRender = (isTailwind && !isHybrid) ? remainingStyles : styles;
+    const styleStr = toStyleString(stylesToRender);
     const styleAttr = isInline && styleStr ? ` style="${styleStr}"` : '';
 
     // 1. INPUT ELEMENT DETECTION
@@ -500,20 +546,20 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
         const placeholderText = placeholderNode ? (placeholderNode.textData?.characters || placeholderNode.name || '') : '';
         const phAttr = placeholderText ? ` placeholder="${escapeHtml(placeholderText)}"` : '';
 
-        return `${indent}<input type="${inputType}"${classAttr}${phAttr}${styleAttr}>\n`;
+        return `${indent}<input type="${inputType}"${classAttr}${phAttr}${styleAttr} />\n`;
     }
 
     // 2. CHECKBOX / RADIO DETECTION
     if (nodeName === 'Checkbox' && node.type === 'RECTANGLE' && node.size?.x <= 24) {
-        return `${indent}<input type="checkbox"${classAttr}${styleAttr}>\n`;
+        return `${indent}<input type="checkbox"${classAttr}${styleAttr} />\n`;
     }
     if (nodeName === 'Radio' && node.type === 'ELLIPSE' && node.size?.x <= 24) {
-        return `${indent}<input type="radio"${classAttr}${styleAttr}>\n`;
+        return `${indent}<input type="radio"${classAttr}${styleAttr} />\n`;
     }
 
     // 3. DIVIDER / HORIZONTAL RULE (<hr>)
     if ((nodeName === 'Divider' || nodeName === 'Line' || nodeName === 'hairline') && node.type === 'RECTANGLE' && (node.size?.y <= 3 || !node.children?.length)) {
-        return `${indent}<div${classAttr || ' class="hairline"'}${styleAttr}></div>\n`;
+        return `${indent}<div${classAttr || ` ${classProp}="hairline"`}${styleAttr}></div>\n`;
     }
 
     // 4. IMAGE RECTANGLE (<img />)
@@ -548,7 +594,7 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
             }
 
             const imgAttrs = getAccessibleImageAttributes(node, nodeName);
-            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr}${imgAttrs}${classAttr}${styleAttr}>\n`;
+            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr}${imgAttrs}${classAttr}${styleAttr} />\n`;
         }
     }
 
@@ -690,7 +736,7 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
         }
 
         const tag = determineTextTag(node, options.headingContext);
-        const textContent = renderRichText(node.textData || { characters: node.name }, node, stylesheetManager);
+        const textContent = renderRichText(node.textData || { characters: node.name }, node, stylesheetManager, options);
 
         return `${indent}<${tag}${classAttr}${styleAttr}>${textContent}</${tag}>\n`;
     }
@@ -842,7 +888,11 @@ export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {})
     // Generate CSS rules (classes + :root) or base resets if inlineStyles is requested
     let cssContent = options.cssContent || '';
     if (!cssContent) {
-        if (options.inlineStyles) {
+        if (options.tailwind && options.tailwindMode === 'hybrid') {
+            cssContent = generateHybridApplyStylesheet(stylesheetManager.uniqueRules, options);
+        } else if (options.tailwind) {
+            cssContent = '';
+        } else if (options.inlineStyles) {
             cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n    line-height: 1.5;\n  }\n  button, input, optgroup, select, textarea {\n    font-family: inherit;\n    font-size: 100%;\n    line-height: inherit;\n    color: inherit;\n    margin: 0;\n    padding: 0;\n    border: 0;\n    background: transparent;\n    vertical-align: baseline;\n  }\n  button, [type="button"], [type="reset"], [type="submit"] {\n    -webkit-appearance: button;\n    appearance: button;\n    cursor: pointer;\n    background: transparent;\n    border: none;\n    outline: none;\n  }\n  input, textarea {\n    outline: none;\n    background: transparent;\n    border: none;\n  }\n  h1, h2, h3, h4, h5, h6, p {\n    margin: 0;\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  ul, ol {\n    list-style: none;\n    margin: 0;\n    padding: 0;\n  }\n  img, svg {\n    max-width: 100%;\n    display: block;\n  }\n  a {\n    color: inherit;\n    text-decoration: inherit;\n  }\n  :focus-visible {\n    outline: 2px solid currentColor;\n    outline-offset: 2px;\n  }`;
         } else {
             cssContent = stylesheetManager.generateFullStylesheet(rootBg);
@@ -860,14 +910,19 @@ export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {})
     }
 
     const cssHref = options.cssHref || options.cssFile || 'css/style.css';
-    const styleTagOrLink = options.extractCss
-        ? `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`
-        : `  <style>\n${cssContent}\n  </style>\n`;
+    let styleTagOrLink = '';
+    if (cssContent.trim()) {
+        styleTagOrLink = options.extractCss
+            ? `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`
+            : `  <style>\n${cssContent}\n  </style>\n`;
+    } else if (options.extractCss) {
+        styleTagOrLink = `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`;
+    }
 
     const bodyClass = options.pageSlug ? `page-${options.pageSlug}` : (options.bodyClass || '');
     const bodyClassAttr = bodyClass ? ` class="${escapeHtml(bodyClass)}"` : '';
 
-    const html = `<!DOCTYPE html>
+    let html = `<!DOCTYPE html>
 <html lang="${escapeHtml(docLang)}">
 <head>
   <meta charset="UTF-8">
@@ -879,13 +934,32 @@ ${bodyContent}</body>
 </html>
 `;
 
+    // Inject Tailwind Play CDN if requested and not in scaffold mode
+    if (options.tailwind && options.tailwindCdn !== false && !options.scaffold) {
+        const themeData = extractFigmaVariablesTheme(options.variables || [], options.variableSets || []);
+        html = injectTailwindCdn(html, themeData);
+    }
+
+    // Component framework transformation if requested
+    let componentCode = null;
+    const componentName = options.componentName || (rootNodes[0]?.name ? rootNodes[0].name.replace(/[^a-zA-Z0-9_]/g, '') : 'FigmaComponent') || 'FigmaComponent';
+    if (options.framework === 'react') {
+        componentCode = generateReactComponent(bodyContent.trim(), componentName, { typescript: options.typescript !== false });
+    } else if (options.framework === 'vue') {
+        componentCode = generateVueComponent(bodyContent.trim(), componentName);
+    } else if (options.framework === 'svelte') {
+        componentCode = generateSvelteComponent(bodyContent.trim(), componentName);
+    }
+
     const tokens = stylesheetManager.exportDesignTokens();
 
-    if (options.extractCss || options.returnCss || options.returnTokens) {
+    if (options.extractCss || options.returnCss || options.returnTokens || options.framework) {
         return {
             html,
             css: cssContent,
             tokens,
+            componentCode,
+            framework: options.framework || 'html',
             toString() { return this.html; }
         };
     }
