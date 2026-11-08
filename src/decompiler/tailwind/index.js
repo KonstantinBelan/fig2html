@@ -49,4 +49,13 @@ export {
     mapTextNodeToTailwind
 } from './typography.js';
 
+export {
+    TAILWIND_BREAKPOINTS,
+    getTailwindBreakpointPrefix,
+    getClassDomain,
+    mergeResponsiveTailwindClasses,
+    synthesizeNodeResponsiveTailwind
+} from './responsive.js';
+
+
 

@@ -107,7 +107,8 @@ const SUITES = [
     { title: '38. Security Guards & SSRF Protection Tests', file: './unit/security.test.js' },
     { title: '39. Tailwind CSS Core Engine & Mapper Tests (Sprint 1)', file: './unit/tailwind-mapper.test.js' },
     { title: '40. Tailwind CSS Auto Layout & Grid Synthesis Tests (Sprint 2)', file: './integration/tailwind-layout.test.js' },
-    { title: '41. Tailwind CSS Typography, Gradients & Effects Tests (Sprint 3)', file: './unit/tailwind-effects.test.js' }
+    { title: '41. Tailwind CSS Typography, Gradients & Effects Tests (Sprint 3)', file: './unit/tailwind-effects.test.js' },
+    { title: '42. Tailwind CSS Responsive Multi-Breakpoint Tests (Sprint 4)', file: './integration/tailwind-responsive.test.js' }
 ];
 
 async function run() {
