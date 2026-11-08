@@ -195,11 +195,11 @@ export function parseColor(color) {
     }
 
     // rgb(...) / rgba(...)
-    const rgbMatch = trimmed.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.%]+))?\s*\)$/);
+    const rgbMatch = trimmed.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.%]+))?\s*\)$/);
     if (rgbMatch) {
-        const r = parseInt(rgbMatch[1], 10);
-        const g = parseInt(rgbMatch[2], 10);
-        const b = parseInt(rgbMatch[3], 10);
+        const r = Math.round(parseFloat(rgbMatch[1]));
+        const g = Math.round(parseFloat(rgbMatch[2]));
+        const b = Math.round(parseFloat(rgbMatch[3]));
         let a = 1;
         if (rgbMatch[4]) {
             a = rgbMatch[4].endsWith('%') ? parseFloat(rgbMatch[4]) / 100 : parseFloat(rgbMatch[4]);
@@ -267,8 +267,13 @@ export function matchAlpha(alpha, tolerance = 0.03) {
 export function matchColor(colorInput, options = {}) {
     const parsed = parseColor(colorInput);
     if (!parsed) {
-        if (typeof colorInput === 'string' && (colorInput === 'currentColor' || colorInput === 'inherit')) {
-            return { name: 'current', alphaStr: '', classSuffix: 'current', isArbitrary: false };
+        if (typeof colorInput === 'string') {
+            if (colorInput === 'currentColor' || colorInput === 'inherit') {
+                return { name: 'current', alphaStr: '', classSuffix: 'current', isArbitrary: false };
+            }
+            if (colorInput.startsWith('var(')) {
+                return { name: `[${colorInput}]`, alphaStr: '', classSuffix: `[${colorInput}]`, isArbitrary: true };
+            }
         }
         return { name: 'transparent', alphaStr: '', classSuffix: 'transparent', isArbitrary: false };
     }

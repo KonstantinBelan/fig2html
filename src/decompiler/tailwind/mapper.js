@@ -178,6 +178,37 @@ export function mapBoxShadow(shadowStr) {
 }
 
 /**
+ * Splits CSS property values by whitespace while preserving functions like rgba(), rgb(), hsl(), var()
+ * @param {string} val
+ * @returns {Array<string>}
+ */
+export function splitCssValues(val) {
+    if (!val || typeof val !== 'string') return [];
+    const parts = [];
+    let current = '';
+    let depth = 0;
+
+    for (let i = 0; i < val.length; i++) {
+        const char = val[i];
+        if (char === '(') depth++;
+        else if (char === ')') depth = Math.max(0, depth - 1);
+
+        if (/\s/.test(char) && depth === 0) {
+            if (current.length > 0) {
+                parts.push(current);
+                current = '';
+            }
+        } else {
+            current += char;
+        }
+    }
+    if (current.length > 0) {
+        parts.push(current);
+    }
+    return parts;
+}
+
+/**
  * Translates a complete dictionary of CSS styles into an array of clean Tailwind classes
  * @param {Record<string, string>} styles
  * @param {object} [options={}]
@@ -207,19 +238,27 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
         else remainingStyles['display'] = styles['display'];
     }
 
+    const isGridDisplay = Boolean(
+        (styles['display'] && styles['display'].trim().toLowerCase().includes('grid')) ||
+        styles['grid-template-columns'] ||
+        styles['grid-template-rows']
+    );
+
     // 2. Flexbox Container Properties
-    if (styles['flex-direction']) {
-        const dir = styles['flex-direction'].trim().toLowerCase();
-        if (dir === 'row') classes.push('flex-row');
-        else if (dir === 'column') classes.push('flex-col');
-        else if (dir === 'row-reverse') classes.push('flex-row-reverse');
-        else if (dir === 'column-reverse') classes.push('flex-col-reverse');
-    }
-    if (styles['flex-wrap']) {
-        const wrap = styles['flex-wrap'].trim().toLowerCase();
-        if (wrap === 'wrap') classes.push('flex-wrap');
-        else if (wrap === 'nowrap') classes.push('flex-nowrap');
-        else if (wrap === 'wrap-reverse') classes.push('flex-wrap-reverse');
+    if (!isGridDisplay) {
+        if (styles['flex-direction']) {
+            const dir = styles['flex-direction'].trim().toLowerCase();
+            if (dir === 'row') classes.push('flex-row');
+            else if (dir === 'column') classes.push('flex-col');
+            else if (dir === 'row-reverse') classes.push('flex-row-reverse');
+            else if (dir === 'column-reverse') classes.push('flex-col-reverse');
+        }
+        if (styles['flex-wrap']) {
+            const wrap = styles['flex-wrap'].trim().toLowerCase();
+            if (wrap === 'wrap') classes.push('flex-wrap');
+            else if (wrap === 'nowrap') classes.push('flex-nowrap');
+            else if (wrap === 'wrap-reverse') classes.push('flex-wrap-reverse');
+        }
     }
     if (styles['justify-content']) {
         const jc = styles['justify-content'].trim().toLowerCase();
@@ -487,28 +526,35 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
     }
 
     if (styles['border']) {
-        const parts = styles['border'].trim().split(/\s+/);
-        // e.g. "1px solid #e2e8f0"
-        const widthVal = parts.find(p => p.endsWith('px') || /^\d+$/.test(p));
-        const colorVal = parts.find(p => p.startsWith('#') || p.startsWith('rgb'));
+        const parts = splitCssValues(styles['border']);
+        // e.g. "1px solid #e2e8f0" or "none"
         const styleVal = parts.find(p => ['solid', 'dashed', 'dotted', 'double', 'none'].includes(p));
+        const widthVal = parts.find(p => p.endsWith('px') || /^\d+$/.test(p));
+        const colorVal = parts.find(p => p.startsWith('#') || p.startsWith('rgb') || p.startsWith('hsl') || p.startsWith('var'));
 
-        if (widthVal) {
-            const wNum = parseFloat(widthVal);
-            const wKey = snapBorderWidth(wNum, options);
-            if (wKey === 'DEFAULT') classes.push('border');
-            else if (wKey !== '0') classes.push(`border-${wKey}`);
-        } else {
-            classes.push('border');
-        }
+        const isNone = styleVal === 'none' ||
+                       (widthVal && parseFloat(widthVal) === 0) ||
+                       styles['border'].trim() === 'none' ||
+                       styles['border'].trim() === '0';
 
-        if (styleVal && styleVal !== 'solid') {
-            classes.push(`border-${styleVal}`);
-        }
+        if (!isNone) {
+            if (widthVal) {
+                const wNum = parseFloat(widthVal);
+                const wKey = snapBorderWidth(wNum, options);
+                if (wKey === 'DEFAULT') classes.push('border');
+                else if (wKey !== '0') classes.push(`border-${wKey}`);
+            } else {
+                classes.push('border');
+            }
 
-        if (colorVal) {
-            const matched = matchColor(colorVal, options);
-            if (matched.classSuffix) classes.push(`border-${matched.classSuffix}`);
+            if (styleVal && styleVal !== 'solid') {
+                classes.push(`border-${styleVal}`);
+            }
+
+            if (colorVal) {
+                const matched = matchColor(colorVal, options);
+                if (matched.classSuffix) classes.push(`border-${matched.classSuffix}`);
+            }
         }
     }
 
@@ -617,6 +663,7 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
 export function deduplicateTailwindClasses(classList) {
     if (!Array.isArray(classList) || classList.length <= 1) return classList || [];
 
+    const isGrid = classList.some(c => c === 'grid' || c === 'inline-grid');
     const map = new Map();
     // Prefix / namespace extractor to prevent conflicts (e.g. p-4 overrides p-2, text-center overrides text-left)
     const getGroupKey = (cls) => {
@@ -658,6 +705,9 @@ export function deduplicateTailwindClasses(classList) {
 
     for (const cls of classList) {
         if (!cls) continue;
+        if (isGrid && (cls === 'flex-row' || cls === 'flex-col' || cls === 'flex-row-reverse' || cls === 'flex-col-reverse' || cls === 'flex-wrap' || cls === 'flex-nowrap' || cls === 'flex-wrap-reverse')) {
+            continue;
+        }
         const group = getGroupKey(cls);
         map.set(group, cls);
     }

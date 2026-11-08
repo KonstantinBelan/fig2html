@@ -444,7 +444,7 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
     }
 
     // 10. Structural/positional heuristics for direct root children
-    const isDirectChildOfRoot = Boolean(parentNode && (parentNode.isRoot || !parentNode.parentNode));
+    const isDirectChildOfRoot = Boolean(parentNode && parentNode.isRoot === true);
     if (isDirectChildOfRoot && Array.isArray(node.children) && node.children.length > 0) {
         const y = node.y !== undefined ? node.y : (node.transform?.m12 ?? 0);
         const height = node.size?.y || 0;
@@ -483,6 +483,10 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
  */
 export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOptions = {}, maybeOptions = {}, maybeIndent = 2) {
     if (!node || node.visible === false || node.mask === true || node.isMask === true) return '';
+
+    if (!parentNode) {
+        node.isRoot = true;
+    }
 
     let stylesheetManager = null;
     let options = {};
@@ -837,6 +841,9 @@ export function generateGoogleFontsUrl(fontFamilies) {
  * @returns {string} Complete HTML document
  */
 export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
+    for (const root of rootNodes) {
+        if (root) root.isRoot = true;
+    }
     const title = options.title || (rootNodes[0]?.name) || 'Exported Figma Design';
     const fontFamilies = collectFontFamilies(rootNodes);
     const googleFontsUrl = generateGoogleFontsUrl(fontFamilies);
@@ -937,6 +944,33 @@ ${bodyContent}</body>
     // Inject Tailwind Play CDN if requested and not in scaffold mode
     if (options.tailwind && options.tailwindCdn !== false && !options.scaffold) {
         const themeData = extractFigmaVariablesTheme(options.variables || [], options.variableSets || []);
+        if (fontFamilies && fontFamilies.size > 0) {
+            themeData.fontFamily = themeData.fontFamily || themeData.fonts || {};
+            const sansFonts = [];
+            const monoFonts = [];
+            const serifFonts = [];
+            for (const fam of fontFamilies) {
+                const clean = fam.toLowerCase();
+                if (clean.includes('mono') || clean.includes('code') || clean.includes('consolas') || clean.includes('menlo')) {
+                    monoFonts.push(fam);
+                } else if (clean.includes('serif') || clean.includes('georgia') || clean.includes('times') || clean.includes('garamond') || clean.includes('merriweather') || clean.includes('playfair') || clean.includes('lora')) {
+                    serifFonts.push(fam);
+                } else {
+                    sansFonts.push(fam);
+                }
+            }
+            if (sansFonts.length > 0) {
+                const primarySans = sansFonts[0];
+                themeData.fontFamily.sans = [primarySans, 'sans-serif'];
+                themeData.fontFamily.display = [primarySans, 'sans-serif'];
+            }
+            if (monoFonts.length > 0) {
+                themeData.fontFamily.mono = [monoFonts[0], 'monospace'];
+            }
+            if (serifFonts.length > 0) {
+                themeData.fontFamily.serif = [serifFonts[0], 'serif'];
+            }
+        }
         html = injectTailwindCdn(html, themeData);
     }
 

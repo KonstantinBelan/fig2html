@@ -85,6 +85,14 @@ export default function ({ it }) {
         const classes = mapAutoLayoutToTailwind(growChild, parent);
         assert.ok(classes.includes('flex-1'));
         assert.ok(classes.includes('self-stretch'));
+
+        const hugChild = {
+            type: 'FRAME',
+            stackPrimarySizing: 'RESIZE_TO_FIT',
+            size: { x: 120, y: 40 }
+        };
+        const hugClasses = mapAutoLayoutToTailwind(hugChild, parent);
+        assert.ok(!hugClasses.includes('flex-1'), 'Hug contents (RESIZE_TO_FIT) must not receive flex-1');
     });
 
     it('translates absolutely positioned child inside Auto Layout', () => {

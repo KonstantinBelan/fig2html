@@ -112,5 +112,9 @@ export default function ({ it }) {
         assert.ok(injected.includes('https://cdn.tailwindcss.com'));
         assert.ok(injected.includes('tailwind.config = {'));
         assert.ok(injected.includes('brand-accent'));
+
+        const fontInjected = injectTailwindCdn(rawHtml, { fontFamily: { sans: ['Poppins', 'sans-serif'] } });
+        assert.ok(fontInjected.includes('tailwind.config = {'));
+        assert.ok(fontInjected.includes('Poppins'));
     });
 }

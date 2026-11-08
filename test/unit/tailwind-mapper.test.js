@@ -205,6 +205,15 @@ export default function ({ it }) {
         assert.ok(classes.includes('shadow-md'));
         assert.ok(classes.includes('backdrop-blur-md'));
         assert.ok(classes.includes('opacity-90'));
+
+        const rgbaBorder = mapStylesToTailwind({ border: '1px solid rgba(6, 182, 212, 0.3)' });
+        assert.ok(rgbaBorder.classes.includes('border'));
+        assert.ok(rgbaBorder.classes.includes('border-cyan-500/30'));
+        assert.ok(!rgbaBorder.classes.includes('border-transparent'));
+
+        const noneBorder = mapStylesToTailwind({ border: 'none' });
+        assert.ok(!noneBorder.classes.includes('border'));
+        assert.ok(!noneBorder.classes.includes('border-none'));
     });
 
     it('deduplicates and resolves conflicting classes', () => {
@@ -216,5 +225,11 @@ export default function ({ it }) {
         assert.ok(deduped.includes('text-center'));
         assert.ok(!deduped.includes('flex'));
         assert.ok(deduped.includes('block'));
+
+        const gridWithFlex = deduplicateTailwindClasses(['grid', 'grid-cols-3', 'flex-row', 'flex-wrap']);
+        assert.ok(gridWithFlex.includes('grid'));
+        assert.ok(gridWithFlex.includes('grid-cols-3'));
+        assert.ok(!gridWithFlex.includes('flex-row'));
+        assert.ok(!gridWithFlex.includes('flex-wrap'));
     });
 }

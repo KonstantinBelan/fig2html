@@ -93,20 +93,31 @@ export function generateTailwindScaffold(params = {}) {
 export function injectTailwindCdn(htmlContent, themeData = {}) {
     if (!htmlContent) return '';
 
-    const { colors = {}, spacing = {}, radii = {}, fonts = {} } = themeData;
-    const hasThemeOverrides = Object.keys(colors).length > 0 || Object.keys(spacing).length > 0 || Object.keys(radii).length > 0;
+    const { colors = {}, spacing = {}, radii = {}, fonts = {}, fontFamily = {} } = themeData;
+    const fontsMap = Object.keys(fontFamily).length > 0 ? fontFamily : fonts;
+    const hasThemeOverrides = Object.keys(colors).length > 0 ||
+                              Object.keys(spacing).length > 0 ||
+                              Object.keys(radii).length > 0 ||
+                              Object.keys(fontsMap).length > 0;
 
     let cdnTags = '<script src="https://cdn.tailwindcss.com"></script>\n';
 
     if (hasThemeOverrides) {
+        const extendLines = [];
+        if (Object.keys(colors).length > 0) extendLines.push(`          colors: ${JSON.stringify(colors)},`);
+        if (Object.keys(spacing).length > 0) extendLines.push(`          spacing: ${JSON.stringify(spacing)},`);
+        if (Object.keys(radii).length > 0) extendLines.push(`          borderRadius: ${JSON.stringify(radii)},`);
+        if (Object.keys(fontsMap).length > 0) extendLines.push(`          fontFamily: ${JSON.stringify(fontsMap)},`);
+
+        if (extendLines.length > 0) {
+            extendLines[extendLines.length - 1] = extendLines[extendLines.length - 1].replace(/,$/, '');
+        }
+
         const configScript = `  <script>
     tailwind.config = {
       theme: {
         extend: {
-          colors: ${JSON.stringify(colors)},
-          spacing: ${JSON.stringify(spacing)},
-          borderRadius: ${JSON.stringify(radii)},
-          fontFamily: ${JSON.stringify(fonts)}
+${extendLines.join('\n')}
         }
       }
     };

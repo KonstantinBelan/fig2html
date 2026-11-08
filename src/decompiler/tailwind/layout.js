@@ -143,7 +143,7 @@ export function mapAutoLayoutToTailwind(node, parentNode = null, options = {}) {
         const isHorizontalParent = parentNode.stackMode === 'HORIZONTAL';
 
         // Layout Grow (Fill container along primary axis)
-        if (node.layoutGrow === 1 || node.stackPrimarySizing === 'RESIZE_TO_FIT' || node.stackPrimarySizing === 'FILL') {
+        if (node.layoutGrow === 1 || node.stackPrimarySizing === 'FILL') {
             classes.push('flex-1');
         }
 

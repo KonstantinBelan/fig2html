@@ -176,6 +176,15 @@ export default async function run(arg1, arg2) {
         assert.strictEqual(determineContainerTag({ name: 'Subscribe Form', children: [{}] }), 'form');
         assert.strictEqual(determineContainerTag({ name: 'Main Content', children: [{}] }), 'main');
         assert.strictEqual(determineContainerTag({ name: 'Submit Button' }), 'button');
+
+        // Nested children whose parent is not root must not be mistaken for page header or footer
+        const nonRootParent = { name: 'Header', children: [], isRoot: false };
+        const badgeChild = { name: 'Badge', y: 10, size: { y: 24 }, children: [{}] };
+        assert.strictEqual(determineContainerTag(badgeChild, nonRootParent), 'div');
+
+        const rootParent = { name: 'Page', size: { y: 1000 }, children: [], isRoot: true };
+        const rootHeaderChild = { name: 'Top Container', y: 10, size: { y: 80 }, children: [{}] };
+        assert.strictEqual(determineContainerTag(rootHeaderChild, rootParent), 'header');
     });
 
 };
