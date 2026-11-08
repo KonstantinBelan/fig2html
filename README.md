@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/figmatik.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/figmatik)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 146 passed](https://img.shields.io/badge/tests-146%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/run-tests.js)
+[![Tests: 146 passed](https://img.shields.io/badge/tests-146%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/runner.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/figmatik/pulls)
@@ -676,10 +676,35 @@ build();
   - Аппаратное запекание растровых изображений с `blendMode: MULTIPLY` в альфа-прозрачность (`bakeMultiplyImages`)
   - Поддержка `blendMode: LUMINOSITY` в CSS с автоматической генерацией `filter: grayscale(1)`
 
-Запуск тестов:
+### 🚀 Запуск тестов
+
+Тестовый раннер поддерживает запуск как всего набора тестов, так и фильтрацию по названию (`--grep`), домену (`--domain`) или прямой запуск отдельных файлов:
+
 ```bash
+# 1. Запуск всех 146 тестов:
 npm test
+# или:
+node test/runner.js
+
+# 2. Фильтрация по шаблону названия (--grep / -g):
+npm test -- --grep "color"
+node test/runner.js -g "gradient"
+
+# 3. Фильтрация по домену тестов (--domain / -d: unit | integration | e2e):
+node test/runner.js --domain unit
+node test/runner.js -d integration
+node test/runner.js -d e2e
+
+# 4. Прямой запуск конкретного тест-файла:
+node test/unit/color.test.js
+node test/integration/tokens.test.js
+node test/e2e/roundtrip.test.js
 ```
+
+Структура тестов декомпозирована по трём уровням:
+- **`test/unit/` (29 тестов)**: модульные тесты парсеров (`color`, `gradient`, `effects`, `typography`, `images`, `cli`, `units`, `svg-path`, `security`).
+- **`test/integration/` (107 тестов)**: компонентные и интеграционные тесты подсистем (`decompiler`, `tokens`, `layout-synthesis`, `multi-page`, `responsive-breakpoints`, `graphic-collapser`, `visual-accuracy`, `semantic-styles`).
+- **`test/e2e/` (10 тестов)**: сквозные тесты прямой и обратной трансляции (`html-to-fig`, `fig-to-html`, `roundtrip`).
 
 ---
 
@@ -693,16 +718,31 @@ figmatik/
 ├── package.json            # Зависимости и метаданные проекта
 ├── docs/
 │   ├── logo.jpeg           # Официальный логотип проекта
-│   └── cli-demo.svg        # Векторная демонстрация работы терминала (SVG)
+│   ├── cli-demo.svg        # Векторная демонстрация работы терминала (SVG)
+│   ├── figma-design-guide.md # Руководство для дизайнеров
+│   └── roadmap_modules.md  # План модульной архитектуры ядра
 ├── templates/
 │   └── template.fig        # Эталонный бинарный шаблон Figma контейнера
 ├── src/
 │   ├── generator.js        # Оркестратор сборки бинарного .fig (Kiwi + Zstd)
-│   ├── converter.js        # HTML/CSS -> Figma AST транслятор (Auto Layout, Layout Pass)
 │   ├── schema.js           # Компилятор и кэш Kiwi схемы
+│   ├── converter.js        # Обратно-совместимый фасад транслятора HTML -> FIG
+│   ├── converter/          # МОДУЛЬНЫЙ КОМПИЛЯТОР HTML/CSS -> FIGMA AST
+│   │   ├── index.js        # Главный контроллер convertHtmlToNodes()
+│   │   ├── style-resolver.js      # Каскадные стили, CSS-переменные, padding/margin/borders
+│   │   ├── rich-text.js           # Обработка смешанного форматирования текста (characterStyleIDs)
+│   │   ├── variables-collector.js # Сбор :root переменных (VARIABLE_SET / VARIABLE)
+│   │   ├── layout-engine.js       # Auto Layout v4, sizing, constraints и Layout Pass
+│   │   └── element-processors/    # Обработчики конкретных типов HTML-элементов
+│   │       ├── container.js       # Фреймы, div, section, header, footer, form
+│   │       ├── text.js            # p, h1-h6, span, inline теги с метриками шрифтов
+│   │       ├── image.js           # img, picture, base64, SVG-подложки
+│   │       ├── svg.js             # SVG-иконки, <use> символы, векторные пути
+│   │       ├── interactive.js     # button, input, ссылки, состояния :hover
+│   │       └── media.js           # Вспомогательные медиа-элементы (audio/video плейсхолдеры)
 │   ├── decompiler/         # ДВИЖОК ОБРАТНОЙ КОНВЕРТАЦИИ (FIG -> HTML)
 │   │   ├── index.js        # Главный оркестратор декомпиляции
-│   │   ├── graphic-collapser.js # Кумулятивная аффинная геометрия и схлопывание поддеревьев (v1.5.2)
+│   │   ├── graphic-collapser.js # Кумулятивная аффинная геометрия и схлопывание поддеревьев
 │   │   ├── page-detector.js # Детекция страниц (теги, артборды, Canvas) и санитизация URL
 │   │   ├── breakpoint-detector.js # Детекция брейкпоинтов и группировка адаптивных страниц
 │   │   ├── ast-aligner.js  # AST Similarity Matching и сопоставление нод между экранами
@@ -711,13 +751,20 @@ figmatik/
 │   │   ├── synthesizer.js  # Recursive XY-Cut, детекция сеток N x M и Auto Layout синтез
 │   │   ├── reader.js       # Чтение .fig ZIP, декомпрессия Kiwi и извлечение картинок
 │   │   ├── tree.js         # Восстановление иерархии сцены, инстансы компонентов и overrides
-│   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, дедупликация и транслитерация
-│   │   ├── css.js          # Трансляция Figma AST стилей в чистый CSS, Smart Anchors (v1.5.2)
+│   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, DRY CSS
+│   │   ├── css.js          # Обратно-совместимый фасад генератора CSS
+│   │   ├── css/            # МОДУЛЬНЫЙ ГЕНЕРАТОР CSS И СТИЛЕЙ
+│   │   │   ├── index.js    # computeNodeStyles, toStyleString и реэкспорт
+│   │   │   ├── color-formatter.js      # HEX, RGBA, HSLA, MIME-типы
+│   │   │   ├── gradient-formatter.js   # Градиенты, матрицы поворота, углы
+│   │   │   ├── effects-formatter.js    # box-shadow, фильтры размытия, paintFilter
+│   │   │   ├── typography-formatter.js # font-weight, font-style, leading-trim
+│   │   │   └── layout-styles.js        # Flexbox, CSS Grid, Smart Anchors, Constraints
 │   │   ├── responsive-css.js # Генерация адаптивных медиа-запросов и fluid clamp() формул
-│   │   ├── units.js        # Преобразование единиц (rem, em, vw, vh) и fluid-расчеты (clamp, min, max)
-│   │   ├── html.js         # Генерация семантического HTML5, форм и Rich Text
-│   │   ├── image-optimizer.js # Оптимизация картинок (Retina 2x, WebP/AVIF, srcset) и запекание масок
-│   │   └── vector.js       # Декодирование бинарных VectorNetwork и commandsBlob в SVG
+│   │   ├── units.js        # Преобразование единиц (rem, em, vw, vh) и fluid-расчеты
+│   │   ├── html.js         # Генерация семантического HTML5, форм и A11y разметки
+│   │   ├── image-optimizer.js # Оптимизация картинок (Retina 2x, WebP/AVIF, srcset)
+│   │   └── vector.js       # Декодирование VectorNetwork и commandsBlob в SVG
 │   ├── parsers/
 │   │   ├── color.js        # Парсер всех типов CSS цветов
 │   │   ├── gradient.js     # Парсер линейных и радиальных градиентов
@@ -728,7 +775,11 @@ figmatik/
 │   └── utils/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
-    ├── run-tests.js        # Автоматический тестовый запуск (146 теста)
+    ├── runner.js           # Модульный раннер тестов с поддержкой --grep и --domain
+    ├── run-tests.js        # Обратно-совместимый фасад запуска тестов
+    ├── unit/               # Модульные тесты парсеров (29 тестов)
+    ├── integration/        # Интеграционные тесты декомпилятора и синтеза (107 тестов)
+    ├── e2e/                # Сквозные тесты компиляции и декомпиляции (10 тестов)
     ├── test.html           # Базовый тестовый HTML
     ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
     └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
