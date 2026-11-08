@@ -73,24 +73,24 @@ export async function convertFigToHtml(figInput, options = {}) {
         }
     };
 
+    const isTailwind = options.tailwind === false
+        ? false
+        : Boolean(
+            options.tailwind ||
+            options.scaffold ||
+            (options.framework && options.framework !== 'html')
+        );
+    if (isTailwind) {
+        options.tailwind = true;
+    }
+
     const isSeparateFiles = Boolean(options.separateFiles);
-    const isExtractCss = isSeparateFiles || Boolean(options.extractCss);
+    const isExtractCss = (isSeparateFiles || Boolean(options.extractCss)) && (!isTailwind || options.tailwindMode === 'hybrid');
     const isInlineImages = isSeparateFiles
         ? false
         : (options.inlineImages !== undefined ? options.inlineImages : (options.assetsDir ? false : true));
     const assetsRelDir = options.assetsDir || 'img';
     const cssRelPath = options.cssFile || 'css/style.css';
-
-    const isTailwind = Boolean(
-        options.tailwind ||
-        options.scaffold ||
-        options.framework ||
-        options.tailwindVersion ||
-        options.tailwindMode
-    );
-    if (isTailwind) {
-        options.tailwind = true;
-    }
 
     const outputPath = options.outputHtmlPath ? path.resolve(options.outputHtmlPath) : null;
     const baseDir = outputPath
@@ -303,6 +303,8 @@ export async function convertFigToHtml(figInput, options = {}) {
         let unifiedCss;
         if (options.tailwind && options.tailwindMode === 'hybrid') {
             unifiedCss = generateHybridApplyStylesheet(stylesheetManager.uniqueRules, options);
+        } else if (options.tailwind) {
+            unifiedCss = '';
         } else {
             unifiedCss = stylesheetManager.generateFullStylesheet(rootBg);
         }
@@ -545,6 +547,8 @@ export async function convertFigToHtml(figInput, options = {}) {
         let unifiedCss;
         if (options.tailwind && options.tailwindMode === 'hybrid') {
             unifiedCss = generateHybridApplyStylesheet(stylesheetManager.uniqueRules, options);
+        } else if (options.tailwind) {
+            unifiedCss = '';
         } else {
             unifiedCss = stylesheetManager.generateFullStylesheet(rootBg);
         }

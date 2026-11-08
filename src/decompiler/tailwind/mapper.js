@@ -224,6 +224,15 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
         return px !== null ? snapSpacing(px, options) : null;
     };
 
+    // Helper to format signed classes (e.g. 'top', '-[42px]' -> '-top-[42px]')
+    const formatSigned = (prop, snapped) => {
+        if (!snapped) return null;
+        if (snapped.startsWith('-')) {
+            return `-${prop}-${snapped.slice(1)}`;
+        }
+        return `${prop}-${snapped}`;
+    };
+
     // 1. Display
     if (styles['display']) {
         const d = styles['display'].trim().toLowerCase();
@@ -375,30 +384,30 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
             if (parts[0] === 'auto') classes.push('m-auto');
             else {
                 const s = snapPx(parts[0]);
-                if (s) classes.push(`m-${s}`);
+                if (s) classes.push(formatSigned('m', s));
             }
         } else if (parts.length === 2) {
             const my = parts[0] === 'auto' ? 'auto' : snapPx(parts[0]);
             const mx = parts[1] === 'auto' ? 'auto' : snapPx(parts[1]);
-            if (my) classes.push(`my-${my}`);
-            if (mx) classes.push(`mx-${mx}`);
+            if (my) classes.push(my === 'auto' ? 'my-auto' : formatSigned('my', my));
+            if (mx) classes.push(mx === 'auto' ? 'mx-auto' : formatSigned('mx', mx));
         }
     } else {
         if (styles['margin-top']) {
             const s = snapPx(styles['margin-top']);
-            if (s) classes.push(`mt-${s}`);
+            if (s) classes.push(formatSigned('mt', s));
         }
         if (styles['margin-right']) {
             const s = snapPx(styles['margin-right']);
-            if (s) classes.push(`mr-${s}`);
+            if (s) classes.push(formatSigned('mr', s));
         }
         if (styles['margin-bottom']) {
             const s = snapPx(styles['margin-bottom']);
-            if (s) classes.push(`mb-${s}`);
+            if (s) classes.push(formatSigned('mb', s));
         }
         if (styles['margin-left']) {
             const s = snapPx(styles['margin-left']);
-            if (s) classes.push(`ml-${s}`);
+            if (s) classes.push(formatSigned('ml', s));
         }
     }
 
@@ -411,22 +420,27 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
     }
     if (styles['top']) {
         const s = snapPx(styles['top']);
-        if (s) classes.push(`top-${s}`);
+        if (s) classes.push(formatSigned('top', s));
     }
     if (styles['right']) {
         const s = snapPx(styles['right']);
-        if (s) classes.push(`right-${s}`);
+        if (s) classes.push(formatSigned('right', s));
     }
     if (styles['bottom']) {
         const s = snapPx(styles['bottom']);
-        if (s) classes.push(`bottom-${s}`);
+        if (s) classes.push(formatSigned('bottom', s));
     }
     if (styles['left']) {
         const s = snapPx(styles['left']);
-        if (s) classes.push(`left-${s}`);
+        if (s) classes.push(formatSigned('left', s));
     }
     if (styles['z-index']) {
-        classes.push(`z-${styles['z-index'].trim()}`);
+        const zVal = styles['z-index'].trim();
+        if (['0', '10', '20', '30', '40', '50', 'auto'].includes(zVal)) {
+            classes.push(`z-${zVal}`);
+        } else {
+            classes.push(`z-[${zVal}]`);
+        }
     }
 
     // 8. Sizing (Width, Height, Min/Max)
@@ -466,6 +480,7 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
     if (styles['max-width']) {
         const mw = styles['max-width'].trim().toLowerCase();
         if (mw === '100%') classes.push('max-w-full');
+        else if (mw === 'none') classes.push('max-w-none');
         else {
             const s = snapPx(mw);
             if (s) classes.push(`max-w-${s}`);
@@ -475,16 +490,28 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
         const mh = styles['min-height'].trim().toLowerCase();
         if (mh === '0' || mh === '0px') classes.push('min-h-0');
         else if (mh === '100%') classes.push('min-h-full');
-        else if (mh === '100vh') classes.push('min-h-screen');
+        else if (mh === '100vh' || mh === '100dvh') classes.push('min-h-screen');
         else {
             const s = snapPx(mh);
             if (s) classes.push(`min-h-${s}`);
+        }
+    }
+    if (styles['max-height']) {
+        const mh = styles['max-height'].trim().toLowerCase();
+        if (mh === '100%') classes.push('max-h-full');
+        else if (mh === '100vh' || mh === '100dvh') classes.push('max-h-screen');
+        else if (mh === 'none') classes.push('max-h-none');
+        else {
+            const s = snapPx(mh);
+            if (s) classes.push(`max-h-${s}`);
         }
     }
 
     // Flex child sizing
     if (styles['flex-grow'] === '1' || styles['flex'] === '1' || styles['flex'] === '1 1 0%') {
         classes.push('flex-1');
+    } else if (styles['flex'] === 'none' || styles['flex'] === '0 0 auto') {
+        classes.push('flex-none');
     }
     if (styles['flex-shrink'] === '0') {
         classes.push('shrink-0');
@@ -498,6 +525,36 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
         if (matched.classSuffix) {
             classes.push(`bg-${matched.classSuffix}`);
         }
+    }
+    if (styles['background-size']) {
+        const bs = styles['background-size'].trim().toLowerCase();
+        if (bs === 'cover') classes.push('bg-cover');
+        else if (bs === 'contain') classes.push('bg-contain');
+        else if (bs === 'auto') classes.push('bg-auto');
+        else remainingStyles['background-size'] = styles['background-size'];
+    }
+    if (styles['background-position']) {
+        const bp = styles['background-position'].trim().toLowerCase();
+        if (bp === 'center') classes.push('bg-center');
+        else if (bp === 'top') classes.push('bg-top');
+        else if (bp === 'bottom') classes.push('bg-bottom');
+        else if (bp === 'left') classes.push('bg-left');
+        else if (bp === 'right') classes.push('bg-right');
+        else remainingStyles['background-position'] = styles['background-position'];
+    }
+    if (styles['background-repeat']) {
+        const br = styles['background-repeat'].trim().toLowerCase();
+        if (br === 'no-repeat') classes.push('bg-no-repeat');
+        else if (br === 'repeat') classes.push('bg-repeat');
+        else if (br === 'repeat-x') classes.push('bg-repeat-x');
+        else if (br === 'repeat-y') classes.push('bg-repeat-y');
+        else remainingStyles['background-repeat'] = styles['background-repeat'];
+    }
+    if (styles['background-image']) {
+        remainingStyles['background-image'] = styles['background-image'];
+    }
+    if (styles['background-blend-mode']) {
+        remainingStyles['background-blend-mode'] = styles['background-blend-mode'];
     }
     if (styles['color']) {
         const matched = matchColor(styles['color'], options);
@@ -645,6 +702,22 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
     if (styles['cursor'] === 'pointer') {
         classes.push('cursor-pointer');
     }
+    if (styles['pointer-events'] === 'none') {
+        classes.push('pointer-events-none');
+    } else if (styles['pointer-events'] === 'auto') {
+        classes.push('pointer-events-auto');
+    }
+    if (styles['object-fit']) {
+        const of = styles['object-fit'].trim().toLowerCase();
+        if (['cover', 'contain', 'fill', 'none', 'scale-down'].includes(of)) {
+            classes.push(`object-${of}`);
+        }
+    }
+    for (const k of ['transform', 'transform-origin', 'filter', '-webkit-mask-image', 'mask-image', '-webkit-mask-size', 'mask-size', '-webkit-mask-repeat', 'mask-repeat']) {
+        if (styles[k]) {
+            remainingStyles[k] = styles[k];
+        }
+    }
 
     // Deduplicate and resolve internal conflicts
     const dedupedClasses = deduplicateTailwindClasses(classes);
@@ -671,33 +744,72 @@ export function deduplicateTailwindClasses(classList) {
         const colonIdx = cls.lastIndexOf(':');
         const prefix = colonIdx !== -1 ? cls.slice(0, colonIdx + 1) : '';
         const base = colonIdx !== -1 ? cls.slice(colonIdx + 1) : cls;
+        const unsignedBase = base.startsWith('-') ? base.slice(1) : base;
 
-        if (base.startsWith('p-') || base.startsWith('px-') || base.startsWith('py-') ||
-            base.startsWith('pt-') || base.startsWith('pr-') || base.startsWith('pb-') || base.startsWith('pl-')) {
-            const prop = base.split('-')[0];
+        if (unsignedBase.startsWith('p-') || unsignedBase.startsWith('px-') || unsignedBase.startsWith('py-') ||
+            unsignedBase.startsWith('pt-') || unsignedBase.startsWith('pr-') || unsignedBase.startsWith('pb-') || unsignedBase.startsWith('pl-')) {
+            const prop = unsignedBase.split('-')[0];
             return `${prefix}padding-${prop}`;
         }
-        if (base.startsWith('m-') || base.startsWith('mx-') || base.startsWith('my-') ||
-            base.startsWith('mt-') || base.startsWith('mr-') || base.startsWith('mb-') || base.startsWith('ml-')) {
-            const prop = base.split('-')[0];
+        if (unsignedBase.startsWith('m-') || unsignedBase.startsWith('mx-') || unsignedBase.startsWith('my-') ||
+            unsignedBase.startsWith('mt-') || unsignedBase.startsWith('mr-') || unsignedBase.startsWith('mb-') || unsignedBase.startsWith('ml-')) {
+            const prop = unsignedBase.split('-')[0];
             return `${prefix}margin-${prop}`;
         }
+        if (unsignedBase.startsWith('top-')) return `${prefix}top`;
+        if (unsignedBase.startsWith('right-')) return `${prefix}right`;
+        if (unsignedBase.startsWith('bottom-')) return `${prefix}bottom`;
+        if (unsignedBase.startsWith('left-')) return `${prefix}left`;
         if (base.startsWith('w-')) return `${prefix}width`;
         if (base.startsWith('h-')) return `${prefix}height`;
-        if (base.startsWith('bg-')) return `${prefix}background`;
+        if (base.startsWith('bg-')) {
+            if (['bg-cover', 'bg-contain', 'bg-auto'].includes(base)) return `${prefix}bg-size`;
+            if (['bg-center', 'bg-top', 'bg-bottom', 'bg-left', 'bg-right', 'bg-left-top', 'bg-left-bottom', 'bg-right-top', 'bg-right-bottom'].includes(base)) return `${prefix}bg-position`;
+            if (['bg-no-repeat', 'bg-repeat', 'bg-repeat-x', 'bg-repeat-y', 'bg-repeat-round', 'bg-repeat-space'].includes(base)) return `${prefix}bg-repeat`;
+            if (base.startsWith('bg-clip-')) return `${prefix}bg-clip`;
+            if (base.startsWith('bg-gradient-') || base === 'bg-none' || /^bg-\[(url|linear-gradient|radial-gradient)\(/i.test(base)) return `${prefix}bg-image`;
+            return `${prefix}bg-color`;
+        }
         if (base.startsWith('text-')) {
             if (['text-left', 'text-center', 'text-right', 'text-justify'].includes(base)) return `${prefix}text-align`;
-            if (FONT_SIZE_SCALE.some(f => base === `text-${f.key}`) || base.startsWith('text-[')) return `${prefix}font-size`;
+            if (['text-wrap', 'text-nowrap', 'text-balance', 'text-pretty'].includes(base)) return `${prefix}text-wrap`;
+            if (FONT_SIZE_SCALE.some(f => base === `text-${f.key}`)) return `${prefix}font-size`;
+            if (base.startsWith('text-[') && base.endsWith(']')) {
+                const inner = base.slice(6, -1);
+                if (/^-?\d+(\.\d+)?(px|rem|em|vw|vh|%)$/i.test(inner) || inner.startsWith('length:') || inner.startsWith('clamp(')) {
+                    return `${prefix}font-size`;
+                }
+                return `${prefix}text-color`;
+            }
             return `${prefix}text-color`;
         }
-        if (base.startsWith('font-')) return `${prefix}font-weight`;
-        if (base.startsWith('rounded-')) return `${prefix}rounded`;
+        if (base.startsWith('font-')) {
+            if (['font-sans', 'font-serif', 'font-mono', 'font-display'].includes(base)) return `${prefix}font-family`;
+            if (['font-thin', 'font-extralight', 'font-light', 'font-normal', 'font-medium', 'font-semibold', 'font-bold', 'font-extrabold', 'font-black'].includes(base) || /^font-\[\d+\]$/.test(base)) {
+                return `${prefix}font-weight`;
+            }
+            return `${prefix}font-family`;
+        }
+        if (base.startsWith('rounded-') || base === 'rounded') {
+            if (base.startsWith('rounded-tl')) return `${prefix}rounded-tl`;
+            if (base.startsWith('rounded-tr')) return `${prefix}rounded-tr`;
+            if (base.startsWith('rounded-br')) return `${prefix}rounded-br`;
+            if (base.startsWith('rounded-bl')) return `${prefix}rounded-bl`;
+            if (base.startsWith('rounded-t-') || base === 'rounded-t') return `${prefix}rounded-t`;
+            if (base.startsWith('rounded-r-') || base === 'rounded-r') return `${prefix}rounded-r`;
+            if (base.startsWith('rounded-b-') || base === 'rounded-b') return `${prefix}rounded-b`;
+            if (base.startsWith('rounded-l-') || base === 'rounded-l') return `${prefix}rounded-l`;
+            return `${prefix}rounded`;
+        }
         if (base.startsWith('shadow-') || base === 'shadow') return `${prefix}shadow`;
         if (base.startsWith('opacity-')) return `${prefix}opacity`;
         if (base.startsWith('justify-')) return `${prefix}justify`;
         if (base.startsWith('items-')) return `${prefix}items`;
+        if (base.startsWith('self-')) return `${prefix}self`;
+        if (base.startsWith('gap-x-')) return `${prefix}gap-x`;
+        if (base.startsWith('gap-y-')) return `${prefix}gap-y`;
         if (base.startsWith('gap-')) return `${prefix}gap`;
-        if (['flex', 'grid', 'block', 'inline-block', 'inline-flex', 'hidden'].includes(base)) return `${prefix}display`;
+        if (['flex', 'grid', 'block', 'inline-block', 'inline-flex', 'inline-grid', 'hidden'].includes(base)) return `${prefix}display`;
         if (['relative', 'absolute', 'fixed', 'sticky', 'static'].includes(base)) return `${prefix}position`;
 
         return `${prefix}${base}`;
@@ -705,10 +817,36 @@ export function deduplicateTailwindClasses(classList) {
 
     for (const cls of classList) {
         if (!cls) continue;
-        if (isGrid && (cls === 'flex-row' || cls === 'flex-col' || cls === 'flex-row-reverse' || cls === 'flex-col-reverse' || cls === 'flex-wrap' || cls === 'flex-nowrap' || cls === 'flex-wrap-reverse')) {
-            continue;
+        if (isGrid) {
+            if (cls === 'flex' || cls === 'inline-flex' || cls === 'flex-row' || cls === 'flex-col' || cls === 'flex-row-reverse' || cls === 'flex-col-reverse' || cls === 'flex-wrap' || cls === 'flex-nowrap' || cls === 'flex-wrap-reverse') {
+                continue;
+            }
         }
         const group = getGroupKey(cls);
+        const colonIdx = cls.lastIndexOf(':');
+        const prefix = colonIdx !== -1 ? cls.slice(0, colonIdx + 1) : '';
+        if (group === `${prefix}padding-pt` || group === `${prefix}padding-pb`) {
+            map.delete(`${prefix}padding-py`);
+            map.delete(`${prefix}padding-p`);
+        } else if (group === `${prefix}padding-pr` || group === `${prefix}padding-pl`) {
+            map.delete(`${prefix}padding-px`);
+            map.delete(`${prefix}padding-p`);
+        } else if (group === `${prefix}padding-py`) {
+            map.delete(`${prefix}padding-pt`);
+            map.delete(`${prefix}padding-pb`);
+            map.delete(`${prefix}padding-p`);
+        } else if (group === `${prefix}padding-px`) {
+            map.delete(`${prefix}padding-pr`);
+            map.delete(`${prefix}padding-pl`);
+            map.delete(`${prefix}padding-p`);
+        } else if (group === `${prefix}padding-p`) {
+            map.delete(`${prefix}padding-py`);
+            map.delete(`${prefix}padding-px`);
+            map.delete(`${prefix}padding-pt`);
+            map.delete(`${prefix}padding-pr`);
+            map.delete(`${prefix}padding-pb`);
+            map.delete(`${prefix}padding-pl`);
+        }
         map.set(group, cls);
     }
 

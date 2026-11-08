@@ -14,6 +14,7 @@ import {
 import {
     resolveNodeTailwindClasses,
     mapStylesToTailwind,
+    matchColor,
     injectTailwindCdn,
     generateHybridApplyStylesheet,
     extractFigmaVariablesTheme,
@@ -131,7 +132,8 @@ export function renderRichText(textData, defaultNode, stylesheetManager = null, 
                     }
                 } else if (solid) {
                     const rawColor = formatColor(solid.color, solid.opacity);
-                    const subColor = stylesheetManager ? stylesheetManager.substituteVar('color', rawColor) : rawColor;
+                    const isTwUtility = Boolean(options.tailwind && options.tailwindMode !== 'hybrid');
+                    const subColor = (!isTwUtility && stylesheetManager) ? stylesheetManager.substituteVar('color', rawColor) : rawColor;
                     spanStyles['color'] = subColor;
                     const defaultHasGrad = Array.isArray(defaultNode?.fillPaints) && defaultNode.fillPaints.some(f => f.visible !== false && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL'));
                     if (defaultHasGrad) {
@@ -524,7 +526,10 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
     let remainingStyles = styles;
 
     if (isTailwind && !isHybrid) {
-        const twResult = resolveNodeTailwindClasses(node, parentNode, imageRegistry, options);
+        const twOptions = (options.extractCss || options.inlineStyles)
+            ? options
+            : { ...options, cssAssetUrlPrefix: options.assetUrlPrefix || 'img/' };
+        const twResult = resolveNodeTailwindClasses(node, parentNode, imageRegistry, twOptions);
         twClassString = twResult.classString;
         remainingStyles = twResult.remainingStyles || {};
     }
@@ -536,7 +541,7 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
     const classAttr = finalClass ? ` ${classProp}="${escapeHtml(finalClass)}"` : '';
 
     const isInline = isTailwind && !isHybrid
-        ? (options.inlineStyles === true)
+        ? (options.inlineStyles === true || Object.keys(remainingStyles).length > 0)
         : (stylesheetManager ? (options.inlineStyles === true) : (options.inlineStyles !== false));
 
     const stylesToRender = (isTailwind && !isHybrid) ? remainingStyles : styles;
@@ -621,8 +626,8 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
                     fill = 'currentColor';
                 }
 
-                const fillVal = stylesheetManager ? stylesheetManager.substituteVar('fill', fill) : fill;
-                const strokeVal = stylesheetManager ? stylesheetManager.substituteVar('stroke', stroke) : stroke;
+                const fillVal = (!isTailwind || isHybrid) && stylesheetManager ? stylesheetManager.substituteVar('fill', fill) : fill;
+                const strokeVal = (!isTailwind || isHybrid) && stylesheetManager ? stylesheetManager.substituteVar('stroke', stroke) : stroke;
 
                 // Scale factor for normalized vectorNetworkBlob coordinates
                 let sx = 1;
@@ -917,16 +922,23 @@ export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {})
     }
 
     const cssHref = options.cssHref || options.cssFile || 'css/style.css';
+    const isTwUtility = Boolean(options.tailwind && options.tailwindMode !== 'hybrid');
     let styleTagOrLink = '';
     if (cssContent.trim()) {
         styleTagOrLink = options.extractCss
             ? `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`
             : `  <style>\n${cssContent}\n  </style>\n`;
-    } else if (options.extractCss) {
+    } else if (options.extractCss && !isTwUtility) {
         styleTagOrLink = `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`;
     }
 
-    const bodyClass = options.pageSlug ? `page-${options.pageSlug}` : (options.bodyClass || '');
+    let bodyClass = options.pageSlug ? `page-${options.pageSlug}` : (options.bodyClass || '');
+    if (isTwUtility && rootBg) {
+        const bgMatch = matchColor(rootBg, options);
+        if (bgMatch && bgMatch.classSuffix && bgMatch.classSuffix !== 'transparent') {
+            bodyClass = `${bodyClass} bg-${bgMatch.classSuffix} m-0 p-0 antialiased`.trim();
+        }
+    }
     const bodyClassAttr = bodyClass ? ` class="${escapeHtml(bodyClass)}"` : '';
 
     let html = `<!DOCTYPE html>

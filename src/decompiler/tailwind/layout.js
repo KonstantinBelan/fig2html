@@ -136,8 +136,8 @@ export function mapAutoLayoutToTailwind(node, parentNode = null, options = {}) {
         const hVal = snapSpacing(anchors.horizontalVal, options);
         const vVal = snapSpacing(anchors.verticalVal, options);
 
-        classes.push(`${anchors.horizontalProp}-${hVal}`);
-        classes.push(`${anchors.verticalProp}-${vVal}`);
+        classes.push(hVal.startsWith('-') ? `-${anchors.horizontalProp}-${hVal.slice(1)}` : `${anchors.horizontalProp}-${hVal}`);
+        classes.push(vVal.startsWith('-') ? `-${anchors.verticalProp}-${vVal.slice(1)}` : `${anchors.verticalProp}-${vVal}`);
     } else if (parentIsAutoLayout) {
         // Child inside Auto Layout container
         const isHorizontalParent = parentNode.stackMode === 'HORIZONTAL';
@@ -205,9 +205,17 @@ export function resolveNodeTailwindClasses(node, parentNode, imageRegistry, opti
     // 5. Gradients on non-text shapes & containers
     const gradientClasses = [];
     if (node.type !== 'TEXT' && Array.isArray(node.fillPaints)) {
-        const topGrad = [...node.fillPaints].reverse().find(f => f.visible !== false && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL'));
-        if (topGrad) {
-            gradientClasses.push(...mapGradientToTailwind(topGrad, options));
+        const visibleFills = node.fillPaints.filter(f => f.visible !== false);
+        const visibleGrads = visibleFills.filter(f => f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL');
+        const hasImageFill = visibleFills.some(f => f.type === 'IMAGE');
+        // Use Tailwind gradient utility classes only when there is a single simple linear gradient and no image fill;
+        // otherwise preserve the exact CSS background-image in remainingStyles
+        if (visibleGrads.length === 1 && visibleGrads[0].type === 'GRADIENT_LINEAR' && !hasImageFill) {
+            const gradTw = mapGradientToTailwind(visibleGrads[0], options);
+            if (gradTw.length > 0) {
+                gradientClasses.push(...gradTw);
+                delete remainingStyles['background-image'];
+            }
         }
     }
 
@@ -221,10 +229,10 @@ export function resolveNodeTailwindClasses(node, parentNode, imageRegistry, opti
     // 7. Vector Icons
     const vectorClasses = (isVectorContainer(node) || isVectorNode(node)) ? mapSvgIconToTailwind(node, options) : [];
 
-    // 8. Combine and deduplicate
+    // 8. Combine and deduplicate (put layoutClasses before mappedClasses so computeNodeStyles's accurate padding/sizing wins)
     const combined = deduplicateTailwindClasses([
-        ...mappedClasses,
         ...layoutClasses,
+        ...mappedClasses,
         ...textClasses,
         ...gradientClasses,
         ...blendClasses,

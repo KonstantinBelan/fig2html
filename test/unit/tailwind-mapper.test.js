@@ -226,6 +226,38 @@ export default function ({ it }) {
         assert.ok(!deduped.includes('flex'));
         assert.ok(deduped.includes('block'));
 
+        // font-family must not wipe font-weight
+        const fonts = deduplicateTailwindClasses(['font-bold', 'font-sans']);
+        assert.ok(fonts.includes('font-bold') && fonts.includes('font-sans'));
+
+        // arbitrary text color must not be wiped by font size
+        const textCls = deduplicateTailwindClasses(['text-[#05462e]', 'text-base']);
+        assert.ok(textCls.includes('text-[#05462e]') && textCls.includes('text-base'));
+        const textArb = deduplicateTailwindClasses(['text-[#05462e]', 'text-[15px]']);
+        assert.ok(textArb.includes('text-[#05462e]') && textArb.includes('text-[15px]'));
+
+        // background sub-properties are independent
+        const bg = deduplicateTailwindClasses(['bg-white', 'bg-cover', 'bg-center', 'bg-no-repeat']);
+        assert.strictEqual(bg.length, 4);
+
+        // gap axes and corner radii are independent
+        const gaps = deduplicateTailwindClasses(['gap-x-4', 'gap-y-6', 'rounded-tl-lg', 'rounded-br-lg']);
+        assert.strictEqual(gaps.length, 4);
+
+        // explicit side padding overrides axis shorthand
+        const pads = deduplicateTailwindClasses(['py-3', 'px-2.5', 'pt-3', 'pb-0']);
+        assert.ok(!pads.includes('py-3') && pads.includes('pb-0') && pads.includes('px-2.5'));
+
+        // negative offsets are formatted as valid Tailwind classes
+        const neg = mapStylesToTailwind({ position: 'absolute', top: '-42px', left: '285px' });
+        assert.ok(neg.classes.includes('-top-[42px]'));
+        assert.ok(!neg.classes.some(c => c.includes('top--')));
+
+        // url()/multi-gradient backgrounds are preserved as inline styles
+        const bgImg = mapStylesToTailwind({ 'background-image': "url('img/a.png')", 'background-size': 'cover', 'background-position': 'center' });
+        assert.strictEqual(bgImg.remainingStyles['background-image'], "url('img/a.png')");
+        assert.ok(bgImg.classes.includes('bg-cover') && bgImg.classes.includes('bg-center'));
+
         const gridWithFlex = deduplicateTailwindClasses(['grid', 'grid-cols-3', 'flex-row', 'flex-wrap']);
         assert.ok(gridWithFlex.includes('grid'));
         assert.ok(gridWithFlex.includes('grid-cols-3'));

@@ -28,6 +28,33 @@ export default async function ({ it, itAsync }) {
         );
     });
 
+    await itAsync('does not activate Tailwind when tailwind: false (CLI defaults) and emits no css/ in utility mode', async () => {
+        const plain = await convertFigToHtml(showcaseFigPath, {
+            tailwind: false,
+            tailwindVersion: 'v4',
+            tailwindMode: 'utility',
+            framework: 'html',
+            inlineImages: true
+        });
+        assert.strictEqual(plain.tailwind, false);
+        assert.ok(!plain.html.includes('cdn.tailwindcss.com'), 'Plain mode must not inject Tailwind CDN');
+
+        const tempDir = path.resolve(__dirname, '../temp_tailwind_no_css');
+        try {
+            const tw = await convertFigToHtml(showcaseFigPath, {
+                tailwind: true,
+                separateFiles: true,
+                extractCss: true,
+                outputHtmlPath: tempDir
+            });
+            assert.strictEqual(tw.cssPath, null);
+            assert.ok(!fs.existsSync(path.join(tempDir, 'css')), 'Tailwind utility mode must not write css/');
+            assert.ok(!tw.html.includes('css/style.css'), 'Tailwind utility mode must not link css/style.css');
+        } finally {
+            if (fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+
     await itAsync('decompiles showcase.fig to React TSX functional component with className', async () => {
         const result = await convertFigToHtml(showcaseFigPath, {
             tailwind: true,
