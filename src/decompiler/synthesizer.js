@@ -1,16 +1,16 @@
 // src/decompiler/synthesizer.js
-const {
+import {
     BoundingBox,
     fuzzyEqual,
     clusterValues,
     sliceAlongAxis,
     computeMedian
-} = require('./geometry');
-const {
+} from './geometry.js';
+import {
     detectAndExtractContainers,
     adjustCoordinatesRelativeToContainer
-} = require('./container-detector');
-const { isVectorContainer } = require('./vector');
+} from './container-detector.js';
+import { isVectorContainer } from './vector.js';
 
 let virtualGuidCounter = 900000;
 
@@ -32,7 +32,7 @@ function nextVirtualGuid() {
  * @param {number} [epsilon=3]
  * @returns {{ isGrid: boolean, rows?: number, columns?: number, columnGap?: number, rowGap?: number, orderedNodes?: Array<object> }}
  */
-function detectGrid(nodes, containerSize = null, epsilon = 3) {
+export function detectGrid(nodes, containerSize = null, epsilon = 3) {
     if (!Array.isArray(nodes) || nodes.length < 4) {
         return { isGrid: false };
     }
@@ -241,7 +241,7 @@ function isOverlayNode(node, containerW, containerH, allChildren, epsilon = 3) {
  * @param {object} node
  * @returns {boolean}
  */
-function isMaskContainer(node) {
+export function isMaskContainer(node) {
     if (!node) return false;
     if (node.name && /mask(\s*group)?/i.test(node.name)) return true;
     if (node.mask === true || node.isMask === true || node.isMaskBaked === true) return true;
@@ -266,7 +266,7 @@ function markUnderlaySubtree(n) {
  * @param {object} node
  * @returns {boolean}
  */
-function hasTransformRotation(node) {
+export function hasTransformRotation(node) {
     if (!node) return false;
     if (typeof node.rotation === 'number' && Math.abs(node.rotation) > 0.01) return true;
     if (!node.transform) return false;
@@ -279,7 +279,7 @@ function hasTransformRotation(node) {
  * @param {object} node
  * @returns {boolean}
  */
-function shouldSkipLayoutSynthesis(node) {
+export function shouldSkipLayoutSynthesis(node) {
     if (!node) return true;
     if (node.isDecorativeUnderlay) return true;
     if (isVectorContainer(node) || isMaskContainer(node) || hasTransformRotation(node)) return true;
@@ -296,7 +296,7 @@ function shouldSkipLayoutSynthesis(node) {
  * @param {number} [options.epsilon=3]
  * @returns {object} Updated containerNode
  */
-function synthesizeContainerLayout(containerNode, options = {}) {
+export function synthesizeContainerLayout(containerNode, options = {}) {
     if (!containerNode || !Array.isArray(containerNode.children) || containerNode.children.length === 0) {
         return containerNode;
     }
@@ -834,7 +834,7 @@ function synthesizeContainerLayout(containerNode, options = {}) {
  * @param {object} [options={}]
  * @returns {object} Synthesized node
  */
-function synthesizeLayoutTree(node, options = {}) {
+export function synthesizeLayoutTree(node, options = {}) {
     if (!node) return node;
     if (isVectorContainer(node) || isMaskContainer(node) || hasTransformRotation(node)) return node;
 
@@ -884,7 +884,7 @@ function synthesizeLayoutTree(node, options = {}) {
  * @param {object} [options={}]
  * @returns {Array<object>}
  */
-function applySmartLayout(rootNodes, options = {}) {
+export function applySmartLayout(rootNodes, options = {}) {
     if (!rootNodes) return rootNodes;
 
     const list = Array.isArray(rootNodes) ? rootNodes : [rootNodes];
@@ -894,13 +894,3 @@ function applySmartLayout(rootNodes, options = {}) {
 
     return list;
 }
-
-module.exports = {
-    detectGrid,
-    isMaskContainer,
-    hasTransformRotation,
-    shouldSkipLayoutSynthesis,
-    synthesizeContainerLayout,
-    synthesizeLayoutTree,
-    applySmartLayout
-};

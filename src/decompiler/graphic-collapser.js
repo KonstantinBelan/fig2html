@@ -1,12 +1,12 @@
 // src/decompiler/graphic-collapser.js
-const crypto = require('crypto');
+import crypto from 'node:crypto';
 
 /**
  * Returns a 2D affine identity matrix:
  * M = [ [1, 0, 0], [0, 1, 0], [0, 0, 1] ]
  * @returns {{ m00: number, m01: number, m02: number, m10: number, m11: number, m12: number }}
  */
-function identityMatrix() {
+export function identityMatrix() {
     return { m00: 1, m01: 0, m02: 0, m10: 0, m11: 1, m12: 0 };
 }
 
@@ -23,7 +23,7 @@ function identityMatrix() {
  * @param {object} b Second matrix
  * @returns {{ m00: number, m01: number, m02: number, m10: number, m11: number, m12: number }} Result matrix
  */
-function multiplyAffineMatrices(a, b) {
+export function multiplyAffineMatrices(a, b) {
     if (!a && !b) return identityMatrix();
     if (!a) return { ...b };
     if (!b) return { ...a };
@@ -49,7 +49,7 @@ function multiplyAffineMatrices(a, b) {
  * @param {Array<object>} matrices
  * @returns {{ m00: number, m01: number, m02: number, m10: number, m11: number, m12: number }}
  */
-function multiplyChain(matrices) {
+export function multiplyChain(matrices) {
     if (!Array.isArray(matrices) || matrices.length === 0) return identityMatrix();
     let res = identityMatrix();
     for (const m of matrices) {
@@ -65,7 +65,7 @@ function multiplyChain(matrices) {
  * @param {object} m
  * @returns {{ rotateDeg: number, rotateRad: number, scaleX: number, scaleY: number, translateX: number, translateY: number }}
  */
-function decomposeAffineMatrix(m) {
+export function decomposeAffineMatrix(m) {
     if (!m) {
         return { rotateDeg: 0, rotateRad: 0, scaleX: 1, scaleY: 1, translateX: 0, translateY: 0 };
     }
@@ -96,7 +96,7 @@ function decomposeAffineMatrix(m) {
  * @param {object} node
  * @returns {boolean}
  */
-function isMaskNode(node) {
+export function isMaskNode(node) {
     return Boolean(node && (node.mask === true || node.isMask === true));
 }
 
@@ -105,7 +105,7 @@ function isMaskNode(node) {
  * @param {object} node
  * @returns {boolean}
  */
-function hasTextOrInteractive(node) {
+export function hasTextOrInteractive(node) {
     if (!node) return false;
     if (node.type === 'TEXT') return true;
     const name = node.name || '';
@@ -124,7 +124,7 @@ function hasTextOrInteractive(node) {
  * @param {object} node
  * @returns {boolean}
  */
-function hasVisibleFills(node) {
+export function hasVisibleFills(node) {
     if (!Array.isArray(node.fillPaints)) return false;
     return node.fillPaints.some(f => f.visible !== false && (f.opacity ?? 1) > 0.01 && (f.type !== 'SOLID' || (f.color && f.color.a > 0.01)));
 }
@@ -134,7 +134,7 @@ function hasVisibleFills(node) {
  * @param {object} node
  * @returns {boolean}
  */
-function hasVisibleStrokes(node) {
+export function hasVisibleStrokes(node) {
     if (!Array.isArray(node.strokePaints)) return false;
     return node.strokePaints.some(s => s.visible !== false && (s.opacity ?? 1) > 0.01);
 }
@@ -144,7 +144,7 @@ function hasVisibleStrokes(node) {
  * @param {object} node
  * @returns {boolean}
  */
-function hasEffects(node) {
+export function hasEffects(node) {
     if (!Array.isArray(node.effects)) return false;
     return node.effects.some(e => e.visible !== false);
 }
@@ -162,7 +162,7 @@ function hasEffects(node) {
  * @param {object} node
  * @returns {object|null} Chain description object if degenerate graphic chain is found, null otherwise
  */
-function detectGraphicSubtreeChain(node) {
+export function detectGraphicSubtreeChain(node) {
     if (!node || !Array.isArray(node.children) || node.children.length === 0) return null;
     if (node.type === 'CANVAS' || node.type === 'DOCUMENT') return null;
     if (hasTextOrInteractive(node)) return null;
@@ -248,7 +248,7 @@ function detectGraphicSubtreeChain(node) {
  * @param {Array<object>|object} rootNodes
  * @returns {Array<object>}
  */
-function findAllGraphicChains(rootNodes) {
+export function findAllGraphicChains(rootNodes) {
     const chains = [];
 
     function traverse(node) {
@@ -282,7 +282,7 @@ function findAllGraphicChains(rootNodes) {
  * @param {object} chainInfo Result from detectGraphicSubtreeChain
  * @param {string|Buffer} bakedHash SHA-1 hash of the baked raster asset
  */
-function collapseGraphicSubtree(chainInfo, bakedHash) {
+export function collapseGraphicSubtree(chainInfo, bakedHash) {
     if (!chainInfo || !bakedHash) return;
 
     const hashBuffer = Buffer.isBuffer(bakedHash)
@@ -330,17 +330,3 @@ function collapseGraphicSubtree(chainInfo, bakedHash) {
         root.children = [imgChild];
     }
 }
-
-module.exports = {
-    identityMatrix,
-    multiplyAffineMatrices,
-    multiplyChain,
-    decomposeAffineMatrix,
-    detectGraphicSubtreeChain,
-    findAllGraphicChains,
-    collapseGraphicSubtree,
-    hasTextOrInteractive,
-    hasVisibleFills,
-    hasVisibleStrokes,
-    hasEffects
-};

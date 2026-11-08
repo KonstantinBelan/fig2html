@@ -1,12 +1,12 @@
 // src/decompiler/css/gradient-formatter.js
-const { formatColor } = require('./color-formatter');
+import { formatColor } from './color-formatter.js';
 
 /**
  * Calculates CSS linear gradient angle from Figma 2x3 affine matrix
  * @param {{ m00: number, m01: number, m02: number, m10: number, m11: number, m12: number }} transform
  * @returns {number} Angle in degrees [0..360)
  */
-function getLinearGradientAngle(transform) {
+export function getLinearGradientAngle(transform) {
     if (!transform) return 180;
     const rad = Math.atan2(transform.m01 || 0, transform.m00 || 0);
     let deg = Math.round((rad * (180 / Math.PI) + 90 + 360) % 360);
@@ -18,7 +18,7 @@ function getLinearGradientAngle(transform) {
  * @param {{ m00: number, m01: number, m02: number, m10: number, m11: number, m12: number }} transform
  * @returns {{ scaleX: number, scaleY: number, rotateDeg: number } | null}
  */
-function parseTransformMatrix(transform) {
+export function parseTransformMatrix(transform) {
     if (!transform) return null;
     const m00 = transform.m00 ?? 1;
     const m01 = transform.m01 ?? 0;
@@ -62,7 +62,7 @@ function parseTransformMatrix(transform) {
  * @param {object} node
  * @returns {{ scaleX: number, scaleY: number, rotateDeg: number } | null}
  */
-function getNodeTransformInfo(node) {
+export function getNodeTransformInfo(node) {
     if (!node) return null;
     const info = parseTransformMatrix(node.transform);
     if (info) return info;
@@ -82,7 +82,7 @@ function getNodeTransformInfo(node) {
  * @param {object} paint
  * @returns {string|null} CSS gradient
  */
-function formatGradient(paint) {
+export function formatGradient(paint) {
     if (!paint || !paint.stops || paint.stops.length < 2) return null;
 
     const stopStrings = paint.stops.map(s => {
@@ -102,10 +102,3 @@ function formatGradient(paint) {
 
     return null;
 }
-
-module.exports = {
-    getLinearGradientAngle,
-    parseTransformMatrix,
-    getNodeTransformInfo,
-    formatGradient
-};

@@ -1,17 +1,17 @@
 // src/decompiler/index.js
-const fs = require('fs');
-const path = require('path');
-const { readFigFile } = require('./reader');
-const { buildSceneTree } = require('./tree');
-const { generateFullHtmlDocument } = require('./html');
-const { getExtensionForMime, formatColor } = require('./css');
-const { StylesheetManager } = require('./stylesheet');
-const { isVectorContainer } = require('./vector');
-const { optimizeAllImages, optimizeBuffer } = require('./image-optimizer');
-const { applySmartLayout, synthesizeLayoutTree, detectGrid } = require('./synthesizer');
-const { detectAndExtractContainers } = require('./container-detector');
-const { BoundingBox } = require('./geometry');
-const {
+import fs from 'node:fs';
+import path from 'node:path';
+import { readFigFile } from './reader.js';
+import { buildSceneTree } from './tree.js';
+import { generateFullHtmlDocument } from './html.js';
+import { getExtensionForMime, formatColor } from './css/index.js';
+import { StylesheetManager } from './stylesheet.js';
+import { isVectorContainer } from './vector.js';
+import { optimizeAllImages, optimizeBuffer } from './image-optimizer.js';
+import { applySmartLayout, synthesizeLayoutTree, detectGrid } from './synthesizer.js';
+import { detectAndExtractContainers } from './container-detector.js';
+import { BoundingBox } from './geometry.js';
+import {
     detectPages,
     isSinglePageArtboard,
     stripPageTag,
@@ -23,10 +23,10 @@ const {
     DEFAULT_EXCLUDE_TAGS,
     DEFAULT_MIN_PAGE_WIDTH,
     DEFAULT_MIN_PAGE_HEIGHT
-} = require('./page-detector');
-const { groupFramesIntoResponsivePages } = require('./breakpoint-detector');
-const { alignBreakpointTrees } = require('./ast-aligner');
-const { synthesizeResponsiveStyles } = require('./responsive-css');
+} from './page-detector.js';
+import { groupFramesIntoResponsivePages } from './breakpoint-detector.js';
+import { alignBreakpointTrees } from './ast-aligner.js';
+import { synthesizeResponsiveStyles } from './responsive-css.js';
 
 /**
  * Converts a Figma .fig binary file into a clean, standalone HTML/CSS document (or multi-page project)
@@ -57,7 +57,7 @@ const { synthesizeResponsiveStyles } = require('./responsive-css');
  * @param {boolean} [options.verbose=false] Print progress logs
  * @returns {Promise<{ html: string, css: string|null, outputPath: string|null, cssPath: string|null, assetsDir: string|null, totalNodes: number, imagesCount: number, durationMs: number, stats: object, isMultiPage?: boolean, pages?: Array<object> }>}
  */
-async function convertFigToHtml(figInput, options = {}) {
+export async function convertFigToHtml(figInput, options = {}) {
     const startTime = Date.now();
     const log = (msg) => {
         if (options.verbose) console.log(`[DECOMPILE] ${msg}`);
@@ -813,8 +813,7 @@ async function convertFigToHtml(figInput, options = {}) {
     };
 }
 
-module.exports = {
-    convertFigToHtml,
+export {
     readFigFile,
     buildSceneTree,
     generateFullHtmlDocument,

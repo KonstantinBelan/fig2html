@@ -6,7 +6,7 @@
  * @param {number} [base=16]
  * @returns {string}
  */
-function toRem(px, base = 16) {
+export function toRem(px, base = 16) {
     if (!px || Math.abs(px) < 0.001) return '0';
     const val = Math.round((px / base) * 10000) / 10000;
     return `${val}rem`;
@@ -18,7 +18,7 @@ function toRem(px, base = 16) {
  * @param {number} [base=16]
  * @returns {string}
  */
-function toEm(px, base = 16) {
+export function toEm(px, base = 16) {
     if (!px || Math.abs(px) < 0.001) return '0';
     const val = Math.round((px / base) * 10000) / 10000;
     return `${val}em`;
@@ -30,7 +30,7 @@ function toEm(px, base = 16) {
  * @param {number} [viewportWidth=1440]
  * @returns {string}
  */
-function toVw(px, viewportWidth = 1440) {
+export function toVw(px, viewportWidth = 1440) {
     if (!px || Math.abs(px) < 0.001) return '0';
     const vw = Math.round((px / (viewportWidth || 1440)) * 100 * 1000) / 1000;
     return `${vw}vw`;
@@ -42,7 +42,7 @@ function toVw(px, viewportWidth = 1440) {
  * @param {number} [viewportHeight=900]
  * @returns {string}
  */
-function toVh(px, viewportHeight = 900) {
+export function toVh(px, viewportHeight = 900) {
     if (!px || Math.abs(px) < 0.001) return '0';
     const vh = Math.round((px / (viewportHeight || 900)) * 100 * 1000) / 1000;
     return `${vh}vh`;
@@ -54,7 +54,7 @@ function toVh(px, viewportHeight = 900) {
  * @param {number} [canvasWidth=1440]
  * @returns {string}
  */
-function formatFluidFontSize(px, canvasWidth = 1440) {
+export function formatFluidFontSize(px, canvasWidth = 1440) {
     if (!px) return '1rem';
     const maxRem = toRem(px);
 
@@ -87,7 +87,7 @@ function formatFluidFontSize(px, canvasWidth = 1440) {
  * @param {number} [canvasWidth=1440]
  * @returns {string}
  */
-function formatFluidSpacing(px, canvasWidth = 1440) {
+export function formatFluidSpacing(px, canvasWidth = 1440) {
     if (!px || Math.abs(px) < 0.001) return '0';
 
     // For small spacing (<= 8px), keep compact rem
@@ -109,7 +109,7 @@ function formatFluidSpacing(px, canvasWidth = 1440) {
  * @param {boolean} [isWidth=true]
  * @returns {string}
  */
-function formatFluidDimension(px, canvasDimension = 1440, isWidth = true) {
+export function formatFluidDimension(px, canvasDimension = 1440, isWidth = true) {
     if (!px || Math.abs(px) < 0.001) return '0';
 
     if (isWidth) {
@@ -154,7 +154,7 @@ function formatFluidDimension(px, canvasDimension = 1440, isWidth = true) {
  * @param {Function} formatColorFn
  * @returns {{ boxShadow: string|null, filter: string|null, backdropFilter: string|null }}
  */
-function formatEffectsWithUnits(effects, options = {}, formatColorFn) {
+export function formatEffectsWithUnits(effects, options = {}, formatColorFn) {
     if (!Array.isArray(effects) || effects.length === 0) {
         return { boxShadow: null, textShadow: null, filter: null, backdropFilter: null };
     }
@@ -214,14 +214,3 @@ function formatEffectsWithUnits(effects, options = {}, formatColorFn) {
         backdropFilter
     };
 }
-
-module.exports = {
-    toRem,
-    toEm,
-    toVw,
-    toVh,
-    formatFluidFontSize,
-    formatFluidSpacing,
-    formatFluidDimension,
-    formatEffectsWithUnits
-};

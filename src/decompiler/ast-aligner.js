@@ -5,7 +5,7 @@
  * @param {string} text
  * @returns {string}
  */
-function normalizeText(text) {
+export function normalizeText(text) {
     if (!text || typeof text !== 'string') return '';
     return text.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 }
@@ -15,7 +15,7 @@ function normalizeText(text) {
  * @param {string} name
  * @returns {string}
  */
-function normalizeLayerName(name) {
+export function normalizeLayerName(name) {
     if (!name || typeof name !== 'string') return '';
     return name
         .toLowerCase()
@@ -31,7 +31,7 @@ function normalizeLayerName(name) {
  * @param {string} b
  * @returns {number} Score between 0 and 1
  */
-function tokenSimilarity(a, b) {
+export function tokenSimilarity(a, b) {
     if (!a && !b) return 1.0;
     if (!a || !b) return 0.0;
     if (a === b) return 1.0;
@@ -54,7 +54,7 @@ function tokenSimilarity(a, b) {
  * @param {object} node
  * @returns {string}
  */
-function extractNodeText(node) {
+export function extractNodeText(node) {
     if (!node) return '';
     if (node.type === 'TEXT') {
         return node.characters || node.textData?.characters || '';
@@ -67,7 +67,7 @@ function extractNodeText(node) {
  * @param {object} node
  * @returns {string|null}
  */
-function extractImageId(node) {
+export function extractImageId(node) {
     if (!node || !Array.isArray(node.fillPaints)) return null;
     const imgPaint = node.fillPaints.find(f => f && f.type === 'IMAGE' && f.visible !== false);
     if (!imgPaint) return null;
@@ -92,7 +92,7 @@ function extractImageId(node) {
  * @param {object} nodeB
  * @returns {number}
  */
-function computeNodeSimilarity(nodeA, nodeB) {
+export function computeNodeSimilarity(nodeA, nodeB) {
     if (!nodeA || !nodeB) return 0.0;
     if (nodeA === nodeB) return 1.0;
 
@@ -161,7 +161,7 @@ function computeNodeSimilarity(nodeA, nodeB) {
  * @param {object} obj
  * @returns {object}
  */
-function cloneAstNode(obj) {
+export function cloneAstNode(obj) {
     if (!obj || typeof obj !== 'object') return obj;
     const copy = Array.isArray(obj) ? [] : {};
     for (const [k, v] of Object.entries(obj)) {
@@ -185,7 +185,7 @@ function cloneAstNode(obj) {
  * @param {number} [threshold=0.65]
  * @returns {{ matches: Array<{ base: object, variant: object, score: number }>, unmatchedBase: Array<object>, unmatchedVariant: Array<object> }}
  */
-function matchChildren(baseChildren = [], variantChildren = [], threshold = 0.65) {
+export function matchChildren(baseChildren = [], variantChildren = [], threshold = 0.65) {
     const pairs = [];
     const usedBase = new Set();
     const usedVariant = new Set();
@@ -240,7 +240,7 @@ function matchChildren(baseChildren = [], variantChildren = [], threshold = 0.65
  * @param {Array<{ name: string, width: number, frame: object }>} variantBreakpoints
  * @returns {{ canonicalTree: object, nodeAlignmentMap: Map<object, Record<string, object>>, exclusiveNodes: Array<object> }}
  */
-function alignBreakpointTrees(baseRoot, variantBreakpoints = []) {
+export function alignBreakpointTrees(baseRoot, variantBreakpoints = []) {
     if (!baseRoot) return { canonicalTree: null, nodeAlignmentMap: new Map(), exclusiveNodes: [] };
 
     const baseName = 'desktop';
@@ -362,15 +362,3 @@ function alignBreakpointTrees(baseRoot, variantBreakpoints = []) {
         exclusiveNodes
     };
 }
-
-module.exports = {
-    normalizeText,
-    normalizeLayerName,
-    tokenSimilarity,
-    extractNodeText,
-    extractImageId,
-    computeNodeSimilarity,
-    cloneAstNode,
-    matchChildren,
-    alignBreakpointTrees
-};

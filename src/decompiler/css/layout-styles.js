@@ -1,12 +1,12 @@
 // src/decompiler/css/layout-styles.js
 
-function hasExplicitMaskTag(node) {
+export function hasExplicitMaskTag(node) {
     if (!node) return false;
     const name = (node.name || '').toLowerCase();
     return /\[(mask|маска)\]/i.test(name) || /#(mask|маска)\b/i.test(name) || /\/(mask|маска)\b/i.test(name);
 }
 
-function parseGridAxisCount(val) {
+export function parseGridAxisCount(val) {
     if (typeof val === 'number') return val;
     if (val && Array.isArray(val.entries)) return val.entries.length;
     if (Array.isArray(val)) return val.length;
@@ -14,7 +14,7 @@ function parseGridAxisCount(val) {
     return null;
 }
 
-function isImageNode(n) {
+export function isImageNode(n) {
     if (!n) return false;
     if (n.isCollapsedGraphicRoot) return true;
     if (Array.isArray(n.fillPaints) && n.fillPaints.some(f => f.type === 'IMAGE' && f.visible !== false)) return true;
@@ -27,12 +27,12 @@ function isImageNode(n) {
     return false;
 }
 
-function isVectorNode(n) {
+export function isVectorNode(n) {
     if (!n) return false;
     return ['VECTOR', 'STAR', 'REGULAR_POLYGON', 'BOOLEAN_OPERATION', 'LINE'].includes(n.type) || (n.vectorData && (!n.children || n.children.length === 0));
 }
 
-function isVectorContainer(node) {
+export function isVectorContainer(node) {
     if (!node || !Array.isArray(node.children) || node.children.length === 0) return false;
     const isFrame = ['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'BOOLEAN_OPERATION'].includes(node.type);
     if (!isFrame) return false;
@@ -54,7 +54,7 @@ function isVectorContainer(node) {
  * @param {boolean} [context.hasTransform=false]
  * @returns {{ horizontalProp: 'left'|'right', horizontalVal: number, verticalProp: 'top'|'bottom', verticalVal: number }}
  */
-function resolveSmartAbsoluteAnchors(node, parentNode, context = {}) {
+export function resolveSmartAbsoluteAnchors(node, parentNode, context = {}) {
     const rawX = node?.transform?.m02 || 0;
     const rawY = node?.transform?.m12 || 0;
     const posX = Math.round(rawX * 10) / 10;
@@ -111,12 +111,3 @@ function resolveSmartAbsoluteAnchors(node, parentNode, context = {}) {
         verticalVal
     };
 }
-
-module.exports = {
-    hasExplicitMaskTag,
-    parseGridAxisCount,
-    isImageNode,
-    isVectorNode,
-    isVectorContainer,
-    resolveSmartAbsoluteAnchors
-};

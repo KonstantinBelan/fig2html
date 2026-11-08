@@ -5,7 +5,7 @@
  * @param {string} mime
  * @returns {string} File extension ('jpg', 'png', 'svg', 'webp', 'gif')
  */
-function getExtensionForMime(mime) {
+export function getExtensionForMime(mime) {
     if (mime === 'image/jpeg') return 'jpg';
     if (mime === 'image/svg+xml') return 'svg';
     if (mime === 'image/webp') return 'webp';
@@ -20,7 +20,7 @@ function getExtensionForMime(mime) {
  * @param {number} [opacityMultiplier=1]
  * @returns {string} CSS color (hex or rgba)
  */
-function formatColor(color, opacityMultiplier = 1) {
+export function formatColor(color, opacityMultiplier = 1) {
     if (!color) return 'transparent';
     const r = Math.round((color.r || 0) * 255);
     const g = Math.round((color.g || 0) * 255);
@@ -34,8 +34,3 @@ function formatColor(color, opacityMultiplier = 1) {
     }
     return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
-
-module.exports = {
-    getExtensionForMime,
-    formatColor
-};

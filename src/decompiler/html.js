@@ -1,8 +1,8 @@
 // src/decompiler/html.js
-const { computeNodeStyles, toStyleString, formatColor, formatGradient, parseFontWeightAndStyle, getExtensionForMime } = require('./css');
-const { toRem, formatFluidFontSize } = require('./units');
-const { StylesheetManager } = require('./stylesheet');
-const {
+import { computeNodeStyles, toStyleString, formatColor, formatGradient, parseFontWeightAndStyle, getExtensionForMime } from './css/index.js';
+import { toRem, formatFluidFontSize } from './units.js';
+import { StylesheetManager } from './stylesheet.js';
+import {
     isVectorNode,
     isVectorContainer,
     collectVectorLeaves,
@@ -10,14 +10,14 @@ const {
     extractVectorPathInfo,
     getVectorStrokeAttributes,
     getVectorFillAttribute
-} = require('./vector');
+} from './vector.js';
 
 /**
  * Escapes characters for safe HTML attribute and text content rendering
  * @param {string} str
  * @returns {string}
  */
-function escapeHtml(str) {
+export function escapeHtml(str) {
     if (!str) return '';
     return String(str)
         .replace(/&/g, '&amp;')
@@ -32,7 +32,7 @@ function escapeHtml(str) {
  * @param {string} name
  * @returns {boolean}
  */
-function isValidClassName(name) {
+export function isValidClassName(name) {
     if (!name || typeof name !== 'string') return false;
     const clean = name.trim();
     if (!clean) return false;
@@ -49,7 +49,7 @@ function isValidClassName(name) {
  * @param {StylesheetManager} [stylesheetManager=null]
  * @returns {string} HTML string with styled <span> tags where necessary
  */
-function renderRichText(textData, defaultNode, stylesheetManager = null) {
+export function renderRichText(textData, defaultNode, stylesheetManager = null) {
     if (!textData || !textData.characters) {
         return '';
     }
@@ -228,7 +228,7 @@ function getAccessibleLabel(key, lang = 'en') {
  * @param {object} [options={}]
  * @returns {string} ISO language code (e.g. 'en', 'ru')
  */
-function detectDocumentLanguage(rootNodes, options = {}) {
+export function detectDocumentLanguage(rootNodes, options = {}) {
     if (options.lang && typeof options.lang === 'string') {
         return options.lang.toLowerCase().trim();
     }
@@ -310,7 +310,7 @@ function getAccessibleImageAttributes(node, defaultName) {
  * @param {object} [context={}]
  * @returns {string} Tag name (h1..h6, p, span)
  */
-function determineTextTag(node, context = {}) {
+export function determineTextTag(node, context = {}) {
     const name = (node.name || '').toLowerCase().trim();
 
     if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'label', 'blockquote', 'code'].includes(name)) {
@@ -370,7 +370,7 @@ function determineTextTag(node, context = {}) {
  * @param {object} [options={}]
  * @returns {string} Tag name (div, header, nav, section, article, main, form, button, a)
  */
-function determineContainerTag(node, parentNode = null, options = {}) {
+export function determineContainerTag(node, parentNode = null, options = {}) {
     const name = (node.name || '').toLowerCase().trim();
 
     // 1. Exact semantic tag names
@@ -458,7 +458,7 @@ function determineContainerTag(node, parentNode = null, options = {}) {
  * @param {number} [maybeIndent=2]
  * @returns {string} HTML snippet
  */
-function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOptions = {}, maybeOptions = {}, maybeIndent = 2) {
+export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOptions = {}, maybeOptions = {}, maybeIndent = 2) {
     if (!node || node.visible === false || node.mask === true || node.isMask === true) return '';
 
     let stylesheetManager = null;
@@ -734,7 +734,7 @@ function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOp
  * @param {Array<object>} rootNodes
  * @returns {Set<string>}
  */
-function collectFontFamilies(rootNodes) {
+export function collectFontFamilies(rootNodes) {
     const fonts = new Set();
 
     function traverse(node) {
@@ -760,7 +760,7 @@ function collectFontFamilies(rootNodes) {
  * @param {Set<string>} fontFamilies
  * @returns {string|null}
  */
-function generateGoogleFontsUrl(fontFamilies) {
+export function generateGoogleFontsUrl(fontFamilies) {
     if (!fontFamilies || fontFamilies.size === 0) return null;
 
     const googleFontCandidates = [
@@ -790,7 +790,7 @@ function generateGoogleFontsUrl(fontFamilies) {
  * @param {object} [options={}]
  * @returns {string} Complete HTML document
  */
-function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
+export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
     const title = options.title || (rootNodes[0]?.name) || 'Exported Figma Design';
     const fontFamilies = collectFontFamilies(rootNodes);
     const googleFontsUrl = generateGoogleFontsUrl(fontFamilies);
@@ -892,16 +892,3 @@ ${bodyContent}</body>
 
     return html;
 }
-
-module.exports = {
-    escapeHtml,
-    isValidClassName,
-    renderRichText,
-    determineTextTag,
-    determineContainerTag,
-    renderNodeToHtml,
-    collectFontFamilies,
-    generateGoogleFontsUrl,
-    detectDocumentLanguage,
-    generateFullHtmlDocument
-};

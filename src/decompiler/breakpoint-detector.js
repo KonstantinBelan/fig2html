@@ -1,23 +1,23 @@
 // src/decompiler/breakpoint-detector.js
 
-const { transliterate, stripPageTag, hasExcludeTag, slugifyPageName, sanitizeFileName } = require('./page-detector');
+import { transliterate, stripPageTag, hasExcludeTag, slugifyPageName, sanitizeFileName } from './page-detector.js';
 
 /**
  * Standard default device breakpoints and widths (in pixels)
  */
-const DEFAULT_BREAKPOINTS = {
+export const DEFAULT_BREAKPOINTS = {
     desktop: 1440,
     laptop: 1200,
     tablet: 768,
     mobile: 375
 };
 
-const BREAKPOINT_NAMES = ['desktop', 'laptop', 'tablet', 'mobile'];
+export const BREAKPOINT_NAMES = ['desktop', 'laptop', 'tablet', 'mobile'];
 
 /**
  * Known keyword mappings for breakpoint tags in Russian and English
  */
-const BREAKPOINT_KEYWORDS = {
+export const BREAKPOINT_KEYWORDS = {
     'desktop': 'desktop',
     'десктоп': 'desktop',
     'пк': 'desktop',
@@ -71,7 +71,7 @@ const BREAKPOINT_KEYWORDS = {
  * @param {string} rawName
  * @returns {{ isBreakpointTagged: boolean, baseName: string, breakpoint: string|null, targetWidth: number|null, rawTag: string|null }}
  */
-function parseBreakpointTag(rawName) {
+export function parseBreakpointTag(rawName) {
     if (!rawName || typeof rawName !== 'string') {
         return { isBreakpointTagged: false, baseName: '', breakpoint: null, targetWidth: null, rawTag: null };
     }
@@ -181,7 +181,7 @@ function parseBreakpointTag(rawName) {
  * @param {string} token
  * @returns {string|null}
  */
-function resolveBreakpointName(token) {
+export function resolveBreakpointName(token) {
     if (!token) return null;
     const clean = token.trim().toLowerCase();
     if (BREAKPOINT_KEYWORDS[clean]) {
@@ -199,7 +199,7 @@ function resolveBreakpointName(token) {
  * @param {number} width
  * @returns {string} 'desktop' | 'laptop' | 'tablet' | 'mobile'
  */
-function categorizeWidth(width) {
+export function categorizeWidth(width) {
     if (width >= 1300) return 'desktop';
     if (width >= 1050) return 'laptop';
     if (width >= 650) return 'tablet';
@@ -211,7 +211,7 @@ function categorizeWidth(width) {
  * @param {string} rawName
  * @returns {string}
  */
-function normalizeBaseName(rawName) {
+export function normalizeBaseName(rawName) {
     if (!rawName) return 'Page';
     // First strip page tags if any ([page], #page, etc.)
     const stripped = stripPageTag(rawName);
@@ -235,7 +235,7 @@ function normalizeBaseName(rawName) {
  * @param {object} [options={}]
  * @returns {Array<object>} Array of grouped responsive page definitions
  */
-function groupFramesIntoResponsivePages(frames, options = {}) {
+export function groupFramesIntoResponsivePages(frames, options = {}) {
     if (!Array.isArray(frames) || frames.length === 0) {
         return [];
     }
@@ -370,14 +370,3 @@ function groupFramesIntoResponsivePages(frames, options = {}) {
 
     return responsivePages;
 }
-
-module.exports = {
-    DEFAULT_BREAKPOINTS,
-    BREAKPOINT_NAMES,
-    BREAKPOINT_KEYWORDS,
-    parseBreakpointTag,
-    resolveBreakpointName,
-    categorizeWidth,
-    normalizeBaseName,
-    groupFramesIntoResponsivePages
-};

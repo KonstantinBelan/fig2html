@@ -1,12 +1,12 @@
 // src/decompiler/container-detector.js
-const { BoundingBox } = require('./geometry');
+import { BoundingBox } from './geometry.js';
 
 /**
  * Checks if a node possesses visual container styling (fills, strokes, corner radius, shadows)
  * @param {object} node
  * @returns {boolean}
  */
-function hasContainerVisualStyles(node) {
+export function hasContainerVisualStyles(node) {
     if (!node) return false;
 
     // Check visible fill paints
@@ -40,7 +40,7 @@ function hasContainerVisualStyles(node) {
  * @param {object} node
  * @returns {boolean}
  */
-function isUnderlayCandidate(node) {
+export function isUnderlayCandidate(node) {
     if (!node || node.visible === false) return false;
     const isUnderlayType = node.type === 'RECTANGLE' || node.type === 'ROUNDED_RECTANGLE' || node.type === 'FRAME';
     const hasNoChildren = !Array.isArray(node.children) || node.children.length === 0;
@@ -56,7 +56,7 @@ function isUnderlayCandidate(node) {
  * @param {number} containerX
  * @param {number} containerY
  */
-function adjustCoordinatesRelativeToContainer(node, containerX, containerY) {
+export function adjustCoordinatesRelativeToContainer(node, containerX, containerY) {
     const origX = node.x !== undefined ? node.x : (node.transform?.m02 ?? 0);
     const origY = node.y !== undefined ? node.y : (node.transform?.m12 ?? 0);
 
@@ -90,7 +90,7 @@ function adjustCoordinatesRelativeToContainer(node, containerX, containerY) {
  * @param {Array<object>} children
  * @returns {object} Promoted container frame
  */
-function promoteToContainer(underlayNode, children) {
+export function promoteToContainer(underlayNode, children) {
     const underlayBox = BoundingBox.fromNode(underlayNode);
     const origX = underlayBox.xMin;
     const origY = underlayBox.yMin;
@@ -134,7 +134,7 @@ function promoteToContainer(underlayNode, children) {
  * @param {number} [epsilon=3] Tolerance in pixels
  * @returns {Array<object>} Transformed list of nodes
  */
-function detectAndExtractContainers(nodes, containerSize = null, epsilon = 3) {
+export function detectAndExtractContainers(nodes, containerSize = null, epsilon = 3) {
     if (!Array.isArray(nodes) || nodes.length < 2) {
         return nodes || [];
     }
@@ -209,11 +209,3 @@ function detectAndExtractContainers(nodes, containerSize = null, epsilon = 3) {
 
     return workingNodes;
 }
-
-module.exports = {
-    hasContainerVisualStyles,
-    isUnderlayCandidate,
-    adjustCoordinatesRelativeToContainer,
-    promoteToContainer,
-    detectAndExtractContainers
-};

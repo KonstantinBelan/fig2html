@@ -1,17 +1,17 @@
 // src/decompiler/tree.js
-const { synthesizeLayoutTree, applySmartLayout } = require('./synthesizer');
-const {
+import { synthesizeLayoutTree, applySmartLayout } from './synthesizer.js';
+import {
     detectGraphicSubtreeChain,
     findAllGraphicChains,
     collapseGraphicSubtree
-} = require('./graphic-collapser');
+} from './graphic-collapser.js';
 
 /**
  * Creates a unique string identifier for a Figma GUID
  * @param {{ sessionID: number, localID: number }} guid
  * @returns {string|null}
  */
-function guidKey(guid) {
+export function guidKey(guid) {
     if (!guid || guid.sessionID === undefined || guid.localID === undefined) return null;
     return `${guid.sessionID}:${guid.localID}`;
 }
@@ -21,7 +21,7 @@ function guidKey(guid) {
  * @param {object} node
  * @returns {object}
  */
-function cloneNode(node) {
+export function cloneNode(node) {
     if (!node) return null;
     const clone = { ...node };
     if (Array.isArray(clone.children)) {
@@ -37,7 +37,7 @@ function cloneNode(node) {
  * @param {Map<string, object>} allNodesMap
  * @param {number} [depth=0]
  */
-function resolveInstanceNode(instanceNode, allNodesMap, depth = 0) {
+export function resolveInstanceNode(instanceNode, allNodesMap, depth = 0) {
     if (depth > 25) return;
     if (!instanceNode || instanceNode.type !== 'INSTANCE') return;
     if (!instanceNode.symbolData?.symbolID) return;
@@ -147,7 +147,7 @@ function resolveInstanceNode(instanceNode, allNodesMap, depth = 0) {
  * @param {string} [options.pageName='Page 1'] Name of the canvas/page to extract
  * @returns {{ document: object, canvas: object, rootNodes: Array<object>, allNodesMap: Map<string, object> }}
  */
-function buildSceneTree(nodeChanges, options = {}) {
+export function buildSceneTree(nodeChanges, options = {}) {
     if (!Array.isArray(nodeChanges)) {
         throw new Error('nodeChanges must be an array.');
     }
@@ -272,11 +272,7 @@ function buildSceneTree(nodeChanges, options = {}) {
     };
 }
 
-module.exports = {
-    guidKey,
-    cloneNode,
-    resolveInstanceNode,
-    buildSceneTree,
+export {
     synthesizeLayoutTree,
     applySmartLayout,
     detectGraphicSubtreeChain,

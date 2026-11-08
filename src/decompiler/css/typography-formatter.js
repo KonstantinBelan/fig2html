@@ -5,7 +5,7 @@
  * @param {string} fontStyleName E.g. "Bold", "Semi Bold Italic", "Medium", "Light"
  * @returns {{ fontWeight: number, fontStyle: string }}
  */
-function parseFontWeightAndStyle(fontStyleName) {
+export function parseFontWeightAndStyle(fontStyleName) {
     if (!fontStyleName) return { fontWeight: 400, fontStyle: 'normal' };
     const lower = String(fontStyleName).toLowerCase();
 
@@ -26,7 +26,3 @@ function parseFontWeightAndStyle(fontStyleName) {
         fontStyle: isItalic ? 'italic' : 'normal'
     };
 }
-
-module.exports = {
-    parseFontWeightAndStyle
-};

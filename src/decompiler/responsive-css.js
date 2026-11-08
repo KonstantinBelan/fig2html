@@ -1,10 +1,10 @@
 // src/decompiler/responsive-css.js
-const { computeNodeStyles } = require('./css');
+import { computeNodeStyles } from './css/index.js';
 
 /**
  * Continuous properties eligible for fluid clamp() calculation
  */
-const CONTINUOUS_PROPERTIES = new Set([
+export const CONTINUOUS_PROPERTIES = new Set([
     'font-size',
     'line-height',
     'letter-spacing',
@@ -38,7 +38,7 @@ const CONTINUOUS_PROPERTIES = new Set([
  * @param {string|number} valStr
  * @returns {number|null}
  */
-function parsePxValue(valStr) {
+export function parsePxValue(valStr) {
     if (typeof valStr === 'number') return isNaN(valStr) ? null : valStr;
     if (!valStr || typeof valStr !== 'string') return null;
     const trimmed = valStr.trim();
@@ -59,7 +59,7 @@ function parsePxValue(valStr) {
  * @param {string} valStr
  * @returns {Array<number>|null}
  */
-function parseMultiPxValue(valStr) {
+export function parseMultiPxValue(valStr) {
     if (!valStr || typeof valStr !== 'string') return null;
     const parts = valStr.trim().split(/\s+/);
     if (parts.length <= 1) return null;
@@ -79,7 +79,7 @@ function parseMultiPxValue(valStr) {
  * @param {object} [options={}]
  * @returns {string|null} CSS clamp() or px string
  */
-function calculateFluidClamp(valDesktop, widthDesktop, valMobile, widthMobile, options = {}) {
+export function calculateFluidClamp(valDesktop, widthDesktop, valMobile, widthMobile, options = {}) {
     if (typeof valDesktop !== 'number' || typeof valMobile !== 'number') return null;
     if (isNaN(valDesktop) || isNaN(valMobile)) return null;
 
@@ -131,7 +131,7 @@ function calculateFluidClamp(valDesktop, widthDesktop, valMobile, widthMobile, o
  * @param {boolean} [mobileFirst=false]
  * @returns {string} e.g. "@media (max-width: 768px)"
  */
-function getBreakpointMediaQuery(bp, allBreakpoints = [], mobileFirst = false) {
+export function getBreakpointMediaQuery(bp, allBreakpoints = [], mobileFirst = false) {
     if (mobileFirst) {
         return `@media (min-width: ${bp.width}px)`;
     }
@@ -144,7 +144,7 @@ function getBreakpointMediaQuery(bp, allBreakpoints = [], mobileFirst = false) {
  * @param {Record<string, string>} variantStyles
  * @returns {{ continuousDeltas: Record<string, string>, discreteDeltas: Record<string, string> }}
  */
-function diffNodeStyles(baseStyles = {}, variantStyles = {}) {
+export function diffNodeStyles(baseStyles = {}, variantStyles = {}) {
     const continuousDeltas = {};
     const discreteDeltas = {};
 
@@ -172,7 +172,7 @@ function diffNodeStyles(baseStyles = {}, variantStyles = {}) {
  * @param {object} params.stylesheetManager Instance of StylesheetManager
  * @param {object} [params.options={}] Configuration options
  */
-function synthesizeResponsiveStyles({
+export function synthesizeResponsiveStyles({
     canonicalTree,
     pageBreakpoints = [],
     imageRegistry,
@@ -435,13 +435,3 @@ function synthesizeResponsiveStyles({
 
     walk(canonicalTree, null);
 }
-
-module.exports = {
-    CONTINUOUS_PROPERTIES,
-    parsePxValue,
-    parseMultiPxValue,
-    calculateFluidClamp,
-    getBreakpointMediaQuery,
-    diffNodeStyles,
-    synthesizeResponsiveStyles
-};

@@ -1,15 +1,15 @@
 // src/decompiler/reader.js
-const fs = require('fs');
-const path = require('path');
-const AdmZip = require('adm-zip');
-const { decodeFigKiwiCanvas } = require('@open-pencil/kiwi/fig/parse');
+import fs from 'node:fs';
+import path from 'node:path';
+import AdmZip from 'adm-zip';
+import { decodeFigKiwiCanvas } from '@open-pencil/kiwi/fig/parse';
 
 /**
  * Detects MIME type of an image buffer based on magic bytes
  * @param {Buffer} buffer
  * @returns {string} MIME type
  */
-function getImageMimeType(buffer) {
+export function getImageMimeType(buffer) {
     if (!buffer || buffer.length < 4) return 'image/png';
 
     // PNG: 89 50 4E 47
@@ -46,7 +46,7 @@ function getImageMimeType(buffer) {
  * @param {string|Buffer} figInput File path or buffer of the .fig archive
  * @returns {{ nodeChanges: Array<object>, blobs: Array<Buffer>, images: Map<string, { buffer: Buffer, mime: string, base64: string }> }}
  */
-function readFigFile(figInput) {
+export function readFigFile(figInput) {
     let zip;
     if (Buffer.isBuffer(figInput)) {
         zip = new AdmZip(figInput);
@@ -104,8 +104,3 @@ function readFigFile(figInput) {
         figKiwiVersion: decodedTree.figKiwiVersion
     };
 }
-
-module.exports = {
-    readFigFile,
-    getImageMimeType
-};

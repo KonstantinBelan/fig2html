@@ -3,7 +3,7 @@
 /**
  * Represents a 2D axis-aligned bounding box (AABB)
  */
-class BoundingBox {
+export class BoundingBox {
     /**
      * @param {number} xMin Left coordinate
      * @param {number} yMin Top coordinate
@@ -220,7 +220,7 @@ class BoundingBox {
 /**
  * 1D Interval representation along a single axis
  */
-class Interval {
+export class Interval {
     /**
      * @param {number} start
      * @param {number} end
@@ -292,7 +292,7 @@ class Interval {
  * @param {number} [epsilon=3]
  * @returns {boolean}
  */
-function fuzzyEqual(a, b, epsilon = 3) {
+export function fuzzyEqual(a, b, epsilon = 3) {
     return Math.abs(a - b) <= epsilon;
 }
 
@@ -303,7 +303,7 @@ function fuzzyEqual(a, b, epsilon = 3) {
  * @param {number} [epsilon=3]
  * @returns {number} -1 if a < b, 1 if a > b, 0 if equal within epsilon
  */
-function fuzzyCompare(a, b, epsilon = 3) {
+export function fuzzyCompare(a, b, epsilon = 3) {
     if (fuzzyEqual(a, b, epsilon)) return 0;
     return a < b ? -1 : 1;
 }
@@ -314,7 +314,7 @@ function fuzzyCompare(a, b, epsilon = 3) {
  * @param {number} [epsilon=3]
  * @returns {Array<{ values: Array<number>, mean: number, median: number, min: number, max: number }>}
  */
-function clusterValues(values, epsilon = 3) {
+export function clusterValues(values, epsilon = 3) {
     if (!Array.isArray(values) || values.length === 0) return [];
 
     const sorted = [...values].sort((a, b) => a - b);
@@ -354,7 +354,7 @@ function clusterValues(values, epsilon = 3) {
  * @param {number} [epsilon=3]
  * @returns {Array<{ interval: Interval, items: Array<any> }>}
  */
-function mergeIntervals(intervals, epsilon = 3) {
+export function mergeIntervals(intervals, epsilon = 3) {
     if (!Array.isArray(intervals) || intervals.length === 0) return [];
 
     const sorted = [...intervals].sort((a, b) => a.start - b.start);
@@ -399,7 +399,7 @@ function mergeIntervals(intervals, epsilon = 3) {
  * @param {number} [domainEnd]
  * @returns {Array<{ start: number, end: number, size: number }>}
  */
-function findGaps(mergedBands, domainStart = null, domainEnd = null) {
+export function findGaps(mergedBands, domainStart = null, domainEnd = null) {
     if (!Array.isArray(mergedBands) || mergedBands.length === 0) return [];
 
     const gaps = [];
@@ -440,7 +440,7 @@ function findGaps(mergedBands, domainStart = null, domainEnd = null) {
  * @param {'x'|'y'} [axis='y']
  * @returns {Array<Interval>}
  */
-function projectNodes(nodes, axis = 'y') {
+export function projectNodes(nodes, axis = 'y') {
     if (!Array.isArray(nodes)) return [];
 
     return nodes.map(node => {
@@ -459,7 +459,7 @@ function projectNodes(nodes, axis = 'y') {
  * @param {number} [epsilon=3]
  * @returns {Array<{ interval: Interval, nodes: Array<object>, bounds: BoundingBox }>}
  */
-function sliceAlongAxis(nodes, axis = 'y', epsilon = 3) {
+export function sliceAlongAxis(nodes, axis = 'y', epsilon = 3) {
     if (!Array.isArray(nodes) || nodes.length === 0) return [];
 
     const intervals = projectNodes(nodes, axis);
@@ -481,22 +481,9 @@ function sliceAlongAxis(nodes, axis = 'y', epsilon = 3) {
  * @param {Array<number>} numbers
  * @returns {number}
  */
-function computeMedian(numbers) {
+export function computeMedian(numbers) {
     if (!Array.isArray(numbers) || numbers.length === 0) return 0;
     const sorted = [...numbers].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
     return sorted.length % 2 !== 0 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
 }
-
-module.exports = {
-    BoundingBox,
-    Interval,
-    fuzzyEqual,
-    fuzzyCompare,
-    clusterValues,
-    mergeIntervals,
-    findGaps,
-    projectNodes,
-    sliceAlongAxis,
-    computeMedian
-};

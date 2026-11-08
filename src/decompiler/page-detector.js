@@ -1,20 +1,20 @@
 // src/decompiler/page-detector.js
 
 // Cyrillic to Latin transliteration table
-const RU_MAP = {
+export const RU_MAP = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
     'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
     'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
     'ч': 'ch', 'ш': 'sh', 'щ': 'shch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
 };
 
-const DEFAULT_PAGE_TAGS = ['[page]', '[страница]', '[p]', '#page', '/page'];
-const DEFAULT_EXCLUDE_TAGS = ['[exclude]', '[исключить]', '[исключение]', '[ignore]', '#exclude', '/exclude', '!page'];
-const DEFAULT_MIN_PAGE_WIDTH = 320;
-const DEFAULT_MIN_PAGE_HEIGHT = 400;
+export const DEFAULT_PAGE_TAGS = ['[page]', '[страница]', '[p]', '#page', '/page'];
+export const DEFAULT_EXCLUDE_TAGS = ['[exclude]', '[исключить]', '[исключение]', '[ignore]', '#exclude', '/exclude', '!page'];
+export const DEFAULT_MIN_PAGE_WIDTH = 320;
+export const DEFAULT_MIN_PAGE_HEIGHT = 400;
 
 // Common page semantic name mappings (Russian and English to canonical slugs)
-const COMMON_PAGE_SLUGS = {
+export const COMMON_PAGE_SLUGS = {
     'home': 'index',
     'главная': 'index',
     'главная страница': 'index',
@@ -88,7 +88,7 @@ const COMMON_PAGE_SLUGS = {
  * @param {string} str
  * @returns {string}
  */
-function transliterate(str) {
+export function transliterate(str) {
     if (!str || typeof str !== 'string') return '';
     return str.split('').map(ch => {
         const lower = ch.toLowerCase();
@@ -106,7 +106,7 @@ function transliterate(str) {
  * @param {Array<string>|string} [customTags]
  * @returns {{ isTagged: boolean, cleanName: string, tag: string|null }}
  */
-function stripPageTag(rawName, customTags) {
+export function stripPageTag(rawName, customTags) {
     if (!rawName || typeof rawName !== 'string') {
         return { isTagged: false, cleanName: '', tag: null };
     }
@@ -149,7 +149,7 @@ function stripPageTag(rawName, customTags) {
  * @param {Array<string>|string} [customExcludeTags]
  * @returns {boolean}
  */
-function hasExcludeTag(rawName, customExcludeTags) {
+export function hasExcludeTag(rawName, customExcludeTags) {
     if (!rawName || typeof rawName !== 'string') return false;
     let tags = DEFAULT_EXCLUDE_TAGS;
     if (customExcludeTags) {
@@ -168,7 +168,7 @@ function hasExcludeTag(rawName, customExcludeTags) {
  * @param {Array<object>} frames Top-level candidate screen frames
  * @returns {Array<object>} Filtered frames belonging to the dominant screen cluster
  */
-function filterScreenOutliers(frames) {
+export function filterScreenOutliers(frames) {
     if (!Array.isArray(frames) || frames.length <= 1) {
         return frames || [];
     }
@@ -204,7 +204,7 @@ function filterScreenOutliers(frames) {
  * @param {boolean} [options.isExplicitHome=false]
  * @returns {string} Slug string (e.g. "index", "about", "catalog")
  */
-function slugifyPageName(name, options = {}) {
+export function slugifyPageName(name, options = {}) {
     if (!name || typeof name !== 'string') {
         return options.isFirst ? 'index' : 'page';
     }
@@ -253,7 +253,7 @@ function slugifyPageName(name, options = {}) {
  * @param {string} slug
  * @returns {string} Filename (e.g. "about.html")
  */
-function sanitizeFileName(slug) {
+export function sanitizeFileName(slug) {
     if (!slug) return 'index.html';
     const clean = slug.replace(/[^a-z0-9_-]/gi, '-').replace(/^-+|-+$/g, '');
     return `${clean || 'page'}.html`;
@@ -263,7 +263,7 @@ function sanitizeFileName(slug) {
  * Assigns unique file names and slugs to an array of detected pages
  * @param {Array<object>} pages
  */
-function assignUniqueFileNames(pages) {
+export function assignUniqueFileNames(pages) {
     const usedSlugs = new Set();
     const hasIndex = pages.some(p => p.slug === 'index');
 
@@ -297,7 +297,7 @@ function assignUniqueFileNames(pages) {
  * @param {object} node
  * @returns {boolean}
  */
-function isSinglePageArtboard(node) {
+export function isSinglePageArtboard(node) {
     if (!node || !Array.isArray(node.children)) return false;
 
     const visibleChildren = node.children.filter(c => c && c.visible !== false && (c.type === 'FRAME' || c.type === 'COMPONENT'));
@@ -341,7 +341,7 @@ function isSinglePageArtboard(node) {
  * @param {object} [options={}]
  * @returns {Array<object>} Detected pages array
  */
-function detectPages(treeContext = {}, options = {}) {
+export function detectPages(treeContext = {}, options = {}) {
     const isSinglePageForced = options.singlePage === true || options.multiPage === false;
     const minPageWidth = options.minPageWidth !== undefined ? Number(options.minPageWidth) : DEFAULT_MIN_PAGE_WIDTH;
     const minPageHeight = options.minPageHeight !== undefined ? Number(options.minPageHeight) : DEFAULT_MIN_PAGE_HEIGHT;
@@ -569,21 +569,3 @@ function detectPages(treeContext = {}, options = {}) {
     // =========================================================================
     return makeSinglePage();
 }
-
-module.exports = {
-    RU_MAP,
-    DEFAULT_PAGE_TAGS,
-    DEFAULT_EXCLUDE_TAGS,
-    DEFAULT_MIN_PAGE_WIDTH,
-    DEFAULT_MIN_PAGE_HEIGHT,
-    COMMON_PAGE_SLUGS,
-    transliterate,
-    stripPageTag,
-    hasExcludeTag,
-    filterScreenOutliers,
-    slugifyPageName,
-    sanitizeFileName,
-    assignUniqueFileNames,
-    isSinglePageArtboard,
-    detectPages
-};

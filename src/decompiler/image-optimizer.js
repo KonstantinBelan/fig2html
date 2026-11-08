@@ -1,21 +1,21 @@
 // src/decompiler/image-optimizer.js
-const crypto = require('crypto');
-const sharp = require('sharp');
-const { getExtensionForMime, getLinearGradientAngle, hasExplicitMaskTag } = require('./css');
-const {
+import crypto from 'node:crypto';
+import sharp from 'sharp';
+import { getExtensionForMime, getLinearGradientAngle, hasExplicitMaskTag } from './css/index.js';
+import {
     findAllGraphicChains,
     collapseGraphicSubtree,
     multiplyAffineMatrices,
     decomposeAffineMatrix,
     identityMatrix
-} = require('./graphic-collapser');
+} from './graphic-collapser.js';
 
 /**
  * Traverses root nodes to find all image fills and their target CSS dimensions
  * @param {Array<object>} rootNodes
  * @returns {Array<{ node: object, hashHex: string, scaleMode: string, cssWidth: number, cssHeight: number, isImgElement: boolean }>}
  */
-function collectImageUsages(rootNodes) {
+export function collectImageUsages(rootNodes) {
     const usages = [];
 
     function traverse(node) {
@@ -64,7 +64,7 @@ function collectImageUsages(rootNodes) {
  * @param {number} [scaleMultiplier=2]
  * @returns {{ widths: number[], sizes: string }}
  */
-function calculateDeviceWidths(cssWidth, scaleMultiplier = 2) {
+export function calculateDeviceWidths(cssWidth, scaleMultiplier = 2) {
     const baseW = Math.max(1, Math.round(cssWidth || 100));
     const target2x = Math.round(baseW * scaleMultiplier);
 
@@ -108,7 +108,7 @@ function calculateDeviceWidths(cssWidth, scaleMultiplier = 2) {
  * @param {string} [options.sourceMime='image/png']
  * @returns {Promise<{ buffer: Buffer, mime: string, ext: string, width: number, height: number }>}
  */
-async function optimizeBuffer(inputBuffer, options = {}) {
+export async function optimizeBuffer(inputBuffer, options = {}) {
     const {
         targetWidth,
         targetHeight,
@@ -478,7 +478,7 @@ function collectMaskedImageNodes(rootNodes) {
  * @param {object} [options={}]
  * @returns {Promise<number>} Count of baked image nodes
  */
-async function bakeImageFillsAndFilters(rawImages, rootNodes, options = {}) {
+export async function bakeImageFillsAndFilters(rawImages, rootNodes, options = {}) {
     const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
     if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
         return 0;
@@ -709,7 +709,7 @@ function generateMaskSvg(maskChild, w, h, scaleMultiplier = 2) {
  * @param {Array<object>} rootNodes
  * @param {object} [options={}]
  */
-async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
+export async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
     const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
     if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
         return 0;
@@ -861,7 +861,7 @@ async function bakeMasksIntoImages(rawImages, rootNodes, options = {}) {
  * @param {object} [options={}]
  * @returns {Promise<number>} Count of baked multiply image nodes
  */
-async function bakeMultiplyImages(rawImages, rootNodes, options = {}) {
+export async function bakeMultiplyImages(rawImages, rootNodes, options = {}) {
     const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
     if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
         return 0;
@@ -1021,7 +1021,7 @@ async function bakeMultiplyImages(rawImages, rootNodes, options = {}) {
  * @param {object} [options={}]
  * @returns {Promise<{ bakedHash: string, buffer: Buffer, canvasW: number, canvasH: number }|null>}
  */
-async function bakeGraphicChainAsset(chainInfo, rawImages, options = {}) {
+export async function bakeGraphicChainAsset(chainInfo, rawImages, options = {}) {
     if (!chainInfo || !rawImages) return null;
 
     const imgPaint = chainInfo.leaf?.fillPaints?.find(f => f.type === 'IMAGE' && f.image?.hash);
@@ -1262,7 +1262,7 @@ async function bakeGraphicChainAsset(chainInfo, rawImages, options = {}) {
  * @param {object} [options={}]
  * @returns {Promise<number>} Number of collapsed chains
  */
-async function bakeAndCollapseGraphicChains(rawImages, rootNodes, options = {}) {
+export async function bakeAndCollapseGraphicChains(rawImages, rootNodes, options = {}) {
     const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
     if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
         return 0;
@@ -1313,7 +1313,7 @@ async function bakeAndCollapseGraphicChains(rawImages, rootNodes, options = {}) 
  * @param {object} [options={}]
  * @returns {Promise<number>} Number of cropped image fills baked
  */
-async function bakeCroppedImages(rawImages, rootNodes, options = {}) {
+export async function bakeCroppedImages(rawImages, rootNodes, options = {}) {
     const imageCount = typeof rawImages?.size === 'number' ? rawImages.size : (rawImages ? Object.keys(rawImages).length : 0);
     if (!rawImages || imageCount === 0 || !Array.isArray(rootNodes) || rootNodes.length === 0) {
         return 0;
@@ -1439,7 +1439,7 @@ async function bakeCroppedImages(rawImages, rootNodes, options = {}) {
     return bakedCount;
 }
 
-async function optimizeAllImages(rawImages, rootNodes, options = {}) {
+export async function optimizeAllImages(rawImages, rootNodes, options = {}) {
     const scaleMultiplier = typeof options.imageScale === 'number' && options.imageScale > 0 ? options.imageScale : 2;
     const isResponsive = options.responsiveImages !== false;
     const isLossless = Boolean(options.compress || options.lossless);
@@ -1672,16 +1672,3 @@ async function optimizeAllImages(rawImages, rootNodes, options = {}) {
         }
     };
 }
-
-module.exports = {
-    collectImageUsages,
-    calculateDeviceWidths,
-    optimizeBuffer,
-    optimizeAllImages,
-    bakeCroppedImages,
-    bakeMasksIntoImages,
-    bakeImageFillsAndFilters,
-    bakeGraphicChainAsset,
-    bakeAndCollapseGraphicChains,
-    bakeMultiplyImages
-};

@@ -1,12 +1,12 @@
 // src/decompiler/vector.js
-const { formatColor } = require('./css');
+import { formatColor } from './css/index.js';
 
 /**
  * Checks if a Figma node is a vector element that should be rendered as SVG
  * @param {object} node
  * @returns {boolean}
  */
-function isVectorNode(node) {
+export function isVectorNode(node) {
     if (!node) return false;
     if (node.type === 'VECTOR' || node.type === 'STAR' || node.type === 'REGULAR_POLYGON' || node.type === 'BOOLEAN_OPERATION') {
         return true;
@@ -44,7 +44,7 @@ function isPureVectorSubgroup(node) {
  * @param {object} node
  * @returns {boolean}
  */
-function isVectorContainer(node) {
+export function isVectorContainer(node) {
     if (!node || !Array.isArray(node.children) || node.children.length === 0) return false;
     const isFrame = ['FRAME', 'GROUP', 'INSTANCE', 'SYMBOL', 'BOOLEAN_OPERATION'].includes(node.type);
     if (!isFrame) return false;
@@ -77,7 +77,7 @@ function isVectorContainer(node) {
  * @param {object} m2
  * @returns {object}
  */
-function multiplyMatrix(m1, m2) {
+export function multiplyMatrix(m1, m2) {
     const a1 = m1?.m00 ?? 1, c1 = m1?.m01 ?? 0, e1 = m1?.m02 ?? 0;
     const b1 = m1?.m10 ?? 0, d1 = m1?.m11 ?? 1, f1 = m1?.m12 ?? 0;
 
@@ -100,7 +100,7 @@ function multiplyMatrix(m1, m2) {
  * @param {object|null} [parentMatrix=null]
  * @returns {Array<{ node: object, tx: number, ty: number, transform: object }>}
  */
-function collectVectorLeaves(parent, parentMatrix = null) {
+export function collectVectorLeaves(parent, parentMatrix = null) {
     const leaves = [];
     if (!parent || !Array.isArray(parent.children)) return leaves;
 
@@ -133,7 +133,7 @@ function collectVectorLeaves(parent, parentMatrix = null) {
  * @param {Buffer|Uint8Array} rawBlob
  * @returns {string} SVG path d attribute
  */
-function parseCommandsBlob(rawBlob) {
+export function parseCommandsBlob(rawBlob) {
     if (!rawBlob) return '';
     const buf = Buffer.isBuffer(rawBlob) ? rawBlob : Buffer.from(rawBlob);
     let offset = 0;
@@ -183,7 +183,7 @@ function parseCommandsBlob(rawBlob) {
  * @param {Buffer|Uint8Array} rawBlob
  * @returns {string} SVG path d attribute
  */
-function parseVectorNetworkBlob(rawBlob, node = null) {
+export function parseVectorNetworkBlob(rawBlob, node = null) {
     if (!rawBlob) return '';
     const buf = Buffer.isBuffer(rawBlob) ? rawBlob : Buffer.from(rawBlob);
     if (buf.length < 12) return '';
@@ -394,7 +394,7 @@ function parseVectorNetworkBlob(rawBlob, node = null) {
  * @param {Array<Buffer|Uint8Array>} blobs
  * @returns {{ d: string, isNormalized: boolean }}
  */
-function extractVectorPathInfo(node, blobs = []) {
+export function extractVectorPathInfo(node, blobs = []) {
     if (!node || !Array.isArray(blobs)) return { d: '', isNormalized: false, fillRule: null };
 
     const hasOddWinding = Array.isArray(node.fillGeometry) &&
@@ -524,7 +524,7 @@ function buildParametricPolygonOrStarPath(node) {
  * @param {Array<Buffer|Uint8Array>} blobs
  * @returns {string} SVG path string
  */
-function extractVectorPath(node, blobs = []) {
+export function extractVectorPath(node, blobs = []) {
     return extractVectorPathInfo(node, blobs).d;
 }
 
@@ -533,7 +533,7 @@ function extractVectorPath(node, blobs = []) {
  * @param {object} node
  * @returns {{ stroke: string, strokeWidth: number|null, strokeLinecap: string|null, strokeLinejoin: string|null }}
  */
-function getVectorStrokeAttributes(node) {
+export function getVectorStrokeAttributes(node) {
     let stroke = 'none';
     let strokeWidth = null;
     let strokeLinecap = null;
@@ -566,7 +566,7 @@ function getVectorStrokeAttributes(node) {
  * @param {object} node
  * @returns {string} fill color or 'none'
  */
-function getVectorFillAttribute(node) {
+export function getVectorFillAttribute(node) {
     if (Array.isArray(node.fillPaints) && node.fillPaints.length > 0) {
         const solid = node.fillPaints.find(f => f.visible !== false && f.type === 'SOLID');
         if (solid) {
@@ -575,16 +575,3 @@ function getVectorFillAttribute(node) {
     }
     return 'none';
 }
-
-module.exports = {
-    isVectorNode,
-    isVectorContainer,
-    collectVectorLeaves,
-    multiplyMatrix,
-    parseCommandsBlob,
-    parseVectorNetworkBlob,
-    extractVectorPath,
-    extractVectorPathInfo,
-    getVectorStrokeAttributes,
-    getVectorFillAttribute
-};

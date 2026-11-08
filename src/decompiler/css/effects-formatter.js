@@ -1,6 +1,6 @@
 // src/decompiler/css/effects-formatter.js
-const { formatColor } = require('./color-formatter');
-const { formatEffectsWithUnits } = require('../units');
+import { formatColor } from './color-formatter.js';
+import { formatEffectsWithUnits } from '../units.js';
 
 /**
  * Formats Figma shadow and blur effects into CSS declarations
@@ -8,7 +8,7 @@ const { formatEffectsWithUnits } = require('../units');
  * @param {object} [options={}]
  * @returns {{ boxShadow: string|null, textShadow: string|null, filter: string|null, backdropFilter: string|null }}
  */
-function formatEffects(effects, options = {}) {
+export function formatEffects(effects, options = {}) {
     if (!Array.isArray(effects) || effects.length === 0) {
         return { boxShadow: null, textShadow: null, filter: null, backdropFilter: null };
     }
@@ -62,7 +62,7 @@ function formatEffects(effects, options = {}) {
  * @param {object} paintFilter
  * @returns {string|null} CSS filter string
  */
-function formatPaintFilter(paintFilter) {
+export function formatPaintFilter(paintFilter) {
     if (!paintFilter || typeof paintFilter !== 'object') return null;
     const parts = [];
 
@@ -109,8 +109,3 @@ function formatPaintFilter(paintFilter) {
 
     return parts.length > 0 ? parts.join(' ') : null;
 }
-
-module.exports = {
-    formatEffects,
-    formatPaintFilter
-};

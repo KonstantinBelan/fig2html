@@ -1,8 +1,8 @@
 // src/decompiler/stylesheet.js
-const { computeNodeStyles, formatColor } = require('./css');
+import { computeNodeStyles, formatColor } from './css/index.js';
 
 // Cyrillic to Latin transliteration table
-const RU_MAP = {
+export const RU_MAP = {
     'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
     'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
     'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts',
@@ -15,7 +15,7 @@ const RU_MAP = {
  * @param {string} [type='el'] Figma node type (e.g. FRAME, TEXT, RECTANGLE)
  * @returns {string} Sanitized CSS class identifier
  */
-function toBaseClassName(name, type) {
+export function toBaseClassName(name, type) {
     if (!name || typeof name !== 'string') {
         return type ? type.toLowerCase() : 'el';
     }
@@ -43,7 +43,7 @@ function toBaseClassName(name, type) {
  * @param {Record<string, string>} styles
  * @returns {string}
  */
-function styleSignature(styles) {
+export function styleSignature(styles) {
     return Object.entries(styles)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([k, v]) => `${k}:${v}`)
@@ -104,7 +104,7 @@ function isAnonymousClassName(cls) {
 /**
  * Manages CSS class naming, style deduplication, and :root variable extraction
  */
-class StylesheetManager {
+export class StylesheetManager {
     constructor(options = {}) {
         this.options = options;
         this.isMultiPage = Boolean(options.isMultiPage);
@@ -898,9 +898,3 @@ class StylesheetManager {
         return lines.join('\n');
     }
 }
-
-module.exports = {
-    toBaseClassName,
-    styleSignature,
-    StylesheetManager
-};

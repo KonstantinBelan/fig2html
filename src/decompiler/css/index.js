@@ -1,5 +1,5 @@
 // src/decompiler/css/index.js
-const {
+import {
     toRem,
     toEm,
     toVw,
@@ -8,37 +8,37 @@ const {
     formatFluidSpacing,
     formatFluidDimension,
     formatEffectsWithUnits
-} = require("../units");
+} from "../units.js";
 
-const {
+import {
     getExtensionForMime,
     formatColor
-} = require("./color-formatter");
+} from "./color-formatter.js";
 
-const {
+import {
     getLinearGradientAngle,
     parseTransformMatrix,
     getNodeTransformInfo,
     formatGradient
-} = require("./gradient-formatter");
+} from "./gradient-formatter.js";
 
-const {
+import {
     formatEffects,
     formatPaintFilter
-} = require("./effects-formatter");
+} from "./effects-formatter.js";
 
-const {
+import {
     parseFontWeightAndStyle
-} = require("./typography-formatter");
+} from "./typography-formatter.js";
 
-const {
+import {
     hasExplicitMaskTag,
     parseGridAxisCount,
     isImageNode,
     isVectorNode,
     isVectorContainer,
     resolveSmartAbsoluteAnchors
-} = require("./layout-styles");
+} from "./layout-styles.js";
 
 /**
  * Generates an object of CSS styles for a Figma node
@@ -48,7 +48,7 @@ const {
  * @param {object} [options={}]
  * @returns {Record<string, string>} CSS styles as key-value pairs
  */
-function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
+export function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
     const styles = {};
 
     const layoutMode = options.layoutMode || (options.fluid ? 'fluid' : (options.relative || options.rem ? 'relative' : 'default'));
@@ -1073,7 +1073,7 @@ function computeNodeStyles(node, parentNode, imageRegistry, options = {}) {
  * @param {Record<string, string>} styleObj
  * @returns {string} E.g. "display: flex; gap: 16px;"
  */
-function toStyleString(styleObj) {
+export function toStyleString(styleObj) {
     if (!styleObj) return '';
     return Object.entries(styleObj)
         .filter(([_, v]) => v !== undefined && v !== null && v !== '')
@@ -1081,7 +1081,7 @@ function toStyleString(styleObj) {
         .join(' ');
 }
 
-module.exports = {
+export {
     getExtensionForMime,
     formatColor,
     getLinearGradientAngle,
@@ -1091,8 +1091,6 @@ module.exports = {
     formatEffects,
     formatPaintFilter,
     parseFontWeightAndStyle,
-    computeNodeStyles,
     resolveSmartAbsoluteAnchors,
-    toStyleString,
     hasExplicitMaskTag
 };
