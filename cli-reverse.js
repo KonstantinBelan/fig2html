@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
-const { convertFigToHtml } = require('./src/decompiler');
-const { ProgressBar } = require('./src/utils/progress-bar');
-const pkg = require('./package.json');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { convertFigToHtml } from './src/decompiler/index.js';
+import { ProgressBar } from './src/utils/progress-bar.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const pkg = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 const colors = {
     reset: '\x1b[0m',
@@ -442,11 +446,12 @@ async function main() {
     }
 }
 
-if (require.main === module) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
     main();
 }
 
-module.exports = {
+export {
     parseArgs,
     runConversion,
     main

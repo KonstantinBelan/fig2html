@@ -1,6 +1,6 @@
 // src/schema.js
-const zlib = require('zlib');
-const kiwi = require('@open-pencil/kiwi');
+import zlib from 'node:zlib';
+import * as kiwi from '@open-pencil/kiwi';
 
 let cachedCompiledSchema = null;
 let cachedSchemaDeflated = null;
@@ -10,7 +10,7 @@ let cachedSchemaDeflated = null;
  * @param {Buffer|Uint8Array} schemaDeflated
  * @returns {object} Compiled Kiwi Schema
  */
-function getCompiledSchema(schemaDeflated) {
+export function getCompiledSchema(schemaDeflated) {
     if (cachedCompiledSchema && cachedSchemaDeflated === schemaDeflated) {
         return cachedCompiledSchema;
     }
@@ -29,7 +29,3 @@ function getCompiledSchema(schemaDeflated) {
 
     return cachedCompiledSchema;
 }
-
-module.exports = {
-    getCompiledSchema
-};

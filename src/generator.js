@@ -1,14 +1,18 @@
 // src/generator.js
-const fs = require('fs');
-const path = require('path');
-const AdmZip = require('adm-zip');
-const fzstd = require('fzstd');
-const { ZstdCodec } = require('zstd-codec');
-const container = require('@open-pencil/kiwi/fig/container');
-const { decodeFigKiwiCanvas } = require('@open-pencil/kiwi/fig/parse');
-const { getCompiledSchema } = require('./schema');
-const { convertHtmlToNodes } = require('./converter');
-const { ImageRegistry } = require('./parsers/images');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import AdmZip from 'adm-zip';
+import * as fzstd from 'fzstd';
+import { ZstdCodec } from 'zstd-codec';
+import * as container from '@open-pencil/kiwi/fig/container';
+import { decodeFigKiwiCanvas } from '@open-pencil/kiwi/fig/parse';
+import { getCompiledSchema } from './schema.js';
+import { convertHtmlToNodes } from './converter/index.js';
+import { ImageRegistry } from './parsers/images.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let zstdInstance = null;
 async function getZstd() {
@@ -225,6 +229,6 @@ async function generateFigFile(options = {}) {
     };
 }
 
-module.exports = {
+export {
     generateFigFile
 };

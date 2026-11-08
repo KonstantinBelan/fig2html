@@ -1,20 +1,39 @@
 // index.js
-const { generateFigFile } = require('./src/generator');
-const { convertHtmlToNodes } = require('./src/converter');
-const { getCompiledSchema } = require('./src/schema');
-const { ImageRegistry } = require('./src/parsers/images');
-const { parseColor } = require('./src/parsers/color');
-const { parseGradient } = require('./src/parsers/gradient');
-const { parseAllEffects } = require('./src/parsers/effects');
-const {
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { generateFigFile } from './src/generator.js';
+import { convertHtmlToNodes } from './src/converter/index.js';
+import { getCompiledSchema } from './src/schema.js';
+import { ImageRegistry } from './src/parsers/images.js';
+import { parseColor } from './src/parsers/color.js';
+import { parseGradient } from './src/parsers/gradient.js';
+import { parseAllEffects } from './src/parsers/effects.js';
+import {
     convertFigToHtml,
     readFigFile,
     buildSceneTree,
     generateFullHtmlDocument
-} = require('./src/decompiler');
+} from './src/decompiler/index.js';
 
 // Programmatic API
-module.exports = {
+export {
+    // HTML -> Figma (.fig)
+    generateFigFile,
+    convertHtmlToNodes,
+    getCompiledSchema,
+    ImageRegistry,
+    parseColor,
+    parseGradient,
+    parseAllEffects,
+
+    // Figma (.fig) -> HTML
+    convertFigToHtml,
+    readFigFile,
+    buildSceneTree,
+    generateFullHtmlDocument
+};
+
+export default {
     // HTML -> Figma (.fig)
     generateFigFile,
     convertHtmlToNodes,
@@ -32,7 +51,8 @@ module.exports = {
 };
 
 // When run directly as `node index.js`
-if (require.main === module) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
     const htmlPath = process.argv[2] || 'test/test.html';
     const outputPath = process.argv[3] || 'output.fig';
     const templatePath = process.argv[4] || 'templates/template.fig';
