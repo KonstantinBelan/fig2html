@@ -32,7 +32,7 @@
     "scripts": {
         "start": "node cli-reverse.js",
         "build": "node index.js",
-        "test": "node test/run-tests.js"
+        "test": "node test/runner.js"
     },
     "keywords": [
         "figmatik",
