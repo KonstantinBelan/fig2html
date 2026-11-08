@@ -37,3 +37,16 @@ export {
     resolveNodeTailwindClasses
 } from './layout.js';
 
+export {
+    mapGradientAngleToDirection,
+    mapGradientToTailwind,
+    mapBlendMode,
+    mapSvgIconToTailwind
+} from './effects.js';
+
+export {
+    mapFontFamily,
+    mapTextNodeToTailwind
+} from './typography.js';
+
+

@@ -106,7 +106,8 @@ const SUITES = [
     { title: '37. Semantic Styles, A11y Standards & Spacing Tokens Engine Tests', file: './integration/semantic-styles.test.js' },
     { title: '38. Security Guards & SSRF Protection Tests', file: './unit/security.test.js' },
     { title: '39. Tailwind CSS Core Engine & Mapper Tests (Sprint 1)', file: './unit/tailwind-mapper.test.js' },
-    { title: '40. Tailwind CSS Auto Layout & Grid Synthesis Tests (Sprint 2)', file: './integration/tailwind-layout.test.js' }
+    { title: '40. Tailwind CSS Auto Layout & Grid Synthesis Tests (Sprint 2)', file: './integration/tailwind-layout.test.js' },
+    { title: '41. Tailwind CSS Typography, Gradients & Effects Tests (Sprint 3)', file: './unit/tailwind-effects.test.js' }
 ];
 
 async function run() {

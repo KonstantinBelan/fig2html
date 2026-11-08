@@ -1,8 +1,10 @@
 // src/decompiler/tailwind/layout.js
 import { snapSpacing } from './scale-snapper.js';
 import { mapStylesToTailwind, deduplicateTailwindClasses } from './mapper.js';
+import { mapGradientToTailwind, mapBlendMode, mapSvgIconToTailwind } from './effects.js';
+import { mapTextNodeToTailwind, mapFontFamily } from './typography.js';
 import { computeNodeStyles } from '../css/index.js';
-import { resolveSmartAbsoluteAnchors, parseGridAxisCount } from '../css/layout-styles.js';
+import { resolveSmartAbsoluteAnchors, parseGridAxisCount, isVectorContainer, isVectorNode } from '../css/layout-styles.js';
 
 /**
  * Maps a Figma node with Auto Layout or Grid properties into Tailwind layout classes
@@ -193,8 +195,41 @@ export function resolveNodeTailwindClasses(node, parentNode, imageRegistry, opti
     // 3. Direct Auto Layout / Grid enhancements
     const layoutClasses = mapAutoLayoutToTailwind(node, parentNode, options);
 
-    // 4. Combine and deduplicate
-    const combined = deduplicateTailwindClasses([...mappedClasses, ...layoutClasses]);
+    // 4. Advanced typography & text properties
+    const textClasses = node.type === 'TEXT' ? mapTextNodeToTailwind(node, options) : [];
+    if (node.type === 'TEXT' && node.fontName?.family) {
+        const ff = mapFontFamily(node.fontName.family);
+        if (ff) textClasses.push(ff);
+    }
+
+    // 5. Gradients on non-text shapes & containers
+    const gradientClasses = [];
+    if (node.type !== 'TEXT' && Array.isArray(node.fillPaints)) {
+        const topGrad = [...node.fillPaints].reverse().find(f => f.visible !== false && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL'));
+        if (topGrad) {
+            gradientClasses.push(...mapGradientToTailwind(topGrad, options));
+        }
+    }
+
+    // 6. Blend Modes
+    const blendClasses = [];
+    if (node.blendMode) {
+        const bm = mapBlendMode(node.blendMode);
+        if (bm) blendClasses.push(bm);
+    }
+
+    // 7. Vector Icons
+    const vectorClasses = (isVectorContainer(node) || isVectorNode(node)) ? mapSvgIconToTailwind(node, options) : [];
+
+    // 8. Combine and deduplicate
+    const combined = deduplicateTailwindClasses([
+        ...mappedClasses,
+        ...layoutClasses,
+        ...textClasses,
+        ...gradientClasses,
+        ...blendClasses,
+        ...vectorClasses
+    ]);
 
     return {
         classes: combined,
