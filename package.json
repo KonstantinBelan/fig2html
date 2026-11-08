@@ -12,7 +12,12 @@
         "url": "https://github.com/KonstantinBelan/figmatik/issues"
     },
     "homepage": "https://github.com/KonstantinBelan/figmatik#readme",
+    "type": "module",
     "main": "index.js",
+    "exports": {
+        ".": "./index.js",
+        "./package.json": "./package.json"
+    },
     "bin": {
         "figmatik": "cli.js",
         "fig2html": "cli-reverse.js",
@@ -62,5 +67,8 @@
         "kiwi-schema": "^0.5.0",
         "sharp": "^0.35.5",
         "zstd-codec": "^0.1.5"
+    },
+    "engines": {
+        "node": ">=18.0.0"
     }
 }

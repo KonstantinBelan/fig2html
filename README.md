@@ -7,7 +7,7 @@
 [![npm version](https://img.shields.io/npm/v/figmatik.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/figmatik)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
 [![Tests: 146 passed](https://img.shields.io/badge/tests-146%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/runner.js)
-[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D16.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Figma Kiwi](https://img.shields.io/badge/Kiwi%20Schema-v101-f24e1e.svg?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/figmatik/pulls)
 
@@ -485,7 +485,7 @@ OPTIONS:
 
 ### 1. Обратная декомпиляция (.fig ➔ HTML/CSS)
 ```javascript
-const { convertFigToHtml } = require('figmatik');
+import { convertFigToHtml } from 'figmatik';
 
 async function decompile() {
     // 1. Автономный единый HTML файл (все стили в <head><style>, картинки в Base64):
@@ -543,7 +543,7 @@ decompile();
 
 ### 2. Прямая компиляция (HTML ➔ .fig)
 ```javascript
-const { generateFigFile } = require('figmatik');
+import { generateFigFile } from 'figmatik';
 
 async function build() {
     const result = await generateFigFile({
