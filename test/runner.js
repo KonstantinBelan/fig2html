@@ -104,7 +104,8 @@ const SUITES = [
     { title: '35. Graphic Subtree Collapsing & Cumulative Baking Engine Tests', file: './integration/graphic-collapser.test.js' },
     { title: '36. SmartSteam Complex Landing Page Decompilation & Visual Accuracy Tests', file: './integration/visual-accuracy.test.js' },
     { title: '37. Semantic Styles, A11y Standards & Spacing Tokens Engine Tests', file: './integration/semantic-styles.test.js' },
-    { title: '38. Security Guards & SSRF Protection Tests', file: './unit/security.test.js' }
+    { title: '38. Security Guards & SSRF Protection Tests', file: './unit/security.test.js' },
+    { title: '39. Tailwind CSS Core Engine & Mapper Tests (Sprint 1)', file: './unit/tailwind-mapper.test.js' }
 ];
 
 async function run() {
