@@ -719,14 +719,12 @@ figmatik/
 ├── docs/
 │   ├── logo.jpeg           # Официальный логотип проекта
 │   ├── cli-demo.svg        # Векторная демонстрация работы терминала (SVG)
-│   ├── figma-design-guide.md # Руководство для дизайнеров
-│   └── roadmap_modules.md  # План модульной архитектуры ядра
+│   └── figma-design-guide.md # Руководство для дизайнеров
 ├── templates/
 │   └── template.fig        # Эталонный бинарный шаблон Figma контейнера
 ├── src/
 │   ├── generator.js        # Оркестратор сборки бинарного .fig (Kiwi + Zstd)
 │   ├── schema.js           # Компилятор и кэш Kiwi схемы
-│   ├── converter.js        # Обратно-совместимый фасад транслятора HTML -> FIG
 │   ├── converter/          # МОДУЛЬНЫЙ КОМПИЛЯТОР HTML/CSS -> FIGMA AST
 │   │   ├── index.js        # Главный контроллер convertHtmlToNodes()
 │   │   ├── style-resolver.js      # Каскадные стили, CSS-переменные, padding/margin/borders
@@ -752,7 +750,6 @@ figmatik/
 │   │   ├── reader.js       # Чтение .fig ZIP, декомпрессия Kiwi и извлечение картинок
 │   │   ├── tree.js         # Восстановление иерархии сцены, инстансы компонентов и overrides
 │   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, DRY CSS
-│   │   ├── css.js          # Обратно-совместимый фасад генератора CSS
 │   │   ├── css/            # МОДУЛЬНЫЙ ГЕНЕРАТОР CSS И СТИЛЕЙ
 │   │   │   ├── index.js    # computeNodeStyles, toStyleString и реэкспорт
 │   │   │   ├── color-formatter.js      # HEX, RGBA, HSLA, MIME-типы
@@ -776,7 +773,6 @@ figmatik/
 │       └── guid.js         # Генератор GUID и лексикографических индексов
 └── test/
     ├── runner.js           # Модульный раннер тестов с поддержкой --grep и --domain
-    ├── run-tests.js        # Обратно-совместимый фасад запуска тестов
     ├── unit/               # Модульные тесты парсеров (29 тестов)
     ├── integration/        # Интеграционные тесты декомпилятора и синтеза (107 тестов)
     ├── e2e/                # Сквозные тесты компиляции и декомпиляции (10 тестов)

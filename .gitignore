@@ -36,3 +36,6 @@ yarn-error.log*
 *.swp
 *.swo
 *~
+
+# Internal roadmap documents
+docs/roadmap_*.md
