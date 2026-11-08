@@ -3,7 +3,7 @@
 /**
  * Generates unique GUIDs for Figma nodes in a given session.
  */
-class GuidGenerator {
+export class GuidGenerator {
     constructor(sessionId = 1, startLocalId = 100) {
         this.sessionId = sessionId;
         this.localIdCounter = startLocalId;
@@ -24,7 +24,7 @@ class GuidGenerator {
  * For up to 90 items, single characters '!'..'z' are used.
  * For more items, multi-character lexicographical strings are generated.
  */
-class FractionalIndexer {
+export class FractionalIndexer {
     static getPosition(index) {
         const minChar = 33; // '!'
         const maxChar = 125; // '}'
@@ -44,8 +44,3 @@ class FractionalIndexer {
         return `${prefix}${suffix}`;
     }
 }
-
-module.exports = {
-    GuidGenerator,
-    FractionalIndexer
-};

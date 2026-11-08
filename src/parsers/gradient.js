@@ -1,10 +1,10 @@
 // src/parsers/gradient.js
-const { parseColor, clamp01 } = require('./color');
+import { parseColor, clamp01 } from './color.js';
 
 /**
  * Splits CSS comma-separated lists while respecting parentheses
  */
-function splitTopLevelCommas(str) {
+export function splitTopLevelCommas(str) {
     const result = [];
     let current = '';
     let depth = 0;
@@ -31,7 +31,7 @@ function splitTopLevelCommas(str) {
  * Parses direction or angle from the first argument of linear-gradient
  * Returns angle in degrees [0..360)
  */
-function parseLinearDirection(dirStr) {
+export function parseLinearDirection(dirStr) {
     if (!dirStr) return 180; // default to bottom
     const clean = dirStr.trim().toLowerCase();
 
@@ -70,7 +70,7 @@ function parseLinearDirection(dirStr) {
  * Calculates Figma gradient 2x3 transform matrix from an angle in degrees.
  * Figma gradient matrix maps unit square coords (0,0)-(1,1) centered at (0.5, 0.5)
  */
-function createGradientTransform(angleDeg) {
+export function createGradientTransform(angleDeg) {
     // In CSS: 0deg points UP (to top), 90deg points RIGHT, 180deg points DOWN
     // Convert CSS angle to standard math angle
     const rad = (angleDeg - 90) * (Math.PI / 180);
@@ -93,7 +93,7 @@ function createGradientTransform(angleDeg) {
 /**
  * Parses color stops from gradient argument list
  */
-function parseColorStops(stopStrings) {
+export function parseColorStops(stopStrings) {
     const rawStops = [];
 
     for (let i = 0; i < stopStrings.length; i++) {
@@ -158,7 +158,7 @@ function parseColorStops(stopStrings) {
  * @param {string} cssGradient
  * @returns {object|null} Figma Paint object
  */
-function parseGradient(cssGradient) {
+export function parseGradient(cssGradient) {
     if (!cssGradient) return null;
     const clean = cssGradient.trim();
 
@@ -222,11 +222,3 @@ function parseGradient(cssGradient) {
 
     return null;
 }
-
-module.exports = {
-    parseGradient,
-    parseLinearDirection,
-    createGradientTransform,
-    parseColorStops,
-    splitTopLevelCommas
-};

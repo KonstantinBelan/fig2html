@@ -1,9 +1,9 @@
 // src/parsers/images.js
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const net = require('net');
-const { renderSvgToPng } = require('./svg');
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import net from 'node:net';
+import { renderSvgToPng } from './svg.js';
 
 /**
  * Checks if a target file path resides strictly inside a base directory to prevent Path Traversal
@@ -11,7 +11,7 @@ const { renderSvgToPng } = require('./svg');
  * @param {string} baseDir
  * @returns {boolean}
  */
-function isPathInsideBaseDir(targetPath, baseDir) {
+export function isPathInsideBaseDir(targetPath, baseDir) {
     if (!targetPath || !baseDir) return false;
     const resolvedBase = path.resolve(baseDir);
     const resolvedTarget = path.isAbsolute(targetPath)
@@ -37,7 +37,7 @@ function parseIpv4Int(ipStr) {
  * @param {string} hostname
  * @returns {boolean}
  */
-function isPrivateOrRestrictedHost(hostname) {
+export function isPrivateOrRestrictedHost(hostname) {
     if (!hostname || typeof hostname !== 'string') return true;
     const clean = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
 
@@ -104,7 +104,7 @@ function isPrivateOrRestrictedHost(hostname) {
 /**
  * Extracts width and height from common image formats (PNG, JPEG, GIF, WebP, SVG)
  */
-function getImageDimensions(buffer) {
+export function getImageDimensions(buffer) {
     if (!buffer || buffer.length < 8) return null;
 
     // PNG: 89 50 4E 47 0D 0A 1A 0A
@@ -185,14 +185,14 @@ function getImageDimensions(buffer) {
 /**
  * Creates a 1x1 transparent PNG buffer fallback
  */
-function createFallbackImage() {
+export function createFallbackImage() {
     return Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
         'base64'
     );
 }
 
-class ImageRegistry {
+export class ImageRegistry {
     constructor(options = {}) {
         this.baseDir = options.baseDir || process.cwd();
         this.allowRemote = options.allowRemote !== false;
@@ -327,11 +327,3 @@ class ImageRegistry {
         return this.images;
     }
 }
-
-module.exports = {
-    ImageRegistry,
-    getImageDimensions,
-    createFallbackImage,
-    isPathInsideBaseDir,
-    isPrivateOrRestrictedHost
-};

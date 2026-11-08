@@ -1,11 +1,11 @@
 // src/parsers/svg.js
-const { Resvg } = require('@resvg/resvg-js');
+import { Resvg } from '@resvg/resvg-js';
 
 /**
  * Serializes an SVG DOM element into a valid, standalone SVG string,
  * inlining any <use href="#symbolId"> references and resolving computed CSS styles & currentColor.
  */
-function serializeSvgElement(svgElement, colorString = '', targetWidth = 24, targetHeight = 24, win = null) {
+export function serializeSvgElement(svgElement, colorString = '', targetWidth = 24, targetHeight = 24, win = null) {
     const clone = svgElement.cloneNode(true);
     const resolvedWin = win || (svgElement.ownerDocument ? svgElement.ownerDocument.defaultView : null);
 
@@ -76,7 +76,7 @@ function serializeSvgElement(svgElement, colorString = '', targetWidth = 24, tar
 /**
  * Extracts width and height from SVG element
  */
-function getSvgDimensions(svgElement, win) {
+export function getSvgDimensions(svgElement, win) {
     const attrWidth = svgElement.getAttribute('width');
     const attrHeight = svgElement.getAttribute('height');
 
@@ -153,7 +153,7 @@ function getSvgDimensions(svgElement, win) {
 /**
  * Renders SVG XML into a high-DPI PNG buffer using Resvg
  */
-function renderSvgToPng(svgXml, targetWidth = 64) {
+export function renderSvgToPng(svgXml, targetWidth = 64) {
     try {
         let clean = svgXml.trim();
         if (!clean.includes('xmlns=')) {
@@ -170,9 +170,3 @@ function renderSvgToPng(svgXml, targetWidth = 64) {
         return null;
     }
 }
-
-module.exports = {
-    serializeSvgElement,
-    getSvgDimensions,
-    renderSvgToPng
-};

@@ -1,6 +1,6 @@
 // src/parsers/color.js
 
-const NAMED_COLORS = {
+export const NAMED_COLORS = {
     aliceblue: '#f0f8ff',
     antiquewhite: '#faebd7',
     aqua: '#00ffff',
@@ -151,12 +151,12 @@ const NAMED_COLORS = {
     yellowgreen: '#9acd32'
 };
 
-function clamp01(val) {
+export function clamp01(val) {
     if (isNaN(val)) return 0;
     return Math.max(0, Math.min(1, val));
 }
 
-function hslToRgb(h, s, l) {
+export function hslToRgb(h, s, l) {
     h = (((h % 360) + 360) % 360) / 360;
     s = clamp01(s);
     l = clamp01(l);
@@ -190,7 +190,7 @@ function hslToRgb(h, s, l) {
  * @param {object} [fallbackColor=null]
  * @returns {{ r: number, g: number, b: number, a: number }|null}
  */
-function parseColor(cssColor, fallbackColor = null) {
+export function parseColor(cssColor, fallbackColor = null) {
     if (!cssColor) return fallbackColor;
     const clean = cssColor.trim().toLowerCase();
 
@@ -295,9 +295,4 @@ function parseColor(cssColor, fallbackColor = null) {
     return fallbackColor;
 }
 
-module.exports = {
-    parseColor,
-    NAMED_COLORS,
-    hslToRgb,
-    clamp01
-};
+

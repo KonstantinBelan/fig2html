@@ -1,12 +1,12 @@
 // src/parsers/effects.js
-const { parseColor } = require('./color');
-const { splitTopLevelCommas } = require('./gradient');
+import { parseColor } from './color.js';
+import { splitTopLevelCommas } from './gradient.js';
 
 /**
  * Parses a single box-shadow definition
  * e.g. "0 4px 6px -1px rgba(0, 0, 0, 0.1)" or "inset 0 2px 4px #000"
  */
-function parseSingleBoxShadow(shadowStr) {
+export function parseSingleBoxShadow(shadowStr) {
     if (!shadowStr) return null;
     let str = shadowStr.trim();
     if (str === 'none') return null;
@@ -92,7 +92,7 @@ function parseSingleBoxShadow(shadowStr) {
  * @param {string} cssBoxShadow
  * @returns {Array<object>} Array of Figma Effect objects
  */
-function parseBoxShadows(cssBoxShadow) {
+export function parseBoxShadows(cssBoxShadow) {
     if (!cssBoxShadow || cssBoxShadow === 'none') return [];
     const parts = splitTopLevelCommas(cssBoxShadow);
     const effects = [];
@@ -112,7 +112,7 @@ function parseBoxShadows(cssBoxShadow) {
  * @param {boolean} isBackdrop
  * @returns {object|null} Figma Effect object
  */
-function parseBlurFilter(filterValue, isBackdrop = false) {
+export function parseBlurFilter(filterValue, isBackdrop = false) {
     if (!filterValue || filterValue === 'none') return null;
 
     const blurMatch = filterValue.match(/blur\(([\d.]+)px\)/i);
@@ -132,7 +132,7 @@ function parseBlurFilter(filterValue, isBackdrop = false) {
 /**
  * Combines box-shadow, filter, and backdrop-filter into a list of Figma effects
  */
-function parseAllEffects(boxShadow, filter, backdropFilter) {
+export function parseAllEffects(boxShadow, filter, backdropFilter) {
     const effects = [];
 
     if (boxShadow) {
@@ -151,10 +151,3 @@ function parseAllEffects(boxShadow, filter, backdropFilter) {
 
     return effects;
 }
-
-module.exports = {
-    parseSingleBoxShadow,
-    parseBoxShadows,
-    parseBlurFilter,
-    parseAllEffects
-};

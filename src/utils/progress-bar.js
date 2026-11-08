@@ -3,7 +3,7 @@
 /**
  * Lightweight, zero-dependency interactive terminal progress bar
  */
-class ProgressBar {
+export class ProgressBar {
     /**
      * @param {object} [options={}]
      * @param {number} [options.width=20] Width of progress bar in characters
@@ -78,6 +78,4 @@ class ProgressBar {
     }
 }
 
-module.exports = {
-    ProgressBar
-};
+

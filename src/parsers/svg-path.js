@@ -1,12 +1,12 @@
 // src/parsers/svg-path.js
-const { parseColor } = require('./color');
+import { parseColor } from './color.js';
 
 /**
  * Tokenizes an SVG path data string (d attribute)
  * @param {string} d
  * @returns {Array<string|number>}
  */
-function tokenizePath(d) {
+export function tokenizePath(d) {
     if (!d || typeof d !== 'string') return [];
     const tokens = [];
     const regex = /([a-df-z])|([-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?)/gi;
@@ -106,7 +106,7 @@ function arcToBeziers(px, py, cx, cy, rx, ry, xAxisRotation, largeArcFlag, sweep
  * @param {string} d
  * @returns {Array<object>}
  */
-function parseSvgPath(d) {
+export function parseSvgPath(d) {
     const tokens = tokenizePath(d);
     if (tokens.length === 0) return [];
 
@@ -304,7 +304,7 @@ function parseSvgPath(d) {
  * @param {Element} element
  * @returns {Array<object>}
  */
-function shapeToCommands(element) {
+export function shapeToCommands(element) {
     if (!element) return [];
     const tag = element.tagName.toLowerCase();
 
@@ -417,7 +417,7 @@ function shapeToCommands(element) {
  * @param {Array<object>} commands
  * @returns {{ minX: number, minY: number, maxX: number, maxY: number, width: number, height: number }}
  */
-function computePathBounds(commands) {
+export function computePathBounds(commands) {
     if (!commands || commands.length === 0) {
         return { minX: 0, minY: 0, maxX: 0, maxY: 0, width: 0, height: 0 };
     }
@@ -467,7 +467,7 @@ function computePathBounds(commands) {
  * @param {Array<object>} commands
  * @returns {Buffer}
  */
-function encodeCommandsBlob(commands) {
+export function encodeCommandsBlob(commands) {
     let size = 0;
     for (const cmd of commands) {
         if (cmd.type === 'M' || cmd.type === 'L') size += 1 + 8;
@@ -512,7 +512,7 @@ function encodeCommandsBlob(commands) {
  * @param {Array<object>} commands
  * @returns {Buffer}
  */
-function encodeVectorNetworkBlob(commands) {
+export function encodeVectorNetworkBlob(commands) {
     const vertices = [];
     const segments = [];
 
@@ -622,7 +622,7 @@ function encodeVectorNetworkBlob(commands) {
  * @param {Window} win
  * @returns {Array<object>}
  */
-function extractSvgShapeElements(svgElement, defaultColor = '#000000', win = null) {
+export function extractSvgShapeElements(svgElement, defaultColor = '#000000', win = null) {
     if (!svgElement) return [];
     const validTags = ['path', 'rect', 'circle', 'ellipse', 'line', 'polygon', 'polyline'];
     const candidates = svgElement.querySelectorAll(validTags.join(', '));
@@ -668,13 +668,3 @@ function extractSvgShapeElements(svgElement, defaultColor = '#000000', win = nul
 
     return results;
 }
-
-module.exports = {
-    tokenizePath,
-    parseSvgPath,
-    shapeToCommands,
-    computePathBounds,
-    encodeCommandsBlob,
-    encodeVectorNetworkBlob,
-    extractSvgShapeElements
-};

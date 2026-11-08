@@ -3,7 +3,7 @@
 /**
  * Standard font metrics dictionary for accurate text measurement and line wrap estimation
  */
-const FONT_METRICS_TABLE = {
+export const FONT_METRICS_TABLE = {
     'inter': { avgCharWidthRatio: 0.525, capHeightRatio: 0.727, xHeightRatio: 0.528, defaultLineHeight: 1.35 },
     'roboto': { avgCharWidthRatio: 0.520, capHeightRatio: 0.710, xHeightRatio: 0.530, defaultLineHeight: 1.30 },
     'open sans': { avgCharWidthRatio: 0.540, capHeightRatio: 0.714, xHeightRatio: 0.536, defaultLineHeight: 1.35 },
@@ -29,7 +29,7 @@ const FONT_METRICS_TABLE = {
  * @param {string} family
  * @returns {object}
  */
-function getFontMetrics(family) {
+export function getFontMetrics(family) {
     if (!family) return FONT_METRICS_TABLE['inter'];
     const clean = String(family).toLowerCase().replace(/['"]/g, '').trim();
     if (FONT_METRICS_TABLE[clean]) {
@@ -50,7 +50,7 @@ function getFontMetrics(family) {
  * @param {string} url
  * @returns {Array<{ family: string, weights: number[], hasItalic: boolean }>}
  */
-function parseGoogleFontsUrl(url) {
+export function parseGoogleFontsUrl(url) {
     if (!url || typeof url !== 'string' || !url.includes('fonts.googleapis.com')) {
         return [];
     }
@@ -113,7 +113,7 @@ function parseGoogleFontsUrl(url) {
  * @param {Document} doc JSDOM document
  * @returns {Map<string, { family: string, weights: number[], hasItalic: boolean, originalUrl: string }>}
  */
-function extractWebFonts(doc) {
+export function extractWebFonts(doc) {
     const fontMap = new Map();
     if (!doc) return fontMap;
 
@@ -155,7 +155,7 @@ function extractWebFonts(doc) {
  * @param {Iterable<string>} fontFamilies
  * @returns {string}
  */
-function generateGoogleFontsLink(fontFamilies) {
+export function generateGoogleFontsLink(fontFamilies) {
     if (!fontFamilies) return '';
     const uniqueFamilies = Array.from(new Set(
         Array.from(fontFamilies)
@@ -176,7 +176,7 @@ function generateGoogleFontsLink(fontFamilies) {
 /**
  * Parses font weight, style and family into Figma font representation
  */
-function parseFontStyle(weightStr, styleStr, family = 'Inter') {
+export function parseFontStyle(weightStr, styleStr, family = 'Inter') {
     const isItalic = styleStr === 'italic' || styleStr === 'oblique';
     let weightNum = parseInt(weightStr, 10);
 
@@ -252,7 +252,7 @@ function parseFontStyle(weightStr, styleStr, family = 'Inter') {
 /**
  * Parses CSS line-height into Figma Number struct (using explicit PIXELS to ensure exact display in Figma)
  */
-function parseLineHeight(lhValue, fontSize = 16) {
+export function parseLineHeight(lhValue, fontSize = 16) {
     if (!lhValue || lhValue === 'normal' || lhValue === 'auto') {
         return { value: 100, units: 'PERCENT' };
     }
@@ -284,7 +284,7 @@ function parseLineHeight(lhValue, fontSize = 16) {
 /**
  * Parses CSS letter-spacing into Figma struct and tracking value
  */
-function parseLetterSpacing(lsValue, fontSize = 16) {
+export function parseLetterSpacing(lsValue, fontSize = 16) {
     if (!lsValue || lsValue === 'normal' || lsValue === '0' || lsValue === '0px') {
         return {
             struct: { value: 0, units: 'PERCENT' },
@@ -327,7 +327,7 @@ function parseLetterSpacing(lsValue, fontSize = 16) {
 /**
  * Parses text-decoration
  */
-function parseTextDecoration(tdValue) {
+export function parseTextDecoration(tdValue) {
     if (!tdValue) return 'NONE';
     const clean = tdValue.toLowerCase();
     if (clean.includes('underline')) return 'UNDERLINE';
@@ -338,7 +338,7 @@ function parseTextDecoration(tdValue) {
 /**
  * Parses text-transform
  */
-function parseTextTransform(ttValue) {
+export function parseTextTransform(ttValue) {
     if (!ttValue) return 'ORIGINAL';
     const clean = ttValue.toLowerCase();
     if (clean === 'uppercase') return 'UPPER';
@@ -350,7 +350,7 @@ function parseTextTransform(ttValue) {
 /**
  * Estimates text dimensions based on character content, font metrics, and container constraints
  */
-function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, isParagraph = false, family = 'Inter') {
+export function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, isParagraph = false, family = 'Inter') {
     const metrics = getFontMetrics(family);
     const charWidth = fontSize * (metrics.avgCharWidthRatio || 0.53);
     const lineHeight = Math.round(fontSize * (metrics.defaultLineHeight || 1.35));
@@ -394,17 +394,3 @@ function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, isParagr
         autoResize: explicitWidth > 0 ? 'HEIGHT' : 'WIDTH_AND_HEIGHT'
     };
 }
-
-module.exports = {
-    FONT_METRICS_TABLE,
-    getFontMetrics,
-    parseGoogleFontsUrl,
-    extractWebFonts,
-    generateGoogleFontsLink,
-    parseFontStyle,
-    parseLineHeight,
-    parseLetterSpacing,
-    parseTextDecoration,
-    parseTextTransform,
-    estimateTextDimensions
-};
