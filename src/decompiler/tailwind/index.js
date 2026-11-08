@@ -57,5 +57,18 @@ export {
     synthesizeNodeResponsiveTailwind
 } from './responsive.js';
 
+export {
+    extractFigmaVariablesTheme,
+    generateTailwindV3Config,
+    generateTailwindV4ThemeCss,
+    generateHybridApplyStylesheet
+} from './theme-exporter.js';
+
+export {
+    generateTailwindScaffold,
+    injectTailwindCdn
+} from './scaffold.js';
+
+
 
 
