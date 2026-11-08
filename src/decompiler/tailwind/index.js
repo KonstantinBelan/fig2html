@@ -31,3 +31,9 @@ export {
     mapStylesToTailwind,
     deduplicateTailwindClasses
 } from './mapper.js';
+
+export {
+    mapAutoLayoutToTailwind,
+    resolveNodeTailwindClasses
+} from './layout.js';
+

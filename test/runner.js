@@ -105,7 +105,8 @@ const SUITES = [
     { title: '36. SmartSteam Complex Landing Page Decompilation & Visual Accuracy Tests', file: './integration/visual-accuracy.test.js' },
     { title: '37. Semantic Styles, A11y Standards & Spacing Tokens Engine Tests', file: './integration/semantic-styles.test.js' },
     { title: '38. Security Guards & SSRF Protection Tests', file: './unit/security.test.js' },
-    { title: '39. Tailwind CSS Core Engine & Mapper Tests (Sprint 1)', file: './unit/tailwind-mapper.test.js' }
+    { title: '39. Tailwind CSS Core Engine & Mapper Tests (Sprint 1)', file: './unit/tailwind-mapper.test.js' },
+    { title: '40. Tailwind CSS Auto Layout & Grid Synthesis Tests (Sprint 2)', file: './integration/tailwind-layout.test.js' }
 ];
 
 async function run() {
