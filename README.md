@@ -45,7 +45,7 @@ $ html-to-fig showcase.html showcase.fig
 
 ┌──────────────────────────────────────────┐
 │             HTML to Figma CLI            │
-│               v1.5.3                     │
+│               v1.5.4                     │
 └──────────────────────────────────────────┘
 ⚡ Compiling: showcase.html -> showcase.fig...
 [██░░░░░░░░]  20% • Loading Kiwi schema...
@@ -75,7 +75,7 @@ $ fig-to-html showcase.fig -s --fluid --webp
 
 ┌──────────────────────────────────────────┐
 │             Figma to HTML CLI            │
-│               v1.5.3                     │
+│               v1.5.4                     │
 └──────────────────────────────────────────┘
 ⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
 [██░░░░░░░░]  20% • Decoding Kiwi binary AST...
@@ -177,7 +177,7 @@ Open dist/index.html in any browser.
   - Списки `<ul>`, `<ol>`, `<li>`.
 
 ### 🔄 Декомпилятор .fig ➔ HTML/CSS
-- **💎 Semantic Styles, Spacing Tokens & A11y Standards (v1.5.3)**:
+- **💎 Semantic Styles, Spacing Tokens & A11y Standards (v1.5.4)**:
   - **Глобальная дедупликация стилей (DRY CSS & Class Reuse)**: алгоритмический анализ сигнатур стилей элементов. При совпадении стилей на 100% (например, повторяющиеся карточки, плашки или кнопки `.frame-116047453`, `.frame-116047454-2`) движок объединяет их в единый переиспользуемый CSS-класс в HTML и CSS, избавляя проект от сотен строк мертвого дублирующегося кода.
   - **Шкала примитивных Spacing-токенов (`:root`)**: автоматическое извлечение повторяющихся значений отступов (`padding`, `margin`, `gap`, `row-gap`, `column-gap`) в шкалу примитивных токенов `:root { --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; ... }` и подстановка `var(--space-*)` в CSS-правила.
   - **Предотвращение коллизий токенов в `:root`**: изолированное хранение переменных с одинаковыми числовыми значениями — токены скруглений (`--radius-16px: 16px;`) и отступов (`--space-4: 16px;`) корректно сосуществуют в `:root {}` без взаимной перезаписи.
@@ -652,7 +652,7 @@ build();
   - Сохранение вырезов составных векторных иконок через `fill-rule="evenodd"` и `clip-rule="evenodd"`
   - Снятие паразитной изоляции стекового контекста для режимов наложения `mix-blend-mode`
   - Расширенная библиотека Google Fonts (`Jura`, `Bahianita`, `Manrope`, `Outfit`, `Unbounded` и др.)
-- **Semantic Styles, Spacing Tokens & A11y Standards (v1.5.3)**:
+- **Semantic Styles, Spacing Tokens & A11y Standards (v1.5.4)**:
   - Алгоритмическая дедупликация идентичных стилей безымянных/повторяющихся слоев в единый общий класс
   - Извлечение примитивных токенов `--space-*` в `:root` и подстановка в `padding`, `margin`, `gap`
   - Предотвращение коллизий в `:root` между `--radius-*` и `--space-*` при совпадении числовых значений (например, 16px)

@@ -1,6 +1,6 @@
 {
     "name": "figmatik",
-    "version": "1.5.3",
+    "version": "1.5.4",
     "description": "Figma (.fig) to clean responsive HTML/CSS decompiler and bidirectional HTML-to-Figma compiler",
     "license": "MIT",
     "author": "Konstantin Belan <kosbelan@yandex.ru>",
