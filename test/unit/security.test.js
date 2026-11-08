@@ -1,12 +1,13 @@
 // Auto-generated test module
-const assert = require("assert");
-const { isPathInsideBaseDir, isPrivateOrRestrictedHost } = require("../../src/parsers/images");
+import assert from 'node:assert';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { isPathInsideBaseDir, isPrivateOrRestrictedHost } from '../../src/parsers/images.js';
 
-module.exports = async function(arg1, arg2) {
+export default async function run(arg1, arg2) {
     const { it, itAsync } = (arg1 && arg1.it) ? arg1 : { it: arg1, itAsync: arg2 };
 
     it('verifies Path Traversal protection in ImageRegistry', () => {
-        const { isPathInsideBaseDir } = require('../../src/parsers/images');
         const baseDir = '/Users/test/project';
 
         assert.strictEqual(isPathInsideBaseDir('img/logo.png', baseDir), true);
@@ -17,7 +18,6 @@ module.exports = async function(arg1, arg2) {
     });
 
     it('verifies SSRF and private/restricted host blocking', () => {
-        const { isPrivateOrRestrictedHost } = require('../../src/parsers/images');
 
         // Loopback and internal names
         assert.strictEqual(isPrivateOrRestrictedHost('localhost'), true);
@@ -52,7 +52,8 @@ module.exports = async function(arg1, arg2) {
 
 };
 
-if (require.main === module) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
     let passed = 0, failed = 0;
     const itSync = (name, fn) => {
         try { fn(); console.log("  \x1b[32m✔\x1b[0m " + name); passed++; }
@@ -62,7 +63,7 @@ if (require.main === module) {
         try { await fn(); console.log("  \x1b[32m✔\x1b[0m " + name); passed++; }
         catch (e) { failed++; console.error("  \x1b[31m✖\x1b[0m " + name + "\n    " + (e.stack || e.message)); }
     };
-    module.exports(itSync, itAsyncLocal).then(() => {
+    run(itSync, itAsyncLocal).then(() => {
         console.log("\nPassed: " + passed + ", Failed: " + failed);
         if (failed > 0) process.exit(1);
     }).catch(err => {

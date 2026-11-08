@@ -1,6 +1,10 @@
 // test/runner.js
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let totalTests = 0;
 let passedTests = 0;
@@ -124,9 +128,10 @@ async function run() {
 
         const resolvedPath = path.resolve(__dirname, suite.file);
         if (fs.existsSync(resolvedPath)) {
-            const mod = require(resolvedPath);
-            if (typeof mod === 'function') {
-                await mod({ it, itAsync }, it, itAsync);
+            const mod = await import(pathToFileURL(resolvedPath).href);
+            const runFn = mod.default || mod;
+            if (typeof runFn === 'function') {
+                await runFn({ it, itAsync }, it, itAsync);
             }
         } else {
             console.error(`\x1b[31mSuite file not found: ${suite.file}\x1b[0m`);
@@ -143,11 +148,13 @@ async function run() {
     }
 }
 
-if (require.main === module) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
     run().catch(err => {
         console.error('Test runner fatal error:', err);
         process.exit(1);
     });
 }
 
-module.exports = { run, it, itAsync };
+export { run, it, itAsync };
+export default { run, it, itAsync };

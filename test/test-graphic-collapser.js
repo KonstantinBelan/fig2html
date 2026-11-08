@@ -1,8 +1,10 @@
 // test/test-graphic-collapser.js
-const assert = require('assert');
-const sharp = require('sharp');
-const crypto = require('crypto');
-const {
+import assert from 'node:assert';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
+import sharp from 'sharp';
+import {
     identityMatrix,
     multiplyAffineMatrices,
     multiplyChain,
@@ -11,11 +13,11 @@ const {
     findAllGraphicChains,
     collapseGraphicSubtree,
     hasTextOrInteractive
-} = require('../src/decompiler/graphic-collapser');
-const { bakeGraphicChainAsset, bakeAndCollapseGraphicChains } = require('../src/decompiler/image-optimizer');
-const { computeNodeStyles } = require('../src/decompiler/css');
-const { renderNodeToHtml } = require('../src/decompiler/html');
-const { StylesheetManager } = require('../src/decompiler/stylesheet');
+} from '../src/decompiler/graphic-collapser.js';
+import { bakeGraphicChainAsset, bakeAndCollapseGraphicChains } from '../src/decompiler/image-optimizer.js';
+import { computeNodeStyles } from '../src/decompiler/css/index.js';
+import { renderNodeToHtml } from '../src/decompiler/html.js';
+import { StylesheetManager } from '../src/decompiler/stylesheet.js';
 
 async function runGraphicCollapserTests({ it, itAsync }) {
     it('creates identity 2D affine matrix', () => {
@@ -332,7 +334,8 @@ async function runGraphicCollapserTests({ it, itAsync }) {
 }
 
 // Support running standalone: `node test/test-graphic-collapser.js`
-if (require.main === module) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
     let total = 0;
     let passed = 0;
 
@@ -370,4 +373,5 @@ if (require.main === module) {
     });
 }
 
-module.exports = { runGraphicCollapserTests };
+export { runGraphicCollapserTests };
+export default runGraphicCollapserTests;

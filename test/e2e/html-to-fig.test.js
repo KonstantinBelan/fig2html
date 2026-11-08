@@ -1,12 +1,13 @@
 // Auto-generated test module
-const assert = require("assert");
-const path = require("path");
-const fs = require("fs");
-const AdmZip = require("adm-zip");
-const { decodeFigKiwiCanvas } = require("@open-pencil/kiwi/fig/parse");
-const { generateFigFile } = require("../../src/generator");
+import assert from 'node:assert';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import AdmZip from 'adm-zip';
+import { decodeFigKiwiCanvas } from '@open-pencil/kiwi/fig/parse';
+import { generateFigFile } from '../../src/generator.js';
 
-module.exports = async function(arg1, arg2) {
+export default async function run(arg1, arg2) {
     const { it, itAsync } = (arg1 && arg1.it) ? arg1 : { it: arg1, itAsync: arg2 };
 
     await itAsync('generates valid output.fig from test/test.html', async () => {
@@ -117,7 +118,8 @@ module.exports = async function(arg1, arg2) {
     // 8. Decompiler (Figma -> HTML) Unit and E2E Tests
 };
 
-if (require.main === module) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
     let passed = 0, failed = 0;
     const itSync = (name, fn) => {
         try { fn(); console.log("  \x1b[32m✔\x1b[0m " + name); passed++; }
@@ -127,7 +129,7 @@ if (require.main === module) {
         try { await fn(); console.log("  \x1b[32m✔\x1b[0m " + name); passed++; }
         catch (e) { failed++; console.error("  \x1b[31m✖\x1b[0m " + name + "\n    " + (e.stack || e.message)); }
     };
-    module.exports(itSync, itAsyncLocal).then(() => {
+    run(itSync, itAsyncLocal).then(() => {
         console.log("\nPassed: " + passed + ", Failed: " + failed);
         if (failed > 0) process.exit(1);
     }).catch(err => {

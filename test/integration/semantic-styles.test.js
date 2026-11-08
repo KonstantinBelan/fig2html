@@ -1,12 +1,19 @@
 // Auto-generated test module
-const assert = require("assert");
-const path = require("path");
-const fs = require("fs");
-const { StylesheetManager } = require("../../src/decompiler/stylesheet");
-const { convertFigToHtml } = require("../../src/decompiler");
-const { getContainerTag, enforceHeadingHierarchy } = require("../../src/decompiler/html");
+import assert from 'node:assert';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { StylesheetManager } from '../../src/decompiler/stylesheet.js';
+import { convertFigToHtml } from '../../src/decompiler/index.js';
+import {
+    determineTextTag,
+    generateFullHtmlDocument,
+    renderNodeToHtml,
+    detectDocumentLanguage,
+    determineContainerTag
+} from '../../src/decompiler/html.js';
 
-module.exports = async function(arg1, arg2) {
+export default async function run(arg1, arg2) {
     const { it, itAsync } = (arg1 && arg1.it) ? arg1 : { it: arg1, itAsync: arg2 };
 
 
@@ -63,7 +70,6 @@ module.exports = async function(arg1, arg2) {
     });
 
     it('guarantees single <h1> per page and contextual <h2>-<h4> hierarchy while ignoring price/metrics', () => {
-        const { determineTextTag, generateFullHtmlDocument } = require('../../src/decompiler/html');
 
         const heroTitle = { name: 'Hero Title', type: 'TEXT', fontSize: 44, fontName: { family: 'Inter', style: 'Bold' }, textData: { characters: 'Future of Development' } };
         const sectionTitle = { name: 'Section Title', type: 'TEXT', fontSize: 36, fontName: { family: 'Inter', style: 'Bold' }, textData: { characters: 'Our Key Features' } };
@@ -91,7 +97,6 @@ module.exports = async function(arg1, arg2) {
     });
 
     it('implements A11y as standard: decorative images/svg, icon button aria-labels, nav and focus-visible', () => {
-        const { renderNodeToHtml } = require('../../src/decompiler/html');
 
         // 1. Icon-only button without text
         const closeBtn = {
@@ -123,7 +128,6 @@ module.exports = async function(arg1, arg2) {
         assert(navHtmlEn.includes('<nav aria-label="Navigation"'), 'English nav container must render <nav aria-label="Navigation">');
 
         // 2.1 Language detection & HTML tag
-        const { detectDocumentLanguage, generateFullHtmlDocument } = require('../../src/decompiler/html');
         const enPage = {
             name: 'English Landing',
             type: 'FRAME',
@@ -163,7 +167,6 @@ module.exports = async function(arg1, arg2) {
     });
 
     it('determines semantic container tags: header, footer, section, main, form', () => {
-        const { determineContainerTag } = require('../../src/decompiler/html');
 
         assert.strictEqual(determineContainerTag({ name: 'Hero Section', children: [{}] }), 'section');
         assert.strictEqual(determineContainerTag({ name: 'Features Block', children: [{}] }), 'section');
@@ -177,7 +180,8 @@ module.exports = async function(arg1, arg2) {
 
 };
 
-if (require.main === module) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
     let passed = 0, failed = 0;
     const itSync = (name, fn) => {
         try { fn(); console.log("  \x1b[32m✔\x1b[0m " + name); passed++; }
@@ -187,7 +191,7 @@ if (require.main === module) {
         try { await fn(); console.log("  \x1b[32m✔\x1b[0m " + name); passed++; }
         catch (e) { failed++; console.error("  \x1b[31m✖\x1b[0m " + name + "\n    " + (e.stack || e.message)); }
     };
-    module.exports(itSync, itAsyncLocal).then(() => {
+    run(itSync, itAsyncLocal).then(() => {
         console.log("\nPassed: " + passed + ", Failed: " + failed);
         if (failed > 0) process.exit(1);
     }).catch(err => {

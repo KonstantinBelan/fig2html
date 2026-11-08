@@ -1,11 +1,12 @@
 // Auto-generated test module
-const assert = require("assert");
-const path = require("path");
-const fs = require("fs");
-const AdmZip = require("adm-zip");
-const { getCompiledSchema } = require("../../src/schema");
-const { ZstdCodec } = require("zstd-codec");
-const {
+import assert from 'node:assert';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import AdmZip from 'adm-zip';
+import { getCompiledSchema } from '../../src/schema.js';
+import { ZstdCodec } from 'zstd-codec';
+import {
     BoundingBox,
     Interval,
     fuzzyEqual,
@@ -15,14 +16,14 @@ const {
     findGaps,
     sliceAlongAxis,
     computeMedian
-} = require("../../src/decompiler/geometry");
-const {
+} from '../../src/decompiler/geometry.js';
+import {
     hasContainerVisualStyles,
     isUnderlayCandidate,
     promoteToContainer,
     detectAndExtractContainers
-} = require("../../src/decompiler/container-detector");
-const {
+} from '../../src/decompiler/container-detector.js';
+import {
     detectGrid,
     isMaskContainer,
     hasTransformRotation,
@@ -30,12 +31,12 @@ const {
     synthesizeContainerLayout,
     synthesizeLayoutTree,
     applySmartLayout
-} = require("../../src/decompiler/synthesizer");
-const { buildSceneTree, convertFigToHtml, readFigFile } = require("../../src/decompiler");
-const { computeNodeStyles } = require("../../src/decompiler/css");
-const { parseArgs: parseReverseArgs } = require("../../cli-reverse");
+} from '../../src/decompiler/synthesizer.js';
+import { buildSceneTree, convertFigToHtml, readFigFile } from '../../src/decompiler/index.js';
+import { computeNodeStyles } from '../../src/decompiler/css/index.js';
+import { parseArgs as parseReverseArgs } from '../../cli-reverse.js';
 
-module.exports = async function(arg1, arg2) {
+export default async function run(arg1, arg2) {
     const { it, itAsync } = (arg1 && arg1.it) ? arg1 : { it: arg1, itAsync: arg2 };
 
 
@@ -1129,7 +1130,8 @@ module.exports = async function(arg1, arg2) {
     // 11. Figma Multi-Page Import Engine (v1.3.0) Tests
 };
 
-if (require.main === module) {
+const isDirectRun = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
+if (isDirectRun) {
     let passed = 0, failed = 0;
     const itSync = (name, fn) => {
         try { fn(); console.log("  \x1b[32m✔\x1b[0m " + name); passed++; }
@@ -1139,7 +1141,7 @@ if (require.main === module) {
         try { await fn(); console.log("  \x1b[32m✔\x1b[0m " + name); passed++; }
         catch (e) { failed++; console.error("  \x1b[31m✖\x1b[0m " + name + "\n    " + (e.stack || e.message)); }
     };
-    module.exports(itSync, itAsyncLocal).then(() => {
+    run(itSync, itAsyncLocal).then(() => {
         console.log("\nPassed: " + passed + ", Failed: " + failed);
         if (failed > 0) process.exit(1);
     }).catch(err => {
