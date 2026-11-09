@@ -213,6 +213,22 @@ export default function ({ it }) {
 
         const noneBorder = mapStylesToTailwind({ border: 'none' });
         assert.ok(!noneBorder.classes.includes('border'));
+
+        // Directional borders (border-top, border-bottom, border-left, border-right)
+        const topBorder = mapStylesToTailwind({ 'border-top': '1px solid #d6d6d6' });
+        assert.ok(topBorder.classes.includes('border-t'));
+        assert.ok(topBorder.classes.includes('border-[#d6d6d6]'));
+        assert.ok(!topBorder.classes.includes('border-b'));
+
+        const yBorder = mapStylesToTailwind({ 'border-top': '1px solid #c9d4d0', 'border-bottom': '1px solid #c9d4d0' });
+        assert.ok(yBorder.classes.includes('border-y'));
+        assert.ok(yBorder.classes.includes('border-[#c9d4d0]'));
+
+        const multiBorder = mapStylesToTailwind({ 'border-top': '2px solid #ef4444', 'border-bottom': '1px solid #3b82f6' });
+        assert.ok(multiBorder.classes.includes('border-t-2'));
+        assert.ok(multiBorder.classes.includes('border-t-red-500'));
+        assert.ok(multiBorder.classes.includes('border-b'));
+        assert.ok(multiBorder.classes.includes('border-b-blue-500'));
         assert.ok(!noneBorder.classes.includes('border-none'));
     });
 

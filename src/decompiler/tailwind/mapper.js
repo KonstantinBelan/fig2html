@@ -608,21 +608,24 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
         }
     }
 
-    if (styles['border']) {
-        const parts = splitCssValues(styles['border']);
-        // e.g. "1px solid #e2e8f0" or "none"
+    // Helper to parse border shorthand value into components
+    const parseBorderValue = (val) => {
+        if (!val || typeof val !== 'string') return null;
+        const trimmed = val.trim();
+        if (trimmed === 'none' || trimmed === '0') return { isNone: true };
+        const parts = splitCssValues(trimmed);
         const styleVal = parts.find(p => ['solid', 'dashed', 'dotted', 'double', 'none'].includes(p));
-        const widthVal = parts.find(p => p.endsWith('px') || /^\d+$/.test(p));
-        const colorVal = parts.find(p => p.startsWith('#') || p.startsWith('rgb') || p.startsWith('hsl') || p.startsWith('var'));
+        const widthVal = parts.find(p => p.endsWith('px') || p.endsWith('rem') || /^\d+$/.test(p));
+        const colorVal = parts.find(p => p !== styleVal && p !== widthVal);
+        const isNone = styleVal === 'none' || (widthVal && parseFloat(widthVal) === 0);
+        return { isNone, styleVal, widthVal, colorVal };
+    };
 
-        const isNone = styleVal === 'none' ||
-                       (widthVal && parseFloat(widthVal) === 0) ||
-                       styles['border'].trim() === 'none' ||
-                       styles['border'].trim() === '0';
-
-        if (!isNone) {
-            if (widthVal) {
-                const wNum = parseFloat(widthVal);
+    if (styles['border']) {
+        const parsed = parseBorderValue(styles['border']);
+        if (parsed && !parsed.isNone) {
+            if (parsed.widthVal) {
+                const wNum = parseFloat(parsed.widthVal);
                 const wKey = snapBorderWidth(wNum, options);
                 if (wKey === 'DEFAULT') classes.push('border');
                 else if (wKey !== '0') classes.push(`border-${wKey}`);
@@ -630,15 +633,117 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
                 classes.push('border');
             }
 
-            if (styleVal && styleVal !== 'solid') {
-                classes.push(`border-${styleVal}`);
+            if (parsed.styleVal && parsed.styleVal !== 'solid') {
+                classes.push(`border-${parsed.styleVal}`);
             }
 
-            if (colorVal) {
-                const matched = matchColor(colorVal, options);
+            if (parsed.colorVal) {
+                const matched = matchColor(parsed.colorVal, options);
                 if (matched.classSuffix) classes.push(`border-${matched.classSuffix}`);
             }
         }
+    }
+
+    // Directional borders: border-top, border-right, border-bottom, border-left
+    const directionalBorders = [
+        { prop: 'border-top', prefix: 'border-t' },
+        { prop: 'border-right', prefix: 'border-r' },
+        { prop: 'border-bottom', prefix: 'border-b' },
+        { prop: 'border-left', prefix: 'border-l' },
+    ];
+
+    const activeDirections = [];
+    for (const d of directionalBorders) {
+        if (styles[d.prop]) {
+            const parsed = parseBorderValue(styles[d.prop]);
+            if (parsed && !parsed.isNone) {
+                activeDirections.push({ ...d, parsed });
+            }
+        }
+    }
+
+    if (activeDirections.length > 0) {
+        const hasTop = activeDirections.find(d => d.prop === 'border-top');
+        const hasBottom = activeDirections.find(d => d.prop === 'border-bottom');
+        const hasLeft = activeDirections.find(d => d.prop === 'border-left');
+        const hasRight = activeDirections.find(d => d.prop === 'border-right');
+
+        const areIdentical = (d1, d2) => d1 && d2 &&
+            d1.parsed.widthVal === d2.parsed.widthVal &&
+            d1.parsed.styleVal === d2.parsed.styleVal &&
+            d1.parsed.colorVal === d2.parsed.colorVal;
+
+        const isYPair = activeDirections.length === 2 && hasTop && hasBottom && areIdentical(hasTop, hasBottom);
+        const isXPair = activeDirections.length === 2 && hasLeft && hasRight && areIdentical(hasLeft, hasRight);
+        const isAllFour = activeDirections.length === 4 && areIdentical(hasTop, hasBottom) && areIdentical(hasLeft, hasRight) && areIdentical(hasTop, hasLeft);
+
+        if (isAllFour) {
+            const parsed = hasTop.parsed;
+            const wNum = parsed.widthVal ? parseFloat(parsed.widthVal) : 1;
+            const wKey = snapBorderWidth(wNum, options);
+            if (wKey === 'DEFAULT') classes.push('border');
+            else if (wKey !== '0') classes.push(`border-${wKey}`);
+            if (parsed.styleVal && parsed.styleVal !== 'solid') classes.push(`border-${parsed.styleVal}`);
+            if (parsed.colorVal) {
+                const matched = matchColor(parsed.colorVal, options);
+                if (matched.classSuffix) classes.push(`border-${matched.classSuffix}`);
+            }
+        } else if (isYPair) {
+            const parsed = hasTop.parsed;
+            const wNum = parsed.widthVal ? parseFloat(parsed.widthVal) : 1;
+            const wKey = snapBorderWidth(wNum, options);
+            if (wKey === 'DEFAULT') classes.push('border-y');
+            else if (wKey !== '0') classes.push(`border-y-${wKey}`);
+            if (parsed.styleVal && parsed.styleVal !== 'solid') classes.push(`border-${parsed.styleVal}`);
+            if (parsed.colorVal) {
+                const matched = matchColor(parsed.colorVal, options);
+                if (matched.classSuffix) classes.push(`border-${matched.classSuffix}`);
+            }
+        } else if (isXPair) {
+            const parsed = hasLeft.parsed;
+            const wNum = parsed.widthVal ? parseFloat(parsed.widthVal) : 1;
+            const wKey = snapBorderWidth(wNum, options);
+            if (wKey === 'DEFAULT') classes.push('border-x');
+            else if (wKey !== '0') classes.push(`border-x-${wKey}`);
+            if (parsed.styleVal && parsed.styleVal !== 'solid') classes.push(`border-${parsed.styleVal}`);
+            if (parsed.colorVal) {
+                const matched = matchColor(parsed.colorVal, options);
+                if (matched.classSuffix) classes.push(`border-${matched.classSuffix}`);
+            }
+        } else {
+            const colors = activeDirections.map(d => d.parsed.colorVal).filter(Boolean);
+            const allSameColor = colors.length > 0 && colors.every(c => c === colors[0]);
+
+            for (const d of activeDirections) {
+                const parsed = d.parsed;
+                const wNum = parsed.widthVal ? parseFloat(parsed.widthVal) : 1;
+                const wKey = snapBorderWidth(wNum, options);
+                if (wKey === 'DEFAULT') classes.push(d.prefix);
+                else if (wKey !== '0') classes.push(`${d.prefix}-${wKey}`);
+
+                if (parsed.styleVal && parsed.styleVal !== 'solid') {
+                    classes.push(`border-${parsed.styleVal}`);
+                }
+
+                if (parsed.colorVal && !allSameColor) {
+                    const matched = matchColor(parsed.colorVal, options);
+                    if (matched.classSuffix) classes.push(`${d.prefix}-${matched.classSuffix}`);
+                }
+            }
+
+            if (allSameColor) {
+                const matched = matchColor(colors[0], options);
+                if (matched.classSuffix) classes.push(`border-${matched.classSuffix}`);
+            }
+        }
+    }
+
+    if (styles['border-color'] && !styles['border'] && activeDirections.length === 0) {
+        const matched = matchColor(styles['border-color'], options);
+        if (matched.classSuffix) classes.push(`border-${matched.classSuffix}`);
+    }
+    if (styles['border-style'] && styles['border-style'] !== 'solid' && !styles['border'] && activeDirections.length === 0) {
+        classes.push(`border-${styles['border-style']}`);
     }
 
     // 11. Box Shadow
@@ -826,6 +931,39 @@ export function deduplicateTailwindClasses(classList) {
             if (base.startsWith('rounded-b-') || base === 'rounded-b') return `${prefix}rounded-b`;
             if (base.startsWith('rounded-l-') || base === 'rounded-l') return `${prefix}rounded-l`;
             return `${prefix}rounded`;
+        }
+        if (base.startsWith('border-') || base === 'border') {
+            if (['border-solid', 'border-dashed', 'border-dotted', 'border-double', 'border-none'].includes(base)) {
+                return `${prefix}border-style`;
+            }
+            if (base === 'border' || /^border-\d+$/.test(base) || /^border-\[\d+.*\]$/.test(base)) {
+                return `${prefix}border-width`;
+            }
+            if (base === 'border-t' || /^border-t-\d+$/.test(base) || /^border-t-\[\d+.*\]$/.test(base)) {
+                return `${prefix}border-t-width`;
+            }
+            if (base === 'border-b' || /^border-b-\d+$/.test(base) || /^border-b-\[\d+.*\]$/.test(base)) {
+                return `${prefix}border-b-width`;
+            }
+            if (base === 'border-l' || /^border-l-\d+$/.test(base) || /^border-l-\[\d+.*\]$/.test(base)) {
+                return `${prefix}border-l-width`;
+            }
+            if (base === 'border-r' || /^border-r-\d+$/.test(base) || /^border-r-\[\d+.*\]$/.test(base)) {
+                return `${prefix}border-r-width`;
+            }
+            if (base === 'border-x' || /^border-x-\d+$/.test(base) || /^border-x-\[\d+.*\]$/.test(base)) {
+                return `${prefix}border-x-width`;
+            }
+            if (base === 'border-y' || /^border-y-\d+$/.test(base) || /^border-y-\[\d+.*\]$/.test(base)) {
+                return `${prefix}border-y-width`;
+            }
+            if (base.startsWith('border-t-')) return `${prefix}border-t-color`;
+            if (base.startsWith('border-b-')) return `${prefix}border-b-color`;
+            if (base.startsWith('border-l-')) return `${prefix}border-l-color`;
+            if (base.startsWith('border-r-')) return `${prefix}border-r-color`;
+            if (base.startsWith('border-x-')) return `${prefix}border-x-color`;
+            if (base.startsWith('border-y-')) return `${prefix}border-y-color`;
+            return `${prefix}border-color`;
         }
         if (base.startsWith('shadow-') || base === 'shadow') return `${prefix}shadow`;
         if (base.startsWith('opacity-')) return `${prefix}opacity`;
