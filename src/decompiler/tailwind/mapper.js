@@ -159,21 +159,47 @@ export function mapBoxShadow(shadowStr) {
     const clean = shadowStr.trim();
     if (clean.includes('inset')) return 'shadow-inner';
 
-    // Standard tailwind shadow matchers based on blur radius
-    // Match: <x> <y> <blur> where x and y can be 0 or Npx
-    const shadowParts = clean.match(/(?:-?\d+(?:\.\d+)?(?:px)?\s+)(?:-?\d+(?:\.\d+)?(?:px)?\s+)(-?\d+(?:\.\d+)?)(?:px)?/);
-    if (shadowParts) {
-        const blur = Math.round(parseFloat(shadowParts[1]));
-        if (blur <= 2) return 'shadow-sm';
-        if (blur <= 4) return 'shadow';
-        if (blur <= 7) return 'shadow-md';
-        if (blur <= 16) return 'shadow-lg';
-        if (blur <= 26) return 'shadow-xl';
-        if (blur >= 27) return 'shadow-2xl';
+    // Format for arbitrary shadow: remove spaces around commas inside rgba/rgb/hsl functions,
+    // then replace remaining spaces with underscores
+    const formatted = clean
+        .replace(/\s*,\s*/g, ',')
+        .replace(/\s+/g, '_');
+
+    // Only map to standard tailwind shadows if color is pure black with standard opacity.
+    // If color is custom or tinted (like rgba(169, 185, 195, 0.06)), ALWAYS generate exact arbitrary shadow
+    const isCustomColor = (function() {
+        const colorMatch = clean.match(/(rgba?\([^)]+\)|#[0-9a-fA-F]+|[a-zA-Z]+)$/);
+        if (!colorMatch) return false;
+        const color = colorMatch[1].trim().toLowerCase();
+        if (color === '#000' || color === '#000000' || color === 'black') return false;
+        const rgbMatch = color.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/);
+        if (rgbMatch) {
+            const r = parseInt(rgbMatch[1], 10);
+            const g = parseInt(rgbMatch[2], 10);
+            const b = parseInt(rgbMatch[3], 10);
+            const a = rgbMatch[4] !== undefined ? parseFloat(rgbMatch[4]) : 1;
+            if (r === 0 && g === 0 && b === 0 && a >= 0.07 && a <= 0.25) {
+                return false;
+            }
+            return true;
+        }
+        return true;
+    })();
+
+    if (!isCustomColor) {
+        // Standard tailwind shadow matchers based on blur radius
+        const shadowParts = clean.match(/(?:-?\d+(?:\.\d+)?(?:px)?\s+)(?:-?\d+(?:\.\d+)?(?:px)?\s+)(-?\d+(?:\.\d+)?)(?:px)?/);
+        if (shadowParts) {
+            const blur = Math.round(parseFloat(shadowParts[1]));
+            if (blur <= 2) return 'shadow-sm';
+            if (blur <= 4) return 'shadow';
+            if (blur <= 7) return 'shadow-md';
+            if (blur <= 16) return 'shadow-lg';
+            if (blur <= 26) return 'shadow-xl';
+            if (blur >= 27) return 'shadow-2xl';
+        }
     }
 
-    // Arbitrary shadow syntax: replace spaces with underscores for safe Tailwind arbitrary value
-    const formatted = clean.replace(/\s+/g, '_');
     return `shadow-[${formatted}]`;
 }
 
@@ -846,6 +872,14 @@ export function deduplicateTailwindClasses(classList) {
             map.delete(`${prefix}padding-pr`);
             map.delete(`${prefix}padding-pb`);
             map.delete(`${prefix}padding-pl`);
+        } else if (group === `${prefix}left`) {
+            map.delete(`${prefix}right`);
+        } else if (group === `${prefix}right`) {
+            map.delete(`${prefix}left`);
+        } else if (group === `${prefix}top`) {
+            map.delete(`${prefix}bottom`);
+        } else if (group === `${prefix}bottom`) {
+            map.delete(`${prefix}top`);
         }
         map.set(group, cls);
     }

@@ -107,22 +107,24 @@ export function mapAutoLayoutToTailwind(node, parentNode = null, options = {}) {
     }
 
     // 3. Padding (Auto Layout padding)
-    const pt = node.stackPaddingTop !== undefined ? node.stackPaddingTop : (node.stackVerticalPadding || node.stackPaddingVertical || 0);
-    const pr = node.stackPaddingRight !== undefined ? node.stackPaddingRight : (node.stackHorizontalPadding || node.stackPaddingHorizontal || 0);
-    const pb = node.stackPaddingBottom !== undefined ? node.stackPaddingBottom : (node.stackVerticalPadding || node.stackPaddingVertical || 0);
-    const pl = node.stackPaddingLeft !== undefined ? node.stackPaddingLeft : (node.stackHorizontalPadding || node.stackPaddingHorizontal || 0);
+    if (isAutoLayout && !node.isCollapsedGraphicRoot) {
+        const pt = node.stackPaddingTop !== undefined ? node.stackPaddingTop : (node.stackVerticalPadding || node.stackPaddingVertical || 0);
+        const pr = node.stackPaddingRight !== undefined ? node.stackPaddingRight : (node.stackHorizontalPadding || node.stackPaddingHorizontal || 0);
+        const pb = node.stackPaddingBottom !== undefined ? node.stackPaddingBottom : (node.stackVerticalPadding || node.stackPaddingVertical || 0);
+        const pl = node.stackPaddingLeft !== undefined ? node.stackPaddingLeft : (node.stackHorizontalPadding || node.stackPaddingHorizontal || 0);
 
-    if (pt > 0 || pr > 0 || pb > 0 || pl > 0) {
-        if (pt === pb && pr === pl && pt === pr) {
-            classes.push(`p-${snapSpacing(pt, options)}`);
-        } else if (pt === pb && pr === pl) {
-            if (pt > 0) classes.push(`py-${snapSpacing(pt, options)}`);
-            if (pr > 0) classes.push(`px-${snapSpacing(pr, options)}`);
-        } else {
-            if (pt > 0) classes.push(`pt-${snapSpacing(pt, options)}`);
-            if (pr > 0) classes.push(`pr-${snapSpacing(pr, options)}`);
-            if (pb > 0) classes.push(`pb-${snapSpacing(pb, options)}`);
-            if (pl > 0) classes.push(`pl-${snapSpacing(pl, options)}`);
+        if (pt > 0 || pr > 0 || pb > 0 || pl > 0) {
+            if (pt === pb && pr === pl && pt === pr) {
+                classes.push(`p-${snapSpacing(pt, options)}`);
+            } else if (pt === pb && pr === pl) {
+                if (pt > 0) classes.push(`py-${snapSpacing(pt, options)}`);
+                if (pr > 0) classes.push(`px-${snapSpacing(pr, options)}`);
+            } else {
+                if (pt > 0) classes.push(`pt-${snapSpacing(pt, options)}`);
+                if (pr > 0) classes.push(`pr-${snapSpacing(pr, options)}`);
+                if (pb > 0) classes.push(`pb-${snapSpacing(pb, options)}`);
+                if (pl > 0) classes.push(`pl-${snapSpacing(pl, options)}`);
+            }
         }
     }
 
