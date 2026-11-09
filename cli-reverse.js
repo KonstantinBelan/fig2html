@@ -429,9 +429,15 @@ async function runConversion(options) {
         if (bar) bar.stop();
     }
 
-    const finalHtmlPath = result.outputPath && fs.existsSync(result.outputPath)
+    let finalHtmlPath = result.outputPath && fs.existsSync(result.outputPath)
         ? result.outputPath
         : (fs.existsSync(outputPath) ? outputPath : null);
+    if (finalHtmlPath && fs.statSync(finalHtmlPath).isDirectory()) {
+        const candidateIndex = path.join(finalHtmlPath, 'index.html');
+        if (fs.existsSync(candidateIndex)) {
+            finalHtmlPath = candidateIndex;
+        }
+    }
     const outStat = finalHtmlPath ? fs.statSync(finalHtmlPath) : null;
 
     console.log(`\n${colors.green}${colors.bold}✔ Decompilation complete in ${result.durationMs}ms!${colors.reset}`);

@@ -1,5 +1,5 @@
 // src/decompiler/tailwind/mapper.js
-import { snapSpacing, snapRadius, snapBorderWidth } from './scale-snapper.js';
+import { snapSpacing, snapRadius, snapBorderWidth, snapMaxWidth } from './scale-snapper.js';
 import { matchColor, parseColor } from './color-matcher.js';
 import { parsePxValue } from '../responsive-css.js';
 
@@ -505,12 +505,8 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
     }
     if (styles['max-width']) {
         const mw = styles['max-width'].trim().toLowerCase();
-        if (mw === '100%') classes.push('max-w-full');
-        else if (mw === 'none') classes.push('max-w-none');
-        else {
-            const s = snapPx(mw);
-            if (s) classes.push(`max-w-${s}`);
-        }
+        const s = snapMaxWidth(mw, options);
+        if (s) classes.push(`max-w-${s}`);
     }
     if (styles['min-height']) {
         const mh = styles['min-height'].trim().toLowerCase();
@@ -601,10 +597,22 @@ export function mapStylesToTailwind(styles = {}, options = {}) {
             const tr = snapRadius(parts[1], options);
             const br = snapRadius(parts[2], options);
             const bl = snapRadius(parts[3], options);
-            if (tl !== 'none') classes.push(tl === 'DEFAULT' ? 'rounded-tl' : `rounded-tl-${tl}`);
-            if (tr !== 'none') classes.push(tr === 'DEFAULT' ? 'rounded-tr' : `rounded-tr-${tr}`);
-            if (br !== 'none') classes.push(br === 'DEFAULT' ? 'rounded-br' : `rounded-br-${br}`);
-            if (bl !== 'none') classes.push(bl === 'DEFAULT' ? 'rounded-bl' : `rounded-bl-${bl}`);
+
+            // Check if left/right/top/bottom sides match symmetrically
+            if (tl === bl && tr === 'none' && br === 'none' && tl !== 'none') {
+                classes.push(tl === 'DEFAULT' ? 'rounded-l' : `rounded-l-${tl}`);
+            } else if (tr === br && tl === 'none' && bl === 'none' && tr !== 'none') {
+                classes.push(tr === 'DEFAULT' ? 'rounded-r' : `rounded-r-${tr}`);
+            } else if (tl === tr && bl === 'none' && br === 'none' && tl !== 'none') {
+                classes.push(tl === 'DEFAULT' ? 'rounded-t' : `rounded-t-${tl}`);
+            } else if (bl === br && tl === 'none' && tr === 'none' && bl !== 'none') {
+                classes.push(bl === 'DEFAULT' ? 'rounded-b' : `rounded-b-${bl}`);
+            } else {
+                if (tl !== 'none') classes.push(tl === 'DEFAULT' ? 'rounded-tl' : `rounded-tl-${tl}`);
+                if (tr !== 'none') classes.push(tr === 'DEFAULT' ? 'rounded-tr' : `rounded-tr-${tr}`);
+                if (br !== 'none') classes.push(br === 'DEFAULT' ? 'rounded-br' : `rounded-br-${br}`);
+                if (bl !== 'none') classes.push(bl === 'DEFAULT' ? 'rounded-bl' : `rounded-bl-${bl}`);
+            }
         }
     }
 

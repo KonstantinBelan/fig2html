@@ -34,6 +34,86 @@ import {
 } from './tailwind/index.js';
 
 /**
+ * Helper to write scaffolded Tailwind projects and framework component files
+ */
+function writeScaffoldAndComponents({
+    options,
+    outputPath,
+    baseDir,
+    html,
+    componentCode,
+    variables,
+    variableSets,
+    defaultComponentName,
+    reportProgress,
+    log
+}) {
+    let scaffoldDir = null;
+    let scaffoldFileNames = null;
+    if (options.scaffold) {
+        if (typeof reportProgress === 'function') {
+            reportProgress(97, 'Generating Tailwind project scaffolding...');
+        }
+        scaffoldDir = typeof options.scaffold === 'string'
+            ? path.resolve(options.scaffold)
+            : (outputPath ? (outputPath.endsWith('.html') ? path.dirname(outputPath) : outputPath) : path.resolve(process.cwd(), 'tailwind-project'));
+
+        const themeData = extractFigmaVariablesTheme(variables || [], variableSets || []);
+        const scaffoldFiles = generateTailwindScaffold({
+            projectName: options.projectName || path.basename(scaffoldDir),
+            version: options.tailwindVersion || 'v4',
+            themeData,
+            htmlContent: html
+        });
+
+        for (const [relPath, content] of Object.entries(scaffoldFiles)) {
+            const destPath = path.join(scaffoldDir, relPath);
+            const dir = path.dirname(destPath);
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            fs.writeFileSync(destPath, content, 'utf8');
+        }
+        scaffoldFileNames = Object.keys(scaffoldFiles);
+        if (typeof log === 'function') {
+            log(`Scaffolded Tailwind project with ${scaffoldFileNames.length} files in ${scaffoldDir}`);
+        }
+    }
+
+    let targetComponentPath = null;
+    if (options.framework && options.framework !== 'html' && componentCode) {
+        const extMap = { react: '.tsx', vue: '.vue', svelte: '.svelte' };
+        const ext = extMap[options.framework] || '.tsx';
+        const compName = options.componentName || defaultComponentName || 'FigmaComponent';
+
+        if (outputPath) {
+            const isCompExt = /\.(tsx|jsx|vue|svelte)$/i.test(outputPath);
+            if (isCompExt) {
+                targetComponentPath = outputPath;
+            } else {
+                const baseDirOut = outputPath.endsWith('.html') ? path.dirname(outputPath) : outputPath;
+                targetComponentPath = path.join(baseDirOut, `${compName}${ext}`);
+            }
+        } else if (scaffoldDir) {
+            targetComponentPath = path.join(scaffoldDir, 'src', `${compName}${ext}`);
+        }
+
+        if (targetComponentPath) {
+            const cDir = path.dirname(targetComponentPath);
+            if (!fs.existsSync(cDir)) {
+                fs.mkdirSync(cDir, { recursive: true });
+            }
+            fs.writeFileSync(targetComponentPath, componentCode, 'utf8');
+            if (typeof log === 'function') {
+                log(`Saved ${options.framework} component to ${targetComponentPath} (${Buffer.byteLength(componentCode, 'utf8')} bytes)`);
+            }
+        }
+    }
+
+    return { scaffoldDir, scaffoldFiles: scaffoldFileNames, componentPath: targetComponentPath };
+}
+
+/**
  * Converts a Figma .fig binary file into a clean, standalone HTML/CSS document (or multi-page project)
  * @param {string|Buffer} figInput File path or buffer of the .fig file
  * @param {object} [options={}]
@@ -410,6 +490,19 @@ export async function convertFigToHtml(figInput, options = {}) {
         reportProgress(100, 'Complete');
         const durationMs = Date.now() - startTime;
         const mainPage = generatedPages.find(p => p.slug === 'index') || generatedPages[0];
+        const defaultCompName = (mainPage?.cleanName || mainPage?.name || 'FigmaComponent').replace(/[^a-zA-Z0-9_]/g, '') || 'FigmaComponent';
+        const scaffoldRes = writeScaffoldAndComponents({
+            options,
+            outputPath,
+            baseDir,
+            html: mainPage.html,
+            componentCode: mainPage.componentCode,
+            variables,
+            variableSets,
+            defaultComponentName: defaultCompName,
+            reportProgress,
+            log
+        });
 
         return {
             html: mainPage.html,
@@ -428,6 +521,9 @@ export async function convertFigToHtml(figInput, options = {}) {
             tailwind: isTailwind,
             framework: options.framework || 'html',
             componentCode: mainPage.componentCode || null,
+            componentPath: scaffoldRes.componentPath,
+            scaffoldDir: scaffoldRes.scaffoldDir,
+            scaffoldFiles: scaffoldRes.scaffoldFiles,
             stats: {
                 ...stats,
                 pagesCount: generatedPages.length,
@@ -659,6 +755,19 @@ export async function convertFigToHtml(figInput, options = {}) {
         reportProgress(100, 'Complete');
         const durationMs = Date.now() - startTime;
         const mainPage = generatedPages.find(p => p.slug === 'index') || generatedPages[0];
+        const defaultCompName = (mainPage?.cleanName || mainPage?.name || 'FigmaComponent').replace(/[^a-zA-Z0-9_]/g, '') || 'FigmaComponent';
+        const scaffoldRes = writeScaffoldAndComponents({
+            options,
+            outputPath,
+            baseDir,
+            html: mainPage.html,
+            componentCode: mainPage.componentCode,
+            variables,
+            variableSets,
+            defaultComponentName: defaultCompName,
+            reportProgress,
+            log
+        });
 
         return {
             html: mainPage.html,
@@ -676,6 +785,9 @@ export async function convertFigToHtml(figInput, options = {}) {
             tailwind: isTailwind,
             framework: options.framework || 'html',
             componentCode: mainPage.componentCode || null,
+            componentPath: scaffoldRes.componentPath,
+            scaffoldDir: scaffoldRes.scaffoldDir,
+            scaffoldFiles: scaffoldRes.scaffoldFiles,
             stats: {
                 ...stats,
                 pagesCount: generatedPages.length,
@@ -817,55 +929,23 @@ export async function convertFigToHtml(figInput, options = {}) {
         log(`Saved design tokens to ${extractedTokensPath}`);
     }
 
-    // 7.2 Scaffold production Tailwind project if requested
-    let scaffoldDir = null;
-    let scaffoldFileNames = null;
-    if (options.scaffold) {
-        reportProgress(97, 'Generating Tailwind project scaffolding...');
-        scaffoldDir = typeof options.scaffold === 'string'
-            ? path.resolve(options.scaffold)
-            : (outputPath ? (outputPath.endsWith('.html') ? path.dirname(outputPath) : outputPath) : path.resolve(process.cwd(), 'tailwind-project'));
-
-        const themeData = extractFigmaVariablesTheme(variables || [], variableSets || []);
-        const scaffoldFiles = generateTailwindScaffold({
-            projectName: options.projectName || path.basename(scaffoldDir),
-            version: options.tailwindVersion || 'v4',
-            themeData,
-            htmlContent: html
-        });
-
-        for (const [relPath, content] of Object.entries(scaffoldFiles)) {
-            const destPath = path.join(scaffoldDir, relPath);
-            const dir = path.dirname(destPath);
-            if (!fs.existsSync(dir)) {
-                fs.mkdirSync(dir, { recursive: true });
-            }
-            fs.writeFileSync(destPath, content, 'utf8');
-        }
-        scaffoldFileNames = Object.keys(scaffoldFiles);
-        log(`Scaffolded Tailwind project with ${scaffoldFileNames.length} files in ${scaffoldDir}`);
-    }
-
-    // 7.3 Write Framework Component file if requested
-    let targetComponentPath = null;
-    if (options.framework && options.framework !== 'html' && componentCode && outputPath) {
-        const isCompExt = /\.(tsx|jsx|vue|svelte)$/i.test(outputPath);
-        if (isCompExt) {
-            targetComponentPath = outputPath;
-        } else {
-            const extMap = { react: '.tsx', vue: '.vue', svelte: '.svelte' };
-            const ext = extMap[options.framework] || '.tsx';
-            const baseDirOut = outputPath.endsWith('.html') ? path.dirname(outputPath) : outputPath;
-            const compName = options.componentName || (rootNodes[0]?.name ? rootNodes[0].name.replace(/[^a-zA-Z0-9_]/g, '') : 'FigmaComponent') || 'FigmaComponent';
-            targetComponentPath = path.join(baseDirOut, `${compName}${ext}`);
-        }
-        const cDir = path.dirname(targetComponentPath);
-        if (!fs.existsSync(cDir)) {
-            fs.mkdirSync(cDir, { recursive: true });
-        }
-        fs.writeFileSync(targetComponentPath, componentCode, 'utf8');
-        log(`Saved ${options.framework} component to ${targetComponentPath}`);
-    }
+    // 7.2 Scaffold production Tailwind project & Framework Components if requested
+    const defaultCompName = (rootNodes[0]?.name ? rootNodes[0].name.replace(/[^a-zA-Z0-9_]/g, '') : 'FigmaComponent') || 'FigmaComponent';
+    const scaffoldRes = writeScaffoldAndComponents({
+        options,
+        outputPath,
+        baseDir,
+        html,
+        componentCode,
+        variables,
+        variableSets,
+        defaultComponentName: defaultCompName,
+        reportProgress,
+        log
+    });
+    const scaffoldDir = scaffoldRes.scaffoldDir;
+    const scaffoldFileNames = scaffoldRes.scaffoldFiles;
+    const targetComponentPath = scaffoldRes.componentPath;
 
     // 8. Write output HTML file if requested
     if (outputPath && !/\.(tsx|jsx|vue|svelte)$/i.test(outputPath)) {

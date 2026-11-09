@@ -80,9 +80,17 @@ export function parseBoxOffsets(shorthand, top, right, bottom, left) {
  * Parses CSS border shorthand (e.g. "1px solid var(--border)") into width, style, and color
  */
 export function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
-    let width = parseFloat(widthStr) || 0;
+    const isExplicit = (borderStr !== undefined && borderStr !== null && borderStr !== '') ||
+                       (widthStr !== undefined && widthStr !== null && widthStr !== '') ||
+                       (styleStr !== undefined && styleStr !== null && styleStr !== '');
+
+    let width = (widthStr !== undefined && widthStr !== null && widthStr !== '') ? (parseFloat(widthStr) || 0) : 0;
     let style = styleStr || '';
     let color = colorStr || '';
+
+    if (borderStr && (borderStr.trim() === 'none' || borderStr.trim() === '0' || borderStr.trim() === '0px')) {
+        return { width: 0, style: 'none', color: '', isExplicit: true };
+    }
 
     if (borderStr && borderStr !== 'none') {
         const parts = borderStr.trim();
@@ -109,7 +117,41 @@ export function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
             color = rem.trim();
         }
     }
-    return { width, style: style || 'none', color };
+    return { width, style: style || 'none', color, isExplicit };
+}
+
+/**
+ * Parses CSS border-radius shorthand (1, 2, 3, or 4 tokens) into individual corner radii
+ */
+export function parseBorderRadius(radiusStr, tlStr, trStr, brStr, blStr) {
+    let tl = 0, tr = 0, br = 0, bl = 0;
+    if (radiusStr && radiusStr !== '0' && radiusStr !== 'none') {
+        const clean = String(radiusStr).split('/')[0].trim();
+        const parts = clean.split(/\s+/).map(p => parseFloat(p) || 0);
+        if (parts.length === 1) {
+            tl = tr = br = bl = parts[0];
+        } else if (parts.length === 2) {
+            tl = br = parts[0];
+            tr = bl = parts[1];
+        } else if (parts.length === 3) {
+            tl = parts[0];
+            tr = bl = parts[1];
+            br = parts[2];
+        } else if (parts.length >= 4) {
+            tl = parts[0];
+            tr = parts[1];
+            br = parts[2];
+            bl = parts[3];
+        }
+    }
+    if (tlStr !== undefined && tlStr !== null && tlStr !== '') tl = parseFloat(tlStr) || 0;
+    if (trStr !== undefined && trStr !== null && trStr !== '') tr = parseFloat(trStr) || 0;
+    if (brStr !== undefined && brStr !== null && brStr !== '') br = parseFloat(brStr) || 0;
+    if (blStr !== undefined && blStr !== null && blStr !== '') bl = parseFloat(blStr) || 0;
+
+    const hasIndependentCorners = (tl !== tr || br !== bl || tl !== br);
+    const uniformRadius = hasIndependentCorners ? 0 : tl;
+    return { tlRadius: tl, trRadius: tr, brRadius: br, blRadius: bl, hasIndependentCorners, borderRadius: uniformRadius };
 }
 
 export function extractVarName(rawStr) {
@@ -430,7 +472,8 @@ export async function resolveElementStyles(element, win, context, parentContext 
         getProp('border-color', 'borderColor')
     );
     const borderWidth = mainBorder.width;
-    const parsedBorderColor = parseColor(mainBorder.color);
+    const defaultBorderColor = inheritedStyles?.color || '#e5e7eb';
+    const parsedBorderColor = parseColor(mainBorder.color || defaultBorderColor);
     const strokeVar = getVarForProp('border-color', 'borderColor', 'border');
 
     if (borderWidth > 0 && mainBorder.style !== 'none' && parsedBorderColor && parsedBorderColor.a > 0) {
@@ -453,16 +496,27 @@ export async function resolveElementStyles(element, win, context, parentContext 
     const leftB = parseBorderProperty(getProp('border-left', 'borderLeft'), getProp('border-left-width', 'borderLeftWidth'), getProp('border-left-style', 'borderLeftStyle'), getProp('border-left-color', 'borderLeftColor'));
     const rightB = parseBorderProperty(getProp('border-right', 'borderRight'), getProp('border-right-width', 'borderRightWidth'), getProp('border-right-style', 'borderRightStyle'), getProp('border-right-color', 'borderRightColor'));
 
-    const borderTopW = topB.width || borderWidth;
-    const borderBottomW = bottomB.width || borderWidth;
-    const borderLeftW = leftB.width || borderWidth;
-    const borderRightW = rightB.width || borderWidth;
+    const rawInlineStyle = (element.getAttribute && element.getAttribute('style')) || '';
+    const isTopRemoved = /(?:^|;)\s*border-top\s*:\s*(none|0(?:px)?)\b/i.test(rawInlineStyle) || /(?:^|;)\s*border-top-width\s*:\s*0(?:px)?\b/i.test(rawInlineStyle);
+    const isBottomRemoved = /(?:^|;)\s*border-bottom\s*:\s*(none|0(?:px)?)\b/i.test(rawInlineStyle) || /(?:^|;)\s*border-bottom-width\s*:\s*0(?:px)?\b/i.test(rawInlineStyle);
+    const isLeftRemoved = /(?:^|;)\s*border-left\s*:\s*(none|0(?:px)?)\b/i.test(rawInlineStyle) || /(?:^|;)\s*border-left-width\s*:\s*0(?:px)?\b/i.test(rawInlineStyle);
+    const isRightRemoved = /(?:^|;)\s*border-right\s*:\s*(none|0(?:px)?)\b/i.test(rawInlineStyle) || /(?:^|;)\s*border-right-width\s*:\s*0(?:px)?\b/i.test(rawInlineStyle);
+
+    const topExplicit = topB.isExplicit || isTopRemoved;
+    const bottomExplicit = bottomB.isExplicit || isBottomRemoved;
+    const leftExplicit = leftB.isExplicit || isLeftRemoved;
+    const rightExplicit = rightB.isExplicit || isRightRemoved;
+
+    const borderTopW = isTopRemoved ? 0 : (topExplicit ? (topB.style === 'none' ? 0 : topB.width) : borderWidth);
+    const borderBottomW = isBottomRemoved ? 0 : (bottomExplicit ? (bottomB.style === 'none' ? 0 : bottomB.width) : borderWidth);
+    const borderLeftW = isLeftRemoved ? 0 : (leftExplicit ? (leftB.style === 'none' ? 0 : leftB.width) : borderWidth);
+    const borderRightW = isRightRemoved ? 0 : (rightExplicit ? (rightB.style === 'none' ? 0 : rightB.width) : borderWidth);
 
     const hasIndependentBorders =
         borderTopW !== borderBottomW || borderLeftW !== borderRightW || borderTopW !== borderLeftW;
 
     if (strokePaints.length === 0 && (borderTopW > 0 || borderBottomW > 0 || borderLeftW > 0 || borderRightW > 0)) {
-        const sideColor = parseColor(topB.color || bottomB.color || leftB.color || rightB.color || mainBorder.color);
+        const sideColor = parseColor(topB.color || bottomB.color || leftB.color || rightB.color || mainBorder.color || defaultBorderColor);
         if (sideColor && sideColor.a > 0) {
             const sideVar = getVarForProp(
                 'border-top-color', 'borderTopColor', 'border-top', 'borderTop',
@@ -486,13 +540,19 @@ export async function resolveElementStyles(element, win, context, parentContext 
     }
 
     // Border Radius
-    const borderRadius = parseFloat(getProp('border-radius', 'borderRadius')) || 0;
-    const tlRadius = parseFloat(getProp('border-top-left-radius', 'borderTopLeftRadius')) || borderRadius;
-    const trRadius = parseFloat(getProp('border-top-right-radius', 'borderTopRightRadius')) || borderRadius;
-    const brRadius = parseFloat(getProp('border-bottom-right-radius', 'borderBottomRightRadius')) || borderRadius;
-    const blRadius = parseFloat(getProp('border-bottom-left-radius', 'borderBottomLeftRadius')) || borderRadius;
-    const hasIndependentCorners =
-        tlRadius !== trRadius || brRadius !== blRadius || tlRadius !== brRadius;
+    const parsedRadii = parseBorderRadius(
+        getProp('border-radius', 'borderRadius'),
+        getProp('border-top-left-radius', 'borderTopLeftRadius'),
+        getProp('border-top-right-radius', 'borderTopRightRadius'),
+        getProp('border-bottom-right-radius', 'borderBottomRightRadius'),
+        getProp('border-bottom-left-radius', 'borderBottomLeftRadius')
+    );
+    const borderRadius = parsedRadii.borderRadius;
+    const tlRadius = parsedRadii.tlRadius;
+    const trRadius = parsedRadii.trRadius;
+    const brRadius = parsedRadii.brRadius;
+    const blRadius = parsedRadii.blRadius;
+    const hasIndependentCorners = parsedRadii.hasIndependentCorners;
 
     // Effects
     const boxShadow = getProp('box-shadow', 'boxShadow');

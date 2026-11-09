@@ -61,6 +61,20 @@ export function resolveTailwindSpacing(key) {
 }
 
 /**
+ * Resolves a Tailwind border radius key to a CSS length string
+ * @param {string} key e.g. 'lg', 'full', '[10px]'
+ * @returns {string|null}
+ */
+export function resolveTailwindRadius(key) {
+    if (!key || key === 'DEFAULT') return '4px';
+    if (key === 'full') return '9999px';
+    if (key.startsWith('[') && key.endsWith(']')) {
+        return key.slice(1, -1);
+    }
+    return RADIUS_MAP.get(key) || null;
+}
+
+/**
  * Resolves a Tailwind color key to a CSS hex/rgba string
  * @param {string} colorKey e.g. 'blue-600', 'slate-900/50', '[#123456]'
  * @returns {string|null}
@@ -146,8 +160,12 @@ export function translateClassToCss(cls) {
     if (cls === 'grow') return 'flex-grow: 1;';
 
     // 4. Grid columns
+    if (cls === 'grid-cols-none') return 'grid-template-columns: none;';
     const gridColsMatch = cls.match(/^grid-cols-(\d+)$/);
     if (gridColsMatch) return `grid-template-columns: repeat(${gridColsMatch[1]}, 1fr);`;
+    if (cls.startsWith('grid-cols-[') && cls.endsWith(']')) {
+        return `grid-template-columns: ${cls.slice(11, -1)};`;
+    }
 
     // 5. Gap
     if (cls.startsWith('gap-x-')) {
@@ -301,27 +319,72 @@ export function translateClassToCss(cls) {
     // 12. Border & Radius
     if (cls === 'rounded') return 'border-radius: 4px;';
     if (cls.startsWith('rounded-')) {
-        const rKey = cls.slice(8);
-        if (rKey === 'full') return 'border-radius: 9999px;';
-        if (rKey.startsWith('[') && rKey.endsWith(']')) {
-            return `border-radius: ${rKey.slice(1, -1)};`;
+        const sub = cls.slice(8);
+        if (sub === 'full') return 'border-radius: 9999px;';
+        if (sub === 't' || sub.startsWith('t-')) {
+            const rKey = sub === 't' ? 'DEFAULT' : sub.slice(2);
+            const val = resolveTailwindRadius(rKey);
+            if (val) return `border-top-left-radius: ${val}; border-top-right-radius: ${val};`;
         }
-        const rVal = RADIUS_MAP.get(rKey);
-        if (rVal) return `border-radius: ${rVal};`;
+        if (sub === 'b' || sub.startsWith('b-')) {
+            const rKey = sub === 'b' ? 'DEFAULT' : sub.slice(2);
+            const val = resolveTailwindRadius(rKey);
+            if (val) return `border-bottom-left-radius: ${val}; border-bottom-right-radius: ${val};`;
+        }
+        if (sub === 'l' || sub.startsWith('l-')) {
+            const rKey = sub === 'l' ? 'DEFAULT' : sub.slice(2);
+            const val = resolveTailwindRadius(rKey);
+            if (val) return `border-top-left-radius: ${val}; border-bottom-left-radius: ${val};`;
+        }
+        if (sub === 'r' || sub.startsWith('r-')) {
+            const rKey = sub === 'r' ? 'DEFAULT' : sub.slice(2);
+            const val = resolveTailwindRadius(rKey);
+            if (val) return `border-top-right-radius: ${val}; border-bottom-right-radius: ${val};`;
+        }
+        if (sub === 'tl' || sub.startsWith('tl-')) {
+            const rKey = sub === 'tl' ? 'DEFAULT' : sub.slice(3);
+            const val = resolveTailwindRadius(rKey);
+            if (val) return `border-top-left-radius: ${val};`;
+        }
+        if (sub === 'tr' || sub.startsWith('tr-')) {
+            const rKey = sub === 'tr' ? 'DEFAULT' : sub.slice(3);
+            const val = resolveTailwindRadius(rKey);
+            if (val) return `border-top-right-radius: ${val};`;
+        }
+        if (sub === 'br' || sub.startsWith('br-')) {
+            const rKey = sub === 'br' ? 'DEFAULT' : sub.slice(3);
+            const val = resolveTailwindRadius(rKey);
+            if (val) return `border-bottom-right-radius: ${val};`;
+        }
+        if (sub === 'bl' || sub.startsWith('bl-')) {
+            const rKey = sub === 'bl' ? 'DEFAULT' : sub.slice(3);
+            const val = resolveTailwindRadius(rKey);
+            if (val) return `border-bottom-left-radius: ${val};`;
+        }
+        const val = resolveTailwindRadius(sub);
+        if (val) return `border-radius: ${val};`;
     }
 
-    if (cls === 'border') return 'border-width: 1px; border-style: solid;';
-    if (cls === 'border-t') return 'border-top-width: 1px; border-top-style: solid;';
-    if (cls === 'border-b') return 'border-bottom-width: 1px; border-bottom-style: solid;';
-    if (cls === 'border-l') return 'border-left-width: 1px; border-left-style: solid;';
-    if (cls === 'border-r') return 'border-right-width: 1px; border-right-style: solid;';
-    if (cls === 'border-x') return 'border-left-width: 1px; border-right-width: 1px; border-left-style: solid; border-right-style: solid;';
-    if (cls === 'border-y') return 'border-top-width: 1px; border-bottom-width: 1px; border-top-style: solid; border-bottom-style: solid;';
+    if (cls === 'border') return 'border-width: 1px; border-style: solid; border-color: #e5e7eb;';
+    if (cls === 'border-t') return 'border-top-width: 1px; border-top-style: solid; border-top-color: #e5e7eb;';
+    if (cls === 'border-b') return 'border-bottom-width: 1px; border-bottom-style: solid; border-bottom-color: #e5e7eb;';
+    if (cls === 'border-l') return 'border-left-width: 1px; border-left-style: solid; border-left-color: #e5e7eb;';
+    if (cls === 'border-r') return 'border-right-width: 1px; border-right-style: solid; border-right-color: #e5e7eb;';
+    if (cls === 'border-x') return 'border-left-width: 1px; border-right-width: 1px; border-left-style: solid; border-right-style: solid; border-left-color: #e5e7eb; border-right-color: #e5e7eb;';
+    if (cls === 'border-y') return 'border-top-width: 1px; border-bottom-width: 1px; border-top-style: solid; border-bottom-style: solid; border-top-color: #e5e7eb; border-bottom-color: #e5e7eb;';
 
     const dirBorderMatch = cls.match(/^border-([tblrxy])-(\d+)$/);
     if (dirBorderMatch) {
         const [, dir, w] = dirBorderMatch;
         const widthPx = `${w}px`;
+        if (w === '0') {
+            if (dir === 't') return 'border-top-width: 0px;';
+            if (dir === 'b') return 'border-bottom-width: 0px;';
+            if (dir === 'l') return 'border-left-width: 0px;';
+            if (dir === 'r') return 'border-right-width: 0px;';
+            if (dir === 'x') return 'border-left-width: 0px; border-right-width: 0px;';
+            if (dir === 'y') return 'border-top-width: 0px; border-bottom-width: 0px;';
+        }
         if (dir === 't') return `border-top-width: ${widthPx}; border-top-style: solid;`;
         if (dir === 'b') return `border-bottom-width: ${widthPx}; border-bottom-style: solid;`;
         if (dir === 'l') return `border-left-width: ${widthPx}; border-left-style: solid;`;

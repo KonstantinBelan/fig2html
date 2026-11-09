@@ -69,6 +69,24 @@ export const BORDER_WIDTH_SCALE = [
 ];
 
 /**
+ * Standard Tailwind max-width scale (in pixels)
+ */
+export const MAX_WIDTH_SCALE = [
+    { key: '0', px: 0 },
+    { key: 'xs', px: 320 },
+    { key: 'sm', px: 384 },
+    { key: 'md', px: 448 },
+    { key: 'lg', px: 512 },
+    { key: 'xl', px: 576 },
+    { key: '2xl', px: 672 },
+    { key: '3xl', px: 768 },
+    { key: '4xl', px: 896 },
+    { key: '5xl', px: 1024 },
+    { key: '6xl', px: 1152 },
+    { key: '7xl', px: 1280 }
+];
+
+/**
  * Finds the nearest scale item within tolerance
  * @param {number} px
  * @param {Array<{ key: string, px: number }>} scale
@@ -205,4 +223,29 @@ export function snapBorderWidth(width, options = {}) {
     }
 
     return `[${Math.round(width * 10) / 10}px]`;
+}
+
+/**
+ * Formats a max-width value into a Tailwind max-w suffix
+ * @param {number|string} val
+ * @param {object} [options={}]
+ * @returns {string|null} e.g. 'xs', 'md', '2xl', 'full', 'none', or '[500px]'
+ */
+export function snapMaxWidth(val, options = {}) {
+    if (!val && val !== 0) return null;
+    const str = String(val).trim().toLowerCase();
+    if (str === '100%') return 'full';
+    if (str === 'none') return 'none';
+    if (str === '0' || str === '0px') return '0';
+
+    const px = typeof val === 'number' ? val : parseFloat(str);
+    if (isNaN(px) || px <= 0) return null;
+
+    const tolerance = options.tolerance !== undefined ? options.tolerance : 4;
+    const match = findNearestScaleKey(px, MAX_WIDTH_SCALE, tolerance);
+    if (match !== null) {
+        return match;
+    }
+
+    return snapSpacing(px, options);
 }

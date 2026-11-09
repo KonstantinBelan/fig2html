@@ -63,6 +63,26 @@ export function transformHtmlToJsx(htmlString, options = {}) {
     // 4. Replace autocomplete with autoComplete
     jsx = jsx.replace(/\bautocomplete="/g, 'autoComplete="');
 
+    // 4.1 Replace HTML media & security attributes with camelCase JSX properties
+    jsx = jsx.replace(/\bsrcset="/g, 'srcSet="');
+    jsx = jsx.replace(/\bcrossorigin="/g, 'crossOrigin="');
+
+    // 4.2 Replace SVG hyphenated attributes with camelCase JSX properties
+    jsx = jsx.replace(/\bstroke-width="/g, 'strokeWidth="');
+    jsx = jsx.replace(/\bstroke-linecap="/g, 'strokeLinecap="');
+    jsx = jsx.replace(/\bstroke-linejoin="/g, 'strokeLinejoin="');
+    jsx = jsx.replace(/\bstroke-miterlimit="/g, 'strokeMiterlimit="');
+    jsx = jsx.replace(/\bstroke-dasharray="/g, 'strokeDasharray="');
+    jsx = jsx.replace(/\bstroke-dashoffset="/g, 'strokeDashoffset="');
+    jsx = jsx.replace(/\bstroke-opacity="/g, 'strokeOpacity="');
+    jsx = jsx.replace(/\bfill-rule="/g, 'fillRule="');
+    jsx = jsx.replace(/\bfill-opacity="/g, 'fillOpacity="');
+    jsx = jsx.replace(/\bclip-rule="/g, 'clipRule="');
+    jsx = jsx.replace(/\bclip-path="/g, 'clipPath="');
+    jsx = jsx.replace(/\bvector-effect="/g, 'vectorEffect="');
+    jsx = jsx.replace(/\bstop-color="/g, 'stopColor="');
+    jsx = jsx.replace(/\bstop-opacity="/g, 'stopOpacity="');
+
     // 5. Replace inline style="..." with style={{ ... }}
     jsx = jsx.replace(/\bstyle="([^"]*)"/g, (match, styleContent) => {
         const jsxStyle = convertStyleStringToJsx(styleContent);
@@ -138,6 +158,10 @@ ${htmlSnippet.split('\n').map(l => '  ' + l).join('\n')}
 <script setup>
 // Component: ${componentName}
 </script>
+
+<style scoped>
+/* Component styles */
+</style>
 `;
 }
 

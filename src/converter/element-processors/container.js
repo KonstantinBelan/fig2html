@@ -10,7 +10,8 @@ import {
 import {
     cloneNode,
     parseGridColumns,
-    extractVarName
+    extractVarName,
+    parseCssLength
 } from '../style-resolver.js';
 import {
     computeContainerDimensions,
@@ -181,6 +182,18 @@ export async function processContainerElement(element, parentGuid, orderPosition
         frameNode.borderRightWeight = borderRightW;
         frameNode.borderStrokeWeightsIndependent = true;
         frameNode.strokeWeight = Math.max(borderWidth, borderTopW, borderBottomW, borderLeftW, borderRightW);
+    }
+
+    const minW = styles.minWidth ? parseCssLength(styles.minWidth, 16, parentContext?.width || 1440, 1440) : 0;
+    const minH = styles.minHeight ? parseCssLength(styles.minHeight, 16, parentContext?.height || 900, 900) : 0;
+    const maxW = styles.maxWidth ? parseCssLength(styles.maxWidth, 16, parentContext?.width || 1440, 1440) : 0;
+    const maxH = styles.maxHeight ? parseCssLength(styles.maxHeight, 16, parentContext?.height || 900, 900) : 0;
+
+    if (minW > 0 || minH > 0) {
+        frameNode.minSize = { value: { x: minW || 0, y: minH || 0 } };
+    }
+    if (maxW > 0 || maxH > 0) {
+        frameNode.maxSize = { value: { x: maxW || 0, y: maxH || 0 } };
     }
 
     // 3. Setup Auto Layout

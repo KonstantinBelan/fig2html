@@ -112,7 +112,8 @@ const SUITES = [
     { title: '43. Tailwind CSS Theme Exporter, Hybrid & Scaffolding Tests (Sprint 5)', file: './integration/tailwind-scaffold.test.js' },
     { title: '44. Tailwind CSS Component Frameworks (React, Vue, Svelte) Tests (Sprint 6)', file: './unit/tailwind-frameworks.test.js' },
     { title: '45. Tailwind CSS Bi-Directional Roundtrip Tests (Sprint 7)', file: './e2e/tailwind-roundtrip.test.js' },
-    { title: '46. Tailwind CSS Public API, Frameworks & Scaffolding E2E Tests (Sprint 8)', file: './e2e/tailwind-cli-e2e.test.js' }
+    { title: '46. Tailwind CSS Public API, Frameworks & Scaffolding E2E Tests (Sprint 8)', file: './e2e/tailwind-cli-e2e.test.js' },
+    { title: '47. Total Engine Audit & Conversion Verification Tests', file: './integration/conversion-audit.test.js' }
 ];
 
 async function run() {

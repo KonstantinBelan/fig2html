@@ -1,6 +1,11 @@
 // src/converter/layout-engine.js
 import { parseCssLength } from './style-resolver.js';
 
+const INLINE_TAGS = new Set([
+    'span', 'a', 'label', 'button', 'badge', 'em', 'strong',
+    'small', 'code', 'b', 'i', 'sub', 'sup', 'mark', 'time', 'abbr', 'cite'
+]);
+
 /**
  * Computes initial container dimensions before child elements are processed
  */
@@ -23,7 +28,8 @@ export function computeContainerDimensions(element, styles, parentContext) {
 
     const tagName = element.tagName.toLowerCase();
     let frameWidth = width;
-    const isInlineEl = display === 'inline-block' || display === 'inline-flex' || display === 'inline' || tagName === 'button';
+    const isNaturallyInline = INLINE_TAGS.has(tagName) && (!display || display === 'inline' || display === 'inline-block' || display === 'inline-flex');
+    const isInlineEl = display === 'inline-block' || display === 'inline-flex' || display === 'inline' || isNaturallyInline;
     const hasTextChildren = Array.from(element.childNodes).some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
     const isGridChild = parentContext && (parentContext.isMultiColGrid || parentContext.gridChildWidth > 0);
 
@@ -31,6 +37,11 @@ export function computeContainerDimensions(element, styles, parentContext) {
         frameWidth = parentContext.gridChildWidth;
     } else if (tagName === 'body') {
         frameWidth = width || 1440;
+    } else if (isInlineEl && !hasExplicitWidth && (hasTextChildren || element.children.length === 0)) {
+        const textContent = element.textContent.trim();
+        const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles?.fontSize || 14;
+        const charW = fontSize * 0.58;
+        frameWidth = Math.ceil(paddingLeft + paddingRight + (textContent.length > 0 ? textContent.length * charW : 24));
     } else if (!frameWidth || frameWidth === 0) {
         if (parentContext && parentContext.isColumn && alignSelf !== 'center' && alignSelf !== 'flex-start' && !isMarginAuto && !isInlineEl) {
             frameWidth = parentContext.width;
@@ -38,7 +49,7 @@ export function computeContainerDimensions(element, styles, parentContext) {
             frameWidth = parentContext.width;
         } else if (isInlineEl || (parentContext && !parentContext.isColumn && hasTextChildren && element.children.length === 0)) {
             const textContent = element.textContent.trim();
-            const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles.fontSize || 14;
+            const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles?.fontSize || 14;
             const charW = fontSize * 0.58;
             frameWidth = Math.ceil(paddingLeft + paddingRight + textContent.length * charW);
         } else if (parentContext && !parentContext.isColumn) {
