@@ -44,9 +44,9 @@ export function mapAutoLayoutToTailwind(node, parentNode = null, options = {}) {
             classes.push('grid-cols-1');
         }
 
-        if (numGridRows && numGridRows > 1) {
-            classes.push(`grid-rows-${numGridRows}`);
-        }
+        // In standard responsive web layout and auto layout grids, row heights are implicit/content-sized.
+        // Specifying grid-rows-N forces explicit equal tracks that cause height blowouts when rows are empty or uneven.
+        // Explicit row tracks are only mapped when explicitly specified via styles['grid-template-rows'] in mapper.js.
 
         // Gap
         if (node.gridColumnGap !== undefined || node.gridRowGap !== undefined) {
