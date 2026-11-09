@@ -3,7 +3,8 @@ import assert from 'node:assert';
 import {
     getTailwindBreakpointPrefix,
     getClassDomain,
-    mergeResponsiveTailwindClasses
+    mergeResponsiveTailwindClasses,
+    synthesizeNodeResponsiveTailwind
 } from '../../src/decompiler/tailwind/index.js';
 
 export default function ({ it }) {
@@ -80,5 +81,85 @@ export default function ({ it }) {
         const mergedMobile = mergeResponsiveTailwindClasses(mobileOnly, mobileVariant);
         assert.ok(mergedMobile.includes('block'));
         assert.ok(mergedMobile.includes('md:hidden'));
+    });
+
+    it('synthesizes multi-breakpoint responsive Tailwind classes for canonical AST nodes', () => {
+        const desktopNode = {
+            type: 'FRAME',
+            name: 'actions-row',
+            stackMode: 'HORIZONTAL',
+            stackCounterAlignItems: 'CENTER',
+            itemSpacing: 16
+        };
+        const mobileNode = {
+            type: 'FRAME',
+            name: 'actions-row',
+            stackMode: 'VERTICAL',
+            stackPrimaryAlignItems: 'CENTER',
+            itemSpacing: 12
+        };
+
+        const canonicalNode = {
+            ...desktopNode,
+            responsiveMetadata: {
+                alignedVariants: {
+                    desktop: desktopNode,
+                    mobile: mobileNode
+                },
+                visibility: { desktop: true, mobile: true },
+                isExclusive: false
+            }
+        };
+
+        const pageBreakpoints = [
+            { name: 'desktop', width: 1080 },
+            { name: 'mobile', width: 440 }
+        ];
+
+        const result = synthesizeNodeResponsiveTailwind(canonicalNode, pageBreakpoints, new Map(), { mobileFirst: false });
+        assert.ok(result.classes.includes('flex'));
+        assert.ok(result.classes.includes('flex-row'));
+        assert.ok(result.classes.includes('max-[440px]:flex-col'));
+        assert.ok(result.classes.includes('max-[440px]:justify-center'));
+    });
+
+    it('synthesizes desktop-only and mobile-only exclusive elements with responsive visibility', () => {
+        // Desktop-only element
+        const desktopOnlyNode = {
+            type: 'FRAME',
+            name: 'desktop-nav',
+            stackMode: 'HORIZONTAL',
+            responsiveMetadata: {
+                alignedVariants: { desktop: { type: 'FRAME' } },
+                visibility: { desktop: true, mobile: false },
+                isExclusive: true,
+                exclusiveMode: 'desktop-only'
+            }
+        };
+
+        // Mobile-only element
+        const mobileOnlyNode = {
+            type: 'FRAME',
+            name: 'mobile-drawer',
+            stackMode: 'VERTICAL',
+            responsiveMetadata: {
+                alignedVariants: { mobile: { type: 'FRAME' } },
+                visibility: { desktop: false, mobile: true },
+                isExclusive: true,
+                exclusiveMode: 'mobile-only'
+            }
+        };
+
+        const pageBreakpoints = [
+            { name: 'desktop', width: 1080 },
+            { name: 'mobile', width: 440 }
+        ];
+
+        const dtResult = synthesizeNodeResponsiveTailwind(desktopOnlyNode, pageBreakpoints, new Map(), { mobileFirst: false });
+        assert.ok(dtResult.classes.includes('max-[440px]:hidden'));
+
+        const mbResult = synthesizeNodeResponsiveTailwind(mobileOnlyNode, pageBreakpoints, new Map(), { mobileFirst: false });
+        assert.ok(mbResult.classes.includes('hidden'));
+        assert.ok(mbResult.classes.includes('max-[440px]:flex'));
     });
 }

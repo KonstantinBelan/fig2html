@@ -365,7 +365,10 @@ export async function convertFigToHtml(figInput, options = {}) {
                 responsiveImages: isResponsive,
                 layoutMode,
                 canvasWidth: page.width,
-                canvasHeight: page.height
+                canvasHeight: page.height,
+                pageBreakpoints: page.breakpoints,
+                isResponsivePage: page.isResponsive,
+                baseBreakpoint: page.baseBreakpoint
             });
 
             const pageHtml = typeof docResult === 'string' ? docResult : docResult.html;

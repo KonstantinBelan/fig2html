@@ -13,6 +13,7 @@ import {
 } from './vector.js';
 import {
     resolveNodeTailwindClasses,
+    synthesizeNodeResponsiveTailwind,
     mapStylesToTailwind,
     matchColor,
     injectTailwindCdn,
@@ -529,9 +530,16 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
         const twOptions = (options.extractCss || options.inlineStyles)
             ? options
             : { ...options, cssAssetUrlPrefix: options.assetUrlPrefix || 'img/' };
-        const twResult = resolveNodeTailwindClasses(node, parentNode, imageRegistry, twOptions);
-        twClassString = twResult.classString;
-        remainingStyles = twResult.remainingStyles || {};
+
+        if (options.pageBreakpoints && options.pageBreakpoints.length > 1) {
+            const twResult = synthesizeNodeResponsiveTailwind(node, options.pageBreakpoints, imageRegistry, twOptions, parentNode);
+            twClassString = twResult.classString;
+            remainingStyles = twResult.remainingStyles || {};
+        } else {
+            const twResult = resolveNodeTailwindClasses(node, parentNode, imageRegistry, twOptions);
+            twClassString = twResult.classString;
+            remainingStyles = twResult.remainingStyles || {};
+        }
     }
 
     const finalClass = isTailwind && !isHybrid
