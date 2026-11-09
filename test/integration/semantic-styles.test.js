@@ -10,7 +10,9 @@ import {
     generateFullHtmlDocument,
     renderNodeToHtml,
     detectDocumentLanguage,
-    determineContainerTag
+    determineContainerTag,
+    hasHeadingDescendant,
+    getSectionAriaLabel
 } from '../../src/decompiler/html.js';
 
 export default async function run(arg1, arg2) {
@@ -211,6 +213,84 @@ export default async function run(arg1, arg2) {
         assert.strictEqual(determineContainerTag({ name: 'header-content', children: [{}] }, null, { inHeader: true }), 'div');
         assert.strictEqual(determineContainerTag({ name: 'footer-content', children: [{}] }, null, { inFooter: true }), 'div');
         assert.strictEqual(determineContainerTag({ name: 'submit-btn', children: [{}] }, null, { inButton: true }), 'div');
+    });
+
+    it('strictly conforms to W3C / WHATWG 2026-2027 semantic container guidelines: <article>, <aside>, <section aria-label>, <nav>, and clean layout divs', () => {
+
+        // 1. Standalone self-contained compositions must be <article>
+        assert.strictEqual(determineContainerTag({ name: 'card', children: [{}] }), 'article');
+        assert.strictEqual(determineContainerTag({ name: 'product-card', children: [{}] }), 'article');
+        assert.strictEqual(determineContainerTag({ name: 'review-card', children: [{}] }), 'article');
+        assert.strictEqual(determineContainerTag({ name: 'testimonial-card', children: [{}] }), 'article');
+        assert.strictEqual(determineContainerTag({ name: 'pricing-tier', children: [{}] }), 'article');
+        assert.strictEqual(determineContainerTag({ name: 'slide is-cover', children: [{}] }), 'article');
+
+        // 2. Grid, list, and multi-item wrappers must NOT be <article>
+        assert.strictEqual(determineContainerTag({ name: 'cards-grid', children: [{}] }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'card-list', children: [{}] }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'pricing-grid', children: [{}] }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'products-grid', children: [{}] }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'slides-wrapper', children: [{}] }), 'div');
+
+        // 3. Card sub-elements: header and footer inside an article
+        assert.strictEqual(determineContainerTag({ name: 'card-header', children: [{}] }), 'header');
+        assert.strictEqual(determineContainerTag({ name: 'card-footer', children: [{}] }), 'footer');
+        assert.strictEqual(determineContainerTag({ name: 'card-body', children: [{}] }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'slide-head', children: [{}] }), 'header');
+        assert.strictEqual(determineContainerTag({ name: 'slide-foot', children: [{}] }), 'footer');
+
+        // 4. Section sub-elements must NOT be nested sections
+        assert.strictEqual(determineContainerTag({ name: 'hero-top', children: [{}] }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'hero-inner', children: [{}] }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'features-grid', children: [{}] }), 'div');
+
+        // 5. Complementary content (<aside>)
+        assert.strictEqual(determineContainerTag({ name: 'sidebar', children: [{}] }), 'aside');
+        assert.strictEqual(determineContainerTag({ name: 'callout', children: [{}] }), 'aside');
+        assert.strictEqual(determineContainerTag({ name: 'promo-banner', children: [{}] }), 'aside');
+
+        // 6. Navigation landmarks: breadcrumb and pagination
+        assert.strictEqual(determineContainerTag({ name: 'breadcrumbs', children: [{}] }), 'nav');
+        assert.strictEqual(determineContainerTag({ name: 'pagination', children: [{}] }), 'nav');
+
+        const breadcrumbsHtml = renderNodeToHtml({ name: 'breadcrumbs', type: 'FRAME', children: [{ name: 'link', type: 'FRAME' }] }, null, new Map());
+        assert(breadcrumbsHtml.includes('<nav aria-label="Breadcrumb"'), 'Breadcrumbs should receive aria-label="Breadcrumb"');
+
+        const paginationHtml = renderNodeToHtml({ name: 'pagination', type: 'FRAME', children: [{ name: 'link', type: 'FRAME' }] }, null, new Map());
+        assert(paginationHtml.includes('<nav aria-label="Pagination"'), 'Pagination should receive aria-label="Pagination"');
+
+        // 7. Section landmark accessible name computation (WCAG 2.2 / Axe-core)
+        // 7a. Section with semantic name but without explicit heading gets aria-label
+        const heroNoHeading = {
+            name: 'Hero',
+            type: 'FRAME',
+            children: [{ name: 'logo', type: 'FRAME' }]
+        };
+        const heroHtml = renderNodeToHtml(heroNoHeading, null, new Map());
+        assert(heroHtml.includes('<section') && heroHtml.includes('aria-label="Hero"'), 'Section without heading must get aria-label');
+
+        // 7b. Section with explicit heading does NOT duplicate aria-label
+        const heroWithHeading = {
+            name: 'Hero Section',
+            type: 'FRAME',
+            children: [
+                { name: 'hero-title', type: 'TEXT', fontSize: 36, fontName: { style: 'Bold' }, textData: { characters: 'Future Platform' } }
+            ]
+        };
+        const heroHeadingHtml = renderNodeToHtml(heroWithHeading, null, new Map());
+        assert(heroHeadingHtml.includes('<section'), 'Must be <section>');
+        assert(!heroHeadingHtml.includes('aria-label="Hero Section"'), 'Section with heading should not duplicate aria-label');
+
+        // 8. Anonymous top-level block without heading or section name remains <div>
+        const rootContainer = { name: 'Root', size: { y: 2000 }, children: [], isRoot: true };
+        const anonymousVisualStrip = { name: 'Frame 1597882032', y: 500, size: { y: 264 }, children: [{ name: 'logo-1' }, { name: 'logo-2' }] };
+        rootContainer.children = [anonymousVisualStrip];
+        assert.strictEqual(determineContainerTag(anonymousVisualStrip, rootContainer), 'div', 'Anonymous top-level block without heading must remain div');
+
+        // 9. Interactive content boundaries: buttons and links must not contain sectioning content or articles
+        assert.strictEqual(determineContainerTag({ name: 'card', children: [{}] }, null, { inButton: true }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'hero-section', children: [{}] }, null, { inLink: true }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'sidebar', children: [{}] }, null, { inButton: true }), 'div');
     });
 
 };

@@ -225,14 +225,20 @@ const A11Y_I18N = {
         action: 'Действие',
         close: 'Закрыть',
         menu: 'Меню',
-        search: 'Поиск'
+        search: 'Поиск',
+        breadcrumb: 'Хлебные крошки',
+        pagination: 'Пагинация',
+        complementary: 'Дополнительно'
     },
     en: {
         navigation: 'Navigation',
         action: 'Action',
         close: 'Close',
         menu: 'Menu',
-        search: 'Search'
+        search: 'Search',
+        breadcrumb: 'Breadcrumb',
+        pagination: 'Pagination',
+        complementary: 'Complementary'
     }
 };
 
@@ -311,6 +317,62 @@ function getButtonAriaLabel(node, lang = 'en') {
 }
 
 /**
+ * Recursively checks if a node or its subtree contains a heading element
+ * @param {object} node
+ * @param {number} [depth=0]
+ * @returns {boolean}
+ */
+export function hasHeadingDescendant(node, depth = 0) {
+    if (!node || depth > 10) return false;
+    if (node.type === 'TEXT') {
+        const text = node.textData?.characters || '';
+        const clean = text.trim();
+        if (!clean || isPriceOrMetricText(clean)) return false;
+
+        const name = (node.name || '').toLowerCase().trim();
+        if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(name)) return true;
+        if (/^(h[1-6]|hero[-_ ]?title|main[-_ ]?title|section[-_ ]?title|section[-_ ]?heading|card[-_ ]?title|item[-_ ]?title)([-_ ]|$)/i.test(name)) {
+            return true;
+        }
+
+        const fs = node.fontSize || 16;
+        const { fontWeight } = parseFontWeightAndStyle(node.fontName?.style);
+        if (fs >= 24 && fontWeight >= 500) return true;
+        if (fs >= 18 && fontWeight >= 500) return true;
+        if (fs >= 15 && fontWeight >= 600) return true;
+        return false;
+    }
+    if (Array.isArray(node.children)) {
+        for (const child of node.children) {
+            if (hasHeadingDescendant(child, depth + 1)) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Derives a clean accessibility label for a section landmark
+ * @param {object} node
+ * @param {string} [lang='en']
+ * @returns {string}
+ */
+export function getSectionAriaLabel(node, lang = 'en') {
+    if (!node) return '';
+    const name = (node.name || '').trim();
+    const clean = name.replace(/[-_]*(section|block|part|container|wrapper)[-_]*/gi, ' ').trim();
+    if (!clean || /^(frame|group|rectangle|component|instance|box|el)[-_ ]?\d*$/i.test(clean)) {
+        return '';
+    }
+    return clean
+        .split(/\s+/)
+        .map(w => {
+            if (/^(faq|cta|ui|ux|api|ai)$/i.test(w)) return w.toUpperCase();
+            return w.charAt(0).toUpperCase() + w.slice(1);
+        })
+        .join(' ');
+}
+
+/**
  * Computes accessible alt text and aria attributes for images
  * @param {object} node
  * @param {string} defaultName
@@ -339,10 +401,14 @@ function getAccessibleImageAttributes(node, defaultName) {
 export function determineTextTag(node, context = {}) {
     const name = (node.name || '').toLowerCase().trim();
 
-    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'label', 'blockquote', 'code'].includes(name)) {
+    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'label', 'blockquote', 'code', 'figcaption', 'summary'].includes(name)) {
         if (name === 'h1') context.pageH1Assigned = true;
         return name;
     }
+
+    if (name === 'caption' || name === 'figcaption') return 'figcaption';
+    if (name === 'summary') return 'summary';
+    if (name === 'quote' || name === 'testimonial-quote') return 'blockquote';
 
     const text = node.textData?.characters || '';
     const cleanText = text.trim();
@@ -399,8 +465,13 @@ export function determineTextTag(node, context = {}) {
 export function determineContainerTag(node, parentNode = null, options = {}) {
     const name = (node.name || '').toLowerCase().trim();
 
+    // 0. Interactive boundary: elements inside button or link must NEVER be interactive or sectioning landmarks
+    if (options.inButton || options.inLink) {
+        return 'div';
+    }
+
     // 1. Exact semantic tag names
-    if (['header', 'nav', 'footer', 'section', 'article', 'aside', 'main', 'form'].includes(name)) {
+    if (['header', 'nav', 'footer', 'section', 'article', 'aside', 'main', 'form', 'figure'].includes(name)) {
         if (name === 'header' && (options.inHeader || options.inFooter)) return 'div';
         if (name === 'footer' && (options.inFooter || options.inHeader)) return 'div';
         if (name === 'main' && options.inMain) return 'div';
@@ -410,7 +481,7 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
 
     // 2. Button checks (exclude button wrappers / containers)
     const isButtonContainer = /^(btn|button)[-_ ](group|wrapper|container|row|list|box|items|bar|wrap|section)\b/i.test(name) || name === 'buttons' || name === 'button-group';
-    if (!options.inButton && !options.inLink && !isButtonContainer) {
+    if (!isButtonContainer) {
         if (/^(btn|button)([-_ ]|$)/i.test(name) || /[-_ ](btn|button)$/i.test(name)) {
             return 'button';
         }
@@ -418,26 +489,38 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
 
     // 3. Link checks (exclude link lists / wrappers)
     const isLinkContainer = /^(link|nav[-_ ]?link)[-_ ](list|wrapper|group|container|row|box|items|menu)\b/i.test(name) || name === 'links' || name === 'nav-links';
-    if (!options.inLink && !options.inButton && !isLinkContainer) {
+    if (!isLinkContainer) {
         if (/^(link|nav[-_ ]?link|url|btn[-_ ]?link)([-_ ]|$)/i.test(name) || /[-_ ]link$/i.test(name)) {
             return 'a';
         }
     }
 
-    // 4. Header patterns
+    // 4. Header patterns (page header or scoped article/section header)
     if (!options.inHeader && !options.inFooter) {
         const isHeaderSub = /^(header|top[-_ ]?bar)[-_ ](content|inner|wrapper|container|box|left|right|center|logo|text|title|row)\b/i.test(name);
-        if (!isHeaderSub && /^(header|top[-_ ]?bar|navbar|nav[-_ ]?bar|app[-_ ]?bar)($|[-_ ])/i.test(name)) {
-            options.hasRootHeader = true;
+        const isHeaderName = !isHeaderSub && (
+            /^(header|top[-_ ]?bar|navbar|nav[-_ ]?bar|app[-_ ]?bar)($|[-_ ])/i.test(name) ||
+            /[-_ ](header|head)$/i.test(name)
+        );
+        if (isHeaderName) {
+            if (!parentNode || parentNode.isRoot || parentNode.isPageWrapper) {
+                options.hasRootHeader = true;
+            }
             return 'header';
         }
     }
 
-    // 5. Footer patterns
+    // 5. Footer patterns (page footer or scoped article/section footer)
     if (!options.inFooter && !options.inHeader) {
         const isFooterSub = /^(footer|bottom[-_ ]?bar)[-_ ](content|inner|wrapper|container|box|left|right|center|logo|text|title|row|col|column|copyright|social|brand)\b/i.test(name);
-        if (!isFooterSub && /^(footer|bottom[-_ ]?bar)($|[-_ ])/i.test(name)) {
-            options.hasRootFooter = true;
+        const isFooterName = !isFooterSub && (
+            /^(footer|bottom[-_ ]?bar)($|[-_ ])/i.test(name) ||
+            /[-_ ](footer|foot)$/i.test(name)
+        );
+        if (isFooterName) {
+            if (!parentNode || parentNode.isRoot || parentNode.isPageWrapper) {
+                options.hasRootFooter = true;
+            }
             return 'footer';
         }
     }
@@ -445,7 +528,7 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
     // 6. Navigation patterns
     if (!options.inNav) {
         const isNavSub = /^nav[-_ ](item|link|button|icon|text)\b/i.test(name);
-        if (!isNavSub && /^(nav|navigation|nav[-_ ]?links?|nav[-_ ]?menu|menu[-_ ]?links?)($|[-_ ])/i.test(name)) {
+        if (!isNavSub && /^(nav|navigation|nav[-_ ]?links?|nav[-_ ]?menu|menu[-_ ]?links?|breadcrumbs?|pagination|pager)($|[-_ ])/i.test(name)) {
             return 'nav';
         }
     }
@@ -455,23 +538,47 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
         return 'form';
     }
 
-    // 8. Main content patterns
+    // 8. Figure patterns
+    if (/^(figure|image[-_ ]?figure)$/i.test(name)) {
+        return 'figure';
+    }
+
+    // 9. Aside / complementary patterns
+    const isAsideSub = /^(aside|sidebar|drawer)[-_ ](content|inner|wrapper|container|box|items|list|links?)\b/i.test(name);
+    if (!isAsideSub && /^(aside|sidebar|side[-_ ]?nav|drawer|callout|notice[-_ ]?banner|promo[-_ ]?banner|alert[-_ ]?box)([-_ ]|$)/i.test(name)) {
+        return 'aside';
+    }
+
+    // 10. Article patterns (standalone self-contained items: card, post, product, review, testimonial, slide)
+    if (Array.isArray(node.children) && node.children.length > 0) {
+        const isArticleContainer = /^(cards?|articles?|posts?|products?|reviews?|testimonials?|items?|pricing|slides?)[-_ ](grid|list|group|wrapper|container|row|box|items|wrap|slider|carousel)\b/i.test(name) ||
+            /^(cards|posts|products|reviews|testimonials|articles|slides)$/i.test(name);
+        const isArticleSub = /[-_ ](header|head|footer|foot|body|title|heading|content|inner|image|img|icon|badge|price|meta|veil|scrim|lead|copy)\b/i.test(name);
+        if (!isArticleContainer && !isArticleSub && /^(article|post|card|product[-_ ]?card|review[-_ ]?card|testimonial[-_ ]?card|pricing[-_ ]?card|pricing[-_ ]?tier|pricing[-_ ]?plan|team[-_ ]?card|member[-_ ]?card|blog[-_ ]?card|news[-_ ]?card|feature[-_ ]?card|service[-_ ]?card|slide)([-_ ]|$)/i.test(name)) {
+            return 'article';
+        }
+    }
+
+    // 11. Main content patterns
     if (!options.inMain && /^(main|main[-_ ]?content|content[-_ ]?wrapper|page[-_ ]?body|deck)$/i.test(name)) {
         options.hasRootMain = true;
         return 'main';
     }
 
-    // 9. Named section patterns
-    const isSectionSub = /^section[-_ ](header|title|heading|footer|content|body|inner|wrapper|container|row|grid|card)\b/i.test(name);
+    // 12. Named section patterns (excluding sub-containers like hero-top, hero-inner, features-grid)
+    const isSectionSub = /^(section|hero|features?|pricing|testimonials?|reviews?|faq|cta|about|contact|services?|team|catalog|products?)[-_ ](top|bottom|header|head|footer|foot|body|title|heading|content|inner|wrapper|container|row|col|grid|card|box|left|right|center)\b/i.test(name);
     const isSectionName = !isSectionSub && (name.includes('section') ||
-        /^(hero|features?|pricing|testimonials?|reviews?|faq|cta|call[-_ ]?to[-_ ]?action|about|about[-_ ]?us|contact|contact[-_ ]?us|services?|portfolio|gallery|team|partners?|clients?|stats|how[-_ ]?it[-_ ]?works|benefits?|advantages?|catalog|products?)([-_ ]|$)/i.test(name));
+        /^(hero|features?|pricing|testimonials?|reviews?|faq|cta|call[-_ ]?to[-_ ]?action|about|about[-_ ]?us|contact|contact[-_ ]?us|services?|portfolio|gallery|team|partners?|clients?|stats|how[-_ ]?it[-_ ]?works|benefits?|advantages?|catalog|products?|specs|specifications|download|newsletter|overview)([-_ ]|$)/i.test(name));
     if (isSectionName && Array.isArray(node.children) && node.children.length > 0) {
         return 'section';
     }
 
-    // 10. Positional heuristics for direct children of root
-    const isDirectChildOfRoot = Boolean(parentNode && parentNode.isRoot === true);
-    if (isDirectChildOfRoot && Array.isArray(node.children) && node.children.length > 0) {
+    // 13. Positional heuristics for top-level children of the root artboard or page wrapper
+    const isTopLevelContainer = Boolean(
+        (parentNode && parentNode.isRoot === true) ||
+        (parentNode && parentNode.isPageWrapper === true)
+    );
+    if (isTopLevelContainer && Array.isArray(node.children) && node.children.length > 0) {
         const siblings = parentNode.children || [];
         const siblingCount = siblings.length;
         const nodeIndex = siblings.indexOf(node);
@@ -488,7 +595,7 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
             return 'div';
         }
 
-        // Pattern 2: Multiple root children
+        // Pattern 2: Multiple siblings
         // Topmost header bar: first sibling, near top, reasonable header height
         if (siblingCount > 1 && nodeIndex === 0 && y <= 40 && height > 0 && height <= 180 && height < pageHeight * 0.35 && !options.hasRootHeader && !options.inHeader) {
             options.hasRootHeader = true;
@@ -509,8 +616,11 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
             return 'main';
         }
 
-        // Other major top-level blocks
-        if (height >= 120) {
+        // Other major top-level blocks:
+        // Under W3C Living Standard: a section MUST have a heading or thematic name.
+        // If it has a heading descendant or a semantic section name, promote to <section>.
+        // Otherwise, it is a generic layout container and must remain <div>.
+        if (height >= 120 && (hasHeadingDescendant(node) || isSectionName)) {
             return 'section';
         }
     }
@@ -533,6 +643,9 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
 
     if (!parentNode) {
         node.isRoot = true;
+    }
+    if (parentNode && (parentNode.isRoot || parentNode.isPageWrapper) && parentNode.children?.length === 1) {
+        node.isPageWrapper = true;
     }
 
     let stylesheetManager = null;
@@ -814,7 +927,28 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
     } else if (tag === 'a') {
         extraAttrs += ' href="#"';
     } else if (tag === 'nav') {
-        extraAttrs += ` aria-label="${escapeHtml(getAccessibleLabel('navigation', docLang))}"`;
+        const lowerName = (node.name || '').toLowerCase();
+        let navLabel = getAccessibleLabel('navigation', docLang);
+        if (lowerName.includes('breadcrumb')) {
+            navLabel = getAccessibleLabel('breadcrumb', docLang);
+        } else if (lowerName.includes('pagination') || lowerName.includes('pager')) {
+            navLabel = getAccessibleLabel('pagination', docLang);
+        }
+        extraAttrs += ` aria-label="${escapeHtml(navLabel)}"`;
+    } else if (tag === 'section') {
+        // W3C / WCAG 2.2: If section does not have an explicit heading descendant,
+        // provide aria-label derived from its name so it becomes an accessible landmark
+        if (!hasHeadingDescendant(node)) {
+            const sectionLabel = getSectionAriaLabel(node, docLang);
+            if (sectionLabel) {
+                extraAttrs += ` aria-label="${escapeHtml(sectionLabel)}"`;
+            }
+        }
+    } else if (tag === 'aside') {
+        const asideLabel = getSectionAriaLabel(node, docLang) || getAccessibleLabel('complementary', docLang);
+        if (asideLabel) {
+            extraAttrs += ` aria-label="${escapeHtml(asideLabel)}"`;
+        }
     }
 
     // Self-closing if empty and not a container tag
@@ -832,7 +966,9 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
             inButton: options.inButton || tag === 'button',
             inLink: options.inLink || tag === 'a',
             inMain: options.inMain || tag === 'main',
-            inNav: options.inNav || tag === 'nav'
+            inNav: options.inNav || tag === 'nav',
+            inArticle: options.inArticle || tag === 'article',
+            inAside: options.inAside || tag === 'aside'
         };
         for (const child of node.children) {
             innerHtml += renderNodeToHtml(child, node, imageRegistry, stylesheetManager, childOptions, indentLevel + 1);
@@ -990,7 +1126,9 @@ export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {})
             inButton: false,
             inLink: false,
             inMain: false,
-            inNav: false
+            inNav: false,
+            inArticle: false,
+            inAside: false
         };
         bodyContent += renderNodeToHtml(root, null, imageRegistry, stylesheetManager, pageOptions, 2);
     }
