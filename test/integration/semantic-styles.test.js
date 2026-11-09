@@ -182,9 +182,35 @@ export default async function run(arg1, arg2) {
         const badgeChild = { name: 'Badge', y: 10, size: { y: 24 }, children: [{}] };
         assert.strictEqual(determineContainerTag(badgeChild, nonRootParent), 'div');
 
-        const rootParent = { name: 'Page', size: { y: 1000 }, children: [], isRoot: true };
-        const rootHeaderChild = { name: 'Top Container', y: 10, size: { y: 80 }, children: [{}] };
-        assert.strictEqual(determineContainerTag(rootHeaderChild, rootParent), 'header');
+        // Single root container/wrapper must resolve to main (never footer)
+        const singleChildRoot = { name: 'Page', size: { y: 1073 }, children: [], isRoot: true };
+        const dashboardChild = { name: 'dashboard', y: 40, size: { y: 993 }, children: [{}] };
+        singleChildRoot.children = [dashboardChild];
+        assert.strictEqual(determineContainerTag(dashboardChild, singleChildRoot), 'main', 'Single root wrapper should be main, never footer');
+
+        const jetlifeContainer = { name: 'Container', y: 12, size: { y: 12832 }, children: [{}] };
+        const jetlifeRoot = { name: 'home', size: { y: 12832 }, children: [jetlifeContainer], isRoot: true };
+        assert.strictEqual(determineContainerTag(jetlifeContainer, jetlifeRoot), 'main', 'Large page container should be main, never footer');
+
+        // Multi-sibling artboard: header at top, section in middle, positional footer at bottom
+        const multiRoot = { name: 'Artboard', size: { y: 1200 }, children: [], isRoot: true };
+        const headerSibling = { name: 'TopBar', y: 0, size: { y: 70 }, children: [{}] };
+        const contentSibling = { name: 'Hero', y: 70, size: { y: 800 }, children: [{}] };
+        const footerSibling = { name: 'BottomBar', y: 950, size: { y: 250 }, children: [{}] };
+        multiRoot.children = [headerSibling, contentSibling, footerSibling];
+
+        assert.strictEqual(determineContainerTag(headerSibling, multiRoot), 'header', 'Top sibling should be header');
+        assert.strictEqual(determineContainerTag(contentSibling, multiRoot), 'section', 'Middle sibling should be section');
+        assert.strictEqual(determineContainerTag(footerSibling, multiRoot), 'footer', 'Bottom sibling should be positional footer');
+
+        // Button containers must not be tagged as button
+        assert.strictEqual(determineContainerTag({ name: 'btn-group', children: [{}] }), 'div', 'btn-group must not be a button');
+        assert.strictEqual(determineContainerTag({ name: 'button-wrapper', children: [{}] }), 'div', 'button-wrapper must not be a button');
+
+        // Sub-elements inside headers and footers must not nest illegal tags
+        assert.strictEqual(determineContainerTag({ name: 'header-content', children: [{}] }, null, { inHeader: true }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'footer-content', children: [{}] }, null, { inFooter: true }), 'div');
+        assert.strictEqual(determineContainerTag({ name: 'submit-btn', children: [{}] }, null, { inButton: true }), 'div');
     });
 
 };

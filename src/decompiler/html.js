@@ -401,32 +401,53 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
 
     // 1. Exact semantic tag names
     if (['header', 'nav', 'footer', 'section', 'article', 'aside', 'main', 'form'].includes(name)) {
+        if (name === 'header' && (options.inHeader || options.inFooter)) return 'div';
+        if (name === 'footer' && (options.inFooter || options.inHeader)) return 'div';
+        if (name === 'main' && options.inMain) return 'div';
+        if (name === 'nav' && options.inNav) return 'div';
         return name;
     }
 
-    // 2. Button checks
-    if (/^(btn|button)([-_ ]|$)/i.test(name) || /[-_ ](btn|button)$/i.test(name)) {
-        return 'button';
+    // 2. Button checks (exclude button wrappers / containers)
+    const isButtonContainer = /^(btn|button)[-_ ](group|wrapper|container|row|list|box|items|bar|wrap|section)\b/i.test(name) || name === 'buttons' || name === 'button-group';
+    if (!options.inButton && !options.inLink && !isButtonContainer) {
+        if (/^(btn|button)([-_ ]|$)/i.test(name) || /[-_ ](btn|button)$/i.test(name)) {
+            return 'button';
+        }
     }
 
-    // 3. Link checks
-    if (/^(link|nav[-_ ]?link|url|btn[-_ ]?link)([-_ ]|$)/i.test(name) || /[-_ ]link$/i.test(name)) {
-        return 'a';
+    // 3. Link checks (exclude link lists / wrappers)
+    const isLinkContainer = /^(link|nav[-_ ]?link)[-_ ](list|wrapper|group|container|row|box|items|menu)\b/i.test(name) || name === 'links' || name === 'nav-links';
+    if (!options.inLink && !options.inButton && !isLinkContainer) {
+        if (/^(link|nav[-_ ]?link|url|btn[-_ ]?link)([-_ ]|$)/i.test(name) || /[-_ ]link$/i.test(name)) {
+            return 'a';
+        }
     }
 
     // 4. Header patterns
-    if (/^(header|top[-_ ]?bar|navbar|nav[-_ ]?bar|app[-_ ]?bar)($|[-_ ])/i.test(name)) {
-        return 'header';
+    if (!options.inHeader && !options.inFooter) {
+        const isHeaderSub = /^(header|top[-_ ]?bar)[-_ ](content|inner|wrapper|container|box|left|right|center|logo|text|title|row)\b/i.test(name);
+        if (!isHeaderSub && /^(header|top[-_ ]?bar|navbar|nav[-_ ]?bar|app[-_ ]?bar)($|[-_ ])/i.test(name)) {
+            options.hasRootHeader = true;
+            return 'header';
+        }
     }
 
     // 5. Footer patterns
-    if (/^(footer|bottom[-_ ]?bar)($|[-_ ])/i.test(name)) {
-        return 'footer';
+    if (!options.inFooter && !options.inHeader) {
+        const isFooterSub = /^(footer|bottom[-_ ]?bar)[-_ ](content|inner|wrapper|container|box|left|right|center|logo|text|title|row|col|column|copyright|social|brand)\b/i.test(name);
+        if (!isFooterSub && /^(footer|bottom[-_ ]?bar)($|[-_ ])/i.test(name)) {
+            options.hasRootFooter = true;
+            return 'footer';
+        }
     }
 
     // 6. Navigation patterns
-    if (/^(nav|navigation|nav[-_ ]?links?|nav[-_ ]?menu|menu[-_ ]?links?)($|[-_ ])/i.test(name)) {
-        return 'nav';
+    if (!options.inNav) {
+        const isNavSub = /^nav[-_ ](item|link|button|icon|text)\b/i.test(name);
+        if (!isNavSub && /^(nav|navigation|nav[-_ ]?links?|nav[-_ ]?menu|menu[-_ ]?links?)($|[-_ ])/i.test(name)) {
+            return 'nav';
+        }
     }
 
     // 7. Form patterns
@@ -435,34 +456,57 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
     }
 
     // 8. Main content patterns
-    if (/^(main|main[-_ ]?content|content[-_ ]?wrapper|page[-_ ]?body)$/i.test(name)) {
+    if (!options.inMain && /^(main|main[-_ ]?content|content[-_ ]?wrapper|page[-_ ]?body|deck)$/i.test(name)) {
+        options.hasRootMain = true;
         return 'main';
     }
 
     // 9. Named section patterns
-    const isSectionName = name.includes('section') ||
-        /^(hero|features?|pricing|testimonials?|reviews?|faq|cta|call[-_ ]?to[-_ ]?action|about|about[-_ ]?us|contact|contact[-_ ]?us|services?|portfolio|gallery|team|partners?|clients?|stats|how[-_ ]?it[-_ ]?works|benefits?|advantages?|catalog|products?)([-_ ]|$)/i.test(name);
+    const isSectionSub = /^section[-_ ](header|title|heading|footer|content|body|inner|wrapper|container|row|grid|card)\b/i.test(name);
+    const isSectionName = !isSectionSub && (name.includes('section') ||
+        /^(hero|features?|pricing|testimonials?|reviews?|faq|cta|call[-_ ]?to[-_ ]?action|about|about[-_ ]?us|contact|contact[-_ ]?us|services?|portfolio|gallery|team|partners?|clients?|stats|how[-_ ]?it[-_ ]?works|benefits?|advantages?|catalog|products?)([-_ ]|$)/i.test(name));
     if (isSectionName && Array.isArray(node.children) && node.children.length > 0) {
         return 'section';
     }
 
-    // 10. Structural/positional heuristics for direct root children
+    // 10. Positional heuristics for direct children of root
     const isDirectChildOfRoot = Boolean(parentNode && parentNode.isRoot === true);
     if (isDirectChildOfRoot && Array.isArray(node.children) && node.children.length > 0) {
+        const siblings = parentNode.children || [];
+        const siblingCount = siblings.length;
+        const nodeIndex = siblings.indexOf(node);
         const y = node.y !== undefined ? node.y : (node.transform?.m12 ?? 0);
         const height = node.size?.y || 0;
+        const pageHeight = parentNode.size?.y || 0;
 
-        // Topmost bar < 180px height
-        if (y <= 30 && height > 0 && height <= 180 && !options.hasRootHeader) {
+        // Pattern 1: Single child of root is the main page wrapper/container
+        if (siblingCount === 1) {
+            if (!options.inMain && !options.hasRootMain && (height >= 300 || /^(main|content|dashboard|app|body|page|container|wrapper)([-_ ]|$)/i.test(name))) {
+                options.hasRootMain = true;
+                return 'main';
+            }
+            return 'div';
+        }
+
+        // Pattern 2: Multiple root children
+        // Topmost header bar: first sibling, near top, reasonable header height
+        if (siblingCount > 1 && nodeIndex === 0 && y <= 40 && height > 0 && height <= 180 && height < pageHeight * 0.35 && !options.hasRootHeader && !options.inHeader) {
             options.hasRootHeader = true;
             return 'header';
         }
 
-        // Bottom bar
-        const pageHeight = parentNode.size?.y || 0;
-        if (pageHeight > 0 && (y + height >= pageHeight - 60) && height >= 60 && !options.hasRootFooter) {
+        // Bottom footer bar: last sibling, lower part of page (y >= 50% and y >= 200), reasonable footer height (<= 550px and <= 35% of page)
+        const isLastSibling = nodeIndex === siblingCount - 1;
+        const isExcludedFromFooter = /^(main|content|dashboard|deck|grid|cards?|hero|form|body|wrapper|container|code[-_ ]?box|box|slider|carousel|catalog|catalog[-_ ]?grid)([-_ ]|$)/i.test(name);
+        if (siblingCount > 1 && isLastSibling && !isExcludedFromFooter && pageHeight > 0 && y >= pageHeight * 0.5 && y > 200 && height >= 40 && height <= 550 && height <= pageHeight * 0.35 && (y + height >= pageHeight - 120) && !options.hasRootFooter && !options.inFooter) {
             options.hasRootFooter = true;
             return 'footer';
+        }
+
+        // Major dominant middle content block
+        if (!options.inMain && !options.hasRootMain && siblingCount > 1 && height >= 400 && height >= pageHeight * 0.4 && /^(main|deck|content|dashboard)([-_ ]|$)/i.test(name)) {
+            options.hasRootMain = true;
+            return 'main';
         }
 
         // Other major top-level blocks
@@ -780,8 +824,18 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
 
     let innerHtml = '';
     if (node.children && node.children.length > 0) {
+        const childOptions = {
+            ...options,
+            parentTag: tag,
+            inHeader: options.inHeader || tag === 'header',
+            inFooter: options.inFooter || tag === 'footer',
+            inButton: options.inButton || tag === 'button',
+            inLink: options.inLink || tag === 'a',
+            inMain: options.inMain || tag === 'main',
+            inNav: options.inNav || tag === 'nav'
+        };
         for (const child of node.children) {
-            innerHtml += renderNodeToHtml(child, node, imageRegistry, stylesheetManager, options, indentLevel + 1);
+            innerHtml += renderNodeToHtml(child, node, imageRegistry, stylesheetManager, childOptions, indentLevel + 1);
         }
     }
 
@@ -926,7 +980,19 @@ export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {})
     let bodyContent = '';
     for (const root of rootNodes) {
         if (root.isStateGroup) continue;
-        bodyContent += renderNodeToHtml(root, null, imageRegistry, stylesheetManager, options, 2);
+        const pageOptions = {
+            ...options,
+            hasRootHeader: false,
+            hasRootFooter: false,
+            hasRootMain: false,
+            inHeader: false,
+            inFooter: false,
+            inButton: false,
+            inLink: false,
+            inMain: false,
+            inNav: false
+        };
+        bodyContent += renderNodeToHtml(root, null, imageRegistry, stylesheetManager, pageOptions, 2);
     }
 
     const cssHref = options.cssHref || options.cssFile || 'css/style.css';
