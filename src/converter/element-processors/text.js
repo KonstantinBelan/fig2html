@@ -16,7 +16,24 @@ export function isTextElement(element, styles) {
     const hasNoChildren = element.children.length === 0;
     const textContent = element.textContent.trim();
     const hasRichChildren = isRichTextContainer(element);
-    const isChildlessTextDiv = (tagName === 'div' && hasNoChildren && textContent.length > 0 && styles.fills.length === 0 && styles.borderWidth === 0);
+
+    // If an element has container styling (background fill, border, radius, or padding),
+    // it represents a UI component (badge, button, chip, pill) and must be rendered as an Auto Layout FRAME container, not a flat TEXT node
+    const pTop = parseFloat(styles.getProp ? styles.getProp('padding-top', 'paddingTop', 'padding') : 0) || 0;
+    const pRight = parseFloat(styles.getProp ? styles.getProp('padding-right', 'paddingRight', 'padding') : 0) || 0;
+    const pBottom = parseFloat(styles.getProp ? styles.getProp('padding-bottom', 'paddingBottom', 'padding') : 0) || 0;
+    const pLeft = parseFloat(styles.getProp ? styles.getProp('padding-left', 'paddingLeft', 'padding') : 0) || 0;
+    const hasPadding = pTop > 0 || pRight > 0 || pBottom > 0 || pLeft > 0;
+    const hasFills = Boolean(styles.fills && styles.fills.length > 0);
+    const hasBorders = Boolean(styles.borderWidth > 0 || (styles.strokePaints && styles.strokePaints.length > 0) || styles.borderTopW > 0 || styles.borderBottomW > 0 || styles.borderLeftW > 0 || styles.borderRightW > 0);
+    const hasRadius = Boolean(styles.borderRadius > 0);
+    const hasContainerStyling = hasFills || hasBorders || hasRadius || hasPadding;
+
+    if (hasContainerStyling) {
+        return false;
+    }
+
+    const isChildlessTextDiv = (tagName === 'div' && hasNoChildren && textContent.length > 0 && !hasContainerStyling);
 
     return (isTextTag && hasNoChildren && textContent.length > 0) || (hasRichChildren && !styles.fills.length && styles.borderWidth === 0) || isChildlessTextDiv;
 }

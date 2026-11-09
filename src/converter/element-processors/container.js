@@ -180,6 +180,7 @@ export async function processContainerElement(element, parentGuid, orderPosition
         frameNode.borderLeftWeight = borderLeftW;
         frameNode.borderRightWeight = borderRightW;
         frameNode.borderStrokeWeightsIndependent = true;
+        frameNode.strokeWeight = Math.max(borderWidth, borderTopW, borderBottomW, borderLeftW, borderRightW);
     }
 
     // 3. Setup Auto Layout
@@ -251,8 +252,9 @@ export async function processContainerElement(element, parentGuid, orderPosition
                 const childPos = FractionalIndexer.getPosition(childOrderIdx++);
                 const textGuid = guidGen.next();
                 const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles.fontSize;
+                const fontWeight = getProp('font-weight', 'fontWeight') || inheritedStyles.fontWeight;
                 const { styleName, postscript, cleanFamily } = parseFontStyle(
-                    inheritedStyles.fontWeight,
+                    fontWeight,
                     inheritedStyles.fontStyle,
                     inheritedStyles.fontFamily
                 );
@@ -260,8 +262,9 @@ export async function processContainerElement(element, parentGuid, orderPosition
                 const lsResult = parseLetterSpacing(inheritedStyles.letterSpacing, fontSize);
                 const textGeom = estimateTextDimensions(rawText, fontSize, 0, false, cleanFamily);
 
-                const textColor = parseColor(inheritedStyles.color) || { r: 0.1, g: 0.1, b: 0.1, a: 1.0 };
-                const textColorVar = inheritedStyles.colorVar || (textColor.a === 1 && colorToVarMap ? colorToVarMap.get(colorToHexKey(textColor)) : null);
+                const directColor = getProp('color', 'color');
+                const textColor = (directColor ? parseColor(directColor) : null) || parseColor(inheritedStyles.color) || { r: 0.1, g: 0.1, b: 0.1, a: 1.0 };
+                const textColorVar = (directColor ? null : inheritedStyles.colorVar) || (textColor.a === 1 && colorToVarMap ? colorToVarMap.get(colorToHexKey(textColor)) : null);
                 const textPaint = {
                     type: 'SOLID',
                     color: textColor,

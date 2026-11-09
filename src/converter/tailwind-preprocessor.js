@@ -8,6 +8,33 @@ const RADIUS_MAP = new Map(RADIUS_SCALE.map(r => [r.key, `${r.px}px`]));
 RADIUS_MAP.set('DEFAULT', '4px');
 RADIUS_MAP.set('', '4px');
 
+// Tailwind max-width scale map (rem * 16px)
+const TAILWIND_MAX_WIDTH_MAP = new Map([
+    ['0', '0px'],
+    ['none', 'none'],
+    ['xs', '320px'],
+    ['sm', '384px'],
+    ['md', '448px'],
+    ['lg', '512px'],
+    ['xl', '576px'],
+    ['2xl', '672px'],
+    ['3xl', '768px'],
+    ['4xl', '896px'],
+    ['5xl', '1024px'],
+    ['6xl', '1152px'],
+    ['7xl', '1280px'],
+    ['full', '100%'],
+    ['min', 'min-content'],
+    ['max', 'max-content'],
+    ['fit', 'fit-content'],
+    ['prose', '65ch'],
+    ['screen-sm', '640px'],
+    ['screen-md', '768px'],
+    ['screen-lg', '1024px'],
+    ['screen-xl', '1280px'],
+    ['screen-2xl', '1536px'],
+]);
+
 // Color lookup map (e.g. 'blue-500' -> '#3b82f6')
 const COLOR_HEX_MAP = new Map();
 COLOR_HEX_MAP.set('white', '#ffffff');
@@ -199,13 +226,40 @@ export function translateClassToCss(cls) {
         const val = resolveTailwindSpacing(cls.slice(2));
         if (val) return `height: ${val};`;
     }
+    if (cls === 'min-w-0') return 'min-width: 0px;';
+    if (cls === 'min-w-full') return 'min-width: 100%;';
+    if (cls === 'min-w-min') return 'min-width: min-content;';
+    if (cls === 'min-w-max') return 'min-width: max-content;';
+    if (cls === 'min-w-fit') return 'min-width: fit-content;';
     if (cls.startsWith('min-w-')) {
         const val = resolveTailwindSpacing(cls.slice(6));
         if (val) return `min-width: ${val};`;
     }
     if (cls.startsWith('max-w-')) {
-        const val = resolveTailwindSpacing(cls.slice(6));
+        const sub = cls.slice(6);
+        const mapVal = TAILWIND_MAX_WIDTH_MAP.get(sub);
+        if (mapVal) return `max-width: ${mapVal};`;
+        const val = resolveTailwindSpacing(sub);
         if (val) return `max-width: ${val};`;
+    }
+    if (cls === 'min-h-0') return 'min-height: 0px;';
+    if (cls === 'min-h-full') return 'min-height: 100%;';
+    if (cls === 'min-h-screen') return 'min-height: 100vh;';
+    if (cls === 'min-h-min') return 'min-height: min-content;';
+    if (cls === 'min-h-max') return 'min-height: max-content;';
+    if (cls === 'min-h-fit') return 'min-height: fit-content;';
+    if (cls.startsWith('min-h-')) {
+        const val = resolveTailwindSpacing(cls.slice(6));
+        if (val) return `min-height: ${val};`;
+    }
+    if (cls === 'max-h-full') return 'max-height: 100%;';
+    if (cls === 'max-h-screen') return 'max-height: 100vh;';
+    if (cls === 'max-h-min') return 'max-height: min-content;';
+    if (cls === 'max-h-max') return 'max-height: max-content;';
+    if (cls === 'max-h-fit') return 'max-height: fit-content;';
+    if (cls.startsWith('max-h-')) {
+        const val = resolveTailwindSpacing(cls.slice(6));
+        if (val) return `max-height: ${val};`;
     }
 
     // 9. Positioning
@@ -256,12 +310,36 @@ export function translateClassToCss(cls) {
         if (rVal) return `border-radius: ${rVal};`;
     }
 
-    if (cls === 'border') return 'border: 1px solid currentColor;';
+    if (cls === 'border') return 'border-width: 1px; border-style: solid;';
+    if (cls === 'border-t') return 'border-top-width: 1px; border-top-style: solid;';
+    if (cls === 'border-b') return 'border-bottom-width: 1px; border-bottom-style: solid;';
+    if (cls === 'border-l') return 'border-left-width: 1px; border-left-style: solid;';
+    if (cls === 'border-r') return 'border-right-width: 1px; border-right-style: solid;';
+    if (cls === 'border-x') return 'border-left-width: 1px; border-right-width: 1px; border-left-style: solid; border-right-style: solid;';
+    if (cls === 'border-y') return 'border-top-width: 1px; border-bottom-width: 1px; border-top-style: solid; border-bottom-style: solid;';
+
+    const dirBorderMatch = cls.match(/^border-([tblrxy])-(\d+)$/);
+    if (dirBorderMatch) {
+        const [, dir, w] = dirBorderMatch;
+        const widthPx = `${w}px`;
+        if (dir === 't') return `border-top-width: ${widthPx}; border-top-style: solid;`;
+        if (dir === 'b') return `border-bottom-width: ${widthPx}; border-bottom-style: solid;`;
+        if (dir === 'l') return `border-left-width: ${widthPx}; border-left-style: solid;`;
+        if (dir === 'r') return `border-right-width: ${widthPx}; border-right-style: solid;`;
+        if (dir === 'x') return `border-left-width: ${widthPx}; border-right-width: ${widthPx}; border-left-style: solid; border-right-style: solid;`;
+        if (dir === 'y') return `border-top-width: ${widthPx}; border-bottom-width: ${widthPx}; border-top-style: solid; border-bottom-style: solid;`;
+    }
+
     if (cls.startsWith('border-')) {
         const sub = cls.slice(7);
         if (/^\d+$/.test(sub)) {
             return `border-width: ${sub}px; border-style: solid;`;
         }
+        if (sub === 'solid') return 'border-style: solid;';
+        if (sub === 'dashed') return 'border-style: dashed;';
+        if (sub === 'dotted') return 'border-style: dotted;';
+        if (sub === 'double') return 'border-style: double;';
+        if (sub === 'none') return 'border-style: none; border-width: 0px;';
         const color = resolveTailwindColor(sub);
         if (color) return `border-color: ${color};`;
     }
@@ -349,17 +427,32 @@ export function injectTailwindStylesToDom(doc) {
 
     if (uniqueClasses.size === 0) return 0;
 
+    const PSEUDO_PREFIXES = new Set([
+        'hover', 'active', 'focus', 'focus-visible', 'focus-within',
+        'disabled', 'visited', 'checked', 'group-hover', 'peer-hover', 'peer-checked'
+    ]);
+
     const cssRules = [];
     for (const cls of uniqueClasses) {
-        // Strip media query prefixes if any (e.g. "md:flex" -> "flex" for desktop evaluation)
+        // Handle prefixes (e.g. "hover:bg-blue-500", "md:flex")
         const colonIdx = cls.indexOf(':');
-        const effectiveCls = colonIdx !== -1 ? cls.slice(colonIdx + 1) : cls;
+        let prefix = null;
+        let effectiveCls = cls;
+        if (colonIdx !== -1) {
+            prefix = cls.slice(0, colonIdx);
+            effectiveCls = cls.slice(colonIdx + 1);
+        }
 
         const cssDecl = translateClassToCss(effectiveCls);
         if (cssDecl) {
             // Escape special characters in CSS selector (e.g. colons, slashes, brackets)
             const escapedSelector = cls.replace(/([/:.[\]])/g, '\\$1');
-            cssRules.push(`.${escapedSelector} { ${cssDecl} }`);
+            if (prefix && PSEUDO_PREFIXES.has(prefix)) {
+                // Emit with pseudo-class so static evaluation in JSDOM retains base styling
+                cssRules.push(`.${escapedSelector}:${prefix} { ${cssDecl} }`);
+            } else {
+                cssRules.push(`.${escapedSelector} { ${cssDecl} }`);
+            }
         }
     }
 

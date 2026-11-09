@@ -86,16 +86,24 @@ export function parseBorderProperty(borderStr, widthStr, styleStr, colorStr) {
 
     if (borderStr && borderStr !== 'none') {
         const parts = borderStr.trim();
-        const wMatch = parts.match(/([0-9.]+)(?:px|rem|em)?/);
-        if (!width && wMatch) {
-            width = parseFloat(wMatch[1]) || 0;
+        // Extract color if present (rgba, rgb, hsl, hsla, var, hex)
+        const colorMatch = parts.match(/(?:rgba?|hsla?)\([^)]*\)|var\([^)]*\)|#[0-9a-fA-F]{3,8}\b/i);
+        if (colorMatch && !color) {
+            color = colorMatch[0];
         }
-        const sMatch = parts.match(/\b(solid|dashed|dotted|double|groove|ridge|inset|outset|none)\b/i);
+        // Remove color expressions so numbers in rgba(...) are never parsed as stroke width
+        const partsWithoutColor = parts.replace(/(?:rgba?|hsla?)\([^)]*\)|var\([^)]*\)|#[0-9a-fA-F]{3,8}\b/gi, '').trim();
+
+        const wMatch = partsWithoutColor.match(/([0-9.]+)(?:px|rem|em)\b|([0-9.]+)(?=\s|$)/);
+        if (!width && wMatch) {
+            width = parseFloat(wMatch[1] || wMatch[2]) || 0;
+        }
+        const sMatch = partsWithoutColor.match(/\b(solid|dashed|dotted|double|groove|ridge|inset|outset|none)\b/i);
         if (!style && sMatch) {
             style = sMatch[1].toLowerCase();
         }
         if (!color) {
-            let rem = parts;
+            let rem = partsWithoutColor;
             if (wMatch) rem = rem.replace(wMatch[0], '');
             if (sMatch) rem = rem.replace(new RegExp('\\b' + sMatch[1] + '\\b', 'i'), '');
             color = rem.trim();
@@ -108,6 +116,23 @@ export function extractVarName(rawStr) {
     if (!rawStr || typeof rawStr !== 'string') return null;
     const match = rawStr.match(/var\(\s*(--[a-zA-Z0-9-_]+)/);
     return match ? match[1] : null;
+}
+
+/**
+ * Parses CSS length string (px, rem, em, %, vw, vh) into numeric pixels
+ */
+export function parseCssLength(valStr, base = 16, containerDim = 1440, viewportDim = 1440) {
+    if (!valStr || typeof valStr !== 'string') return 0;
+    const str = valStr.trim();
+    if (str === 'none' || str === 'auto' || str === '0') return 0;
+    if (str.endsWith('px')) return parseFloat(str) || 0;
+    if (str.endsWith('rem')) return (parseFloat(str) || 0) * base;
+    if (str.endsWith('em')) return (parseFloat(str) || 0) * base;
+    if (str.endsWith('%')) return Math.round(containerDim * ((parseFloat(str) || 0) / 100));
+    if (str.endsWith('vw')) return Math.round(1440 * ((parseFloat(str) || 0) / 100));
+    if (str.endsWith('vh')) return Math.round(900 * ((parseFloat(str) || 0) / 100));
+    if (/^[0-9.]+$/.test(str)) return parseFloat(str) || 0;
+    return 0;
 }
 
 /**
@@ -232,6 +257,39 @@ export async function resolveElementStyles(element, win, context, parentContext 
     }
     if ((!height || height === 0) && (insetStr === '0' || insetStr === '0px' || (topStr === '0' && bottomStr === '0')) && isAbsolute) {
         height = containerH;
+    }
+
+    // Min/Max Dimensions clamping
+    const rawMaxWidthStr = getProp('max-width', 'maxWidth');
+    const rawMinWidthStr = getProp('min-width', 'minWidth');
+    const rawMaxHeightStr = getProp('max-height', 'maxHeight');
+    const rawMinHeightStr = getProp('min-height', 'minHeight');
+
+    if (rawMaxWidthStr && rawMaxWidthStr !== 'none') {
+        const maxW = parseCssLength(rawMaxWidthStr, 16, isAbsolute ? containerW : flowW, 1440);
+        if (maxW > 0 && width > maxW) {
+            width = Math.round(maxW);
+            isWidthPercent = false;
+        }
+    }
+    if (rawMinWidthStr && rawMinWidthStr !== 'auto') {
+        const minW = parseCssLength(rawMinWidthStr, 16, isAbsolute ? containerW : flowW, 1440);
+        if (minW > 0 && width < minW) {
+            width = Math.round(minW);
+        }
+    }
+
+    if (rawMinHeightStr && rawMinHeightStr !== 'auto') {
+        const minH = parseCssLength(rawMinHeightStr, 16, isAbsolute ? containerH : flowH, 900);
+        if (minH > 0 && height < minH) {
+            height = Math.round(minH);
+        }
+    }
+    if (rawMaxHeightStr && rawMaxHeightStr !== 'none') {
+        const maxH = parseCssLength(rawMaxHeightStr, 16, isAbsolute ? containerH : flowH, 900);
+        if (maxH > 0 && height > maxH) {
+            height = Math.round(maxH);
+        }
     }
 
     const hasExplicitWidth = width > 0 && !isWidthPercent;
@@ -493,6 +551,10 @@ export async function resolveElementStyles(element, win, context, parentContext 
         brRadius,
         blRadius,
         hasIndependentCorners,
-        effects
+        effects,
+        maxWidth: rawMaxWidthStr,
+        minWidth: rawMinWidthStr,
+        maxHeight: rawMaxHeightStr,
+        minHeight: rawMinHeightStr
     };
 }

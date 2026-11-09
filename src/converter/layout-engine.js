@@ -1,4 +1,5 @@
 // src/converter/layout-engine.js
+import { parseCssLength } from './style-resolver.js';
 
 /**
  * Computes initial container dimensions before child elements are processed
@@ -47,15 +48,20 @@ export function computeContainerDimensions(element, styles, parentContext) {
         }
     }
 
+    if (styles.maxWidth && styles.maxWidth !== 'none') {
+        const maxW = parseCssLength(styles.maxWidth, 16, parentContext?.width || 1440, 1440);
+        if (maxW > 0 && frameWidth > maxW) frameWidth = Math.round(maxW);
+    }
+
     const frameHeight = height || (hasExplicitHeight ? height : 40);
 
-    // Circle shape detection (border-radius: 50% with equal width & height)
+    // Circle shape detection (border-radius: 50% with equal width & height, containing NO children and NO text content)
     const isCircle = (borderRadius >= frameWidth / 2 && frameWidth === frameHeight) ||
         element.classList.contains('rounded-full') ||
         element.classList.contains('avatar') ||
         element.classList.contains('avatar-circle');
 
-    const frameType = (isCircle && element.children.length === 0) ? 'ELLIPSE' : 'FRAME';
+    const frameType = (isCircle && element.children.length === 0 && !element.textContent.trim()) ? 'ELLIPSE' : 'FRAME';
 
     return {
         frameWidth,
@@ -102,16 +108,40 @@ export function setupAutoLayout(frameNode, element, styles, layoutParams, parent
     } = styles;
 
     if (tagName === 'body') {
-        frameNode.stackMode = 'VERTICAL';
+        frameNode.stackMode = (isFlex && !isColumn) ? 'HORIZONTAL' : 'VERTICAL';
         frameNode.stackSpacing = gap || 0;
         frameNode.stackHorizontalPadding = paddingLeft || 0;
         frameNode.stackPaddingRight = paddingRight || 0;
         frameNode.stackVerticalPadding = paddingTop || 0;
         frameNode.stackPaddingBottom = paddingBottom || 0;
-        frameNode.stackPrimaryAlignItems = 'MIN';
-        frameNode.stackCounterAlignItems = 'MIN';
-        frameNode.stackPrimarySizing = 'RESIZE_TO_FIT';
-        frameNode.stackCounterSizing = 'FIXED';
+
+        if (isFlex) {
+            const jc = getProp('justify-content', 'justifyContent');
+            const ai = getProp('align-items', 'alignItems');
+
+            if (jc === 'center') frameNode.stackPrimaryAlignItems = 'CENTER';
+            else if (jc === 'flex-end' || jc === 'end') frameNode.stackPrimaryAlignItems = 'MAX';
+            else if (jc === 'space-between') frameNode.stackPrimaryAlignItems = 'SPACE_BETWEEN';
+            else frameNode.stackPrimaryAlignItems = 'MIN';
+
+            if (ai === 'center') frameNode.stackCounterAlignItems = 'CENTER';
+            else if (ai === 'flex-end' || ai === 'end') frameNode.stackCounterAlignItems = 'MAX';
+            else frameNode.stackCounterAlignItems = 'MIN';
+
+            const isFixedH = (frameNode.size?.y >= 900 || hasExplicitHeight);
+            if (!isColumn) {
+                frameNode.stackPrimarySizing = 'FIXED';
+                frameNode.stackCounterSizing = isFixedH ? 'FIXED' : 'RESIZE_TO_FIT';
+            } else {
+                frameNode.stackPrimarySizing = isFixedH ? 'FIXED' : 'RESIZE_TO_FIT';
+                frameNode.stackCounterSizing = 'FIXED';
+            }
+        } else {
+            frameNode.stackPrimaryAlignItems = 'MIN';
+            frameNode.stackCounterAlignItems = 'MIN';
+            frameNode.stackPrimarySizing = 'RESIZE_TO_FIT';
+            frameNode.stackCounterSizing = 'FIXED';
+        }
     } else if (isFlex || isGrid) {
         frameNode.stackMode = isColumn ? 'VERTICAL' : 'HORIZONTAL';
         frameNode.stackSpacing = gap || 0;

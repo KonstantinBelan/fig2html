@@ -64,6 +64,67 @@ export default async function ({ it, itAsync }) {
         assert.strictEqual(titleText.fontSize, 24, 'Font size must match text-2xl (24px)');
     });
 
+    await itAsync('compiles complex Tailwind HTML components with max-width, circular avatars, badge pills, and directional borders', async () => {
+        const html = `
+        <!DOCTYPE html>
+        <html>
+        <body class="flex items-center justify-center min-h-screen p-8 bg-slate-900">
+          <div class="max-w-md w-full bg-slate-800 rounded-2xl p-6 border border-slate-700 flex flex-col gap-4">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center font-bold text-white shadow-md">
+                F
+              </div>
+              <h1 class="text-xl font-bold text-white">Title</h1>
+            </div>
+            <p class="text-sm text-slate-300 leading-relaxed">
+              Convert any Figma design into clean, idiomatic Tailwind CSS markup.
+            </p>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-700/60">
+              <span class="text-xs text-emerald-400 font-semibold bg-emerald-950/60 px-2.5 py-1 rounded-full border border-emerald-800">
+                100% Native Kiwi
+              </span>
+              <button class="px-4 py-2 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-xs font-semibold rounded-lg">
+                Get Started
+              </button>
+            </div>
+          </div>
+        </body>
+        </html>
+        `;
+
+        const { nodeChanges } = await convertHtmlToNodes(html, { sessionID: 0, localID: 1 });
+
+        // 1. Body frame Auto Layout alignment and height
+        const bodyFrame = nodeChanges.find(n => n.type === 'FRAME' && (n.name === 'Page' || n.name === 'Document' || n.size?.y >= 900));
+        assert.ok(bodyFrame, 'Body frame must exist');
+        assert.strictEqual(bodyFrame.stackPrimaryAlignItems, 'CENTER', 'Body primary alignment must be CENTER');
+        assert.strictEqual(bodyFrame.stackCounterAlignItems, 'CENTER', 'Body counter alignment must be CENTER');
+
+        // 2. Card frame max-w-md clamping (448px)
+        const cardFrame = nodeChanges.find(n => n.type === 'FRAME' && n.size?.x === 448);
+        assert.ok(cardFrame, 'Card frame must be clamped to 448px by max-w-md');
+
+        // 3. Avatar is a circular FRAME with letter 'F', NOT an empty ELLIPSE
+        const avatarFrame = nodeChanges.find(n => n.type === 'FRAME' && n.size?.x === 40 && n.size?.y === 40);
+        assert.ok(avatarFrame, 'Avatar must be a FRAME node with 40x40 size');
+        assert.strictEqual(avatarFrame.cornerRadius, 9999, 'Avatar frame must have rounded-full radius');
+        const letterF = nodeChanges.find(n => n.type === 'TEXT' && (n.name === 'F' || n.textData?.characters === 'F'));
+        assert.ok(letterF, 'Avatar must contain text "F" child node');
+
+        // 4. Badge span is compiled as Auto Layout pill FRAME with fill and stroke
+        const badgeFrame = nodeChanges.find(n => n.type === 'FRAME' && n.cornerRadius === 9999 && n.name?.includes('emerald'));
+        assert.ok(badgeFrame, 'Badge must be compiled as an Auto Layout FRAME');
+        assert.ok(badgeFrame.fillPaints?.length > 0, 'Badge must have fill paint');
+        const badgeText = nodeChanges.find(n => n.type === 'TEXT' && (n.name === '100% Native Kiwi' || n.textData?.characters === '100% Native Kiwi'));
+        assert.ok(badgeText, 'Badge text node must exist');
+
+        // 5. Divider border-t must have strokeWeight 1 (not 51)
+        const dividerFrame = nodeChanges.find(n => n.type === 'FRAME' && n.name?.includes('border-t'));
+        assert.ok(dividerFrame, 'Divider frame must exist');
+        assert.strictEqual(dividerFrame.strokeWeight, 1, 'Divider stroke weight must be 1px, not 51px');
+        assert.strictEqual(dividerFrame.borderTopWeight, 1, 'Divider top border weight must be 1px');
+    });
+
     it('performs full roundtrip: Node -> Tailwind classes -> Node', () => {
         const originalNode = {
             type: 'FRAME',
