@@ -1,5 +1,5 @@
 // src/decompiler/vector.js
-import { formatColor } from './css/index.js';
+import { formatColor, getColorFromPaint } from './css/index.js';
 
 /**
  * Checks if a Figma node is a vector element that should be rendered as SVG
@@ -539,11 +539,15 @@ export function getVectorStrokeAttributes(node) {
     let strokeLinecap = null;
     let strokeLinejoin = null;
 
-    if (Array.isArray(node.strokePaints) && node.strokePaints.length > 0 && (node.strokeWeight > 0 || node.strokeWeight === undefined)) {
-        const solid = node.strokePaints.find(s => s.visible !== false && s.type === 'SOLID');
-        if (solid) {
-            stroke = formatColor(solid.color, solid.opacity);
-            strokeWidth = Math.round((node.strokeWeight || 1) * 100) / 100;
+    const strokePaints = Array.isArray(node.strokePaints) ? node.strokePaints : (Array.isArray(node.strokes) ? node.strokes : null);
+    if (strokePaints && strokePaints.length > 0 && (node.strokeWeight > 0 || node.strokeWeight === undefined)) {
+        for (const paint of strokePaints) {
+            const color = getColorFromPaint(paint);
+            if (color && color !== 'transparent') {
+                stroke = color;
+                strokeWidth = Math.round((node.strokeWeight || 1) * 100) / 100;
+                break;
+            }
         }
     }
 
@@ -567,10 +571,13 @@ export function getVectorStrokeAttributes(node) {
  * @returns {string} fill color or 'none'
  */
 export function getVectorFillAttribute(node) {
-    if (Array.isArray(node.fillPaints) && node.fillPaints.length > 0) {
-        const solid = node.fillPaints.find(f => f.visible !== false && f.type === 'SOLID');
-        if (solid) {
-            return formatColor(solid.color, solid.opacity);
+    const fillPaints = Array.isArray(node.fillPaints) ? node.fillPaints : (Array.isArray(node.fills) ? node.fills : null);
+    if (fillPaints && fillPaints.length > 0) {
+        for (const paint of fillPaints) {
+            const color = getColorFromPaint(paint);
+            if (color) {
+                return color;
+            }
         }
     }
     return 'none';

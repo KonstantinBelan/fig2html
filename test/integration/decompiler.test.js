@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import {
     formatColor,
+    getColorFromPaint,
     getLinearGradientAngle,
     formatGradient,
     formatEffects,
@@ -14,6 +15,7 @@ import {
     computeNodeStyles,
     getExtensionForMime
 } from '../../src/decompiler/css/index.js';
+import { getVectorFillAttribute, getVectorStrokeAttributes } from '../../src/decompiler/vector.js';
 import { readFigFile, buildSceneTree, convertFigToHtml } from '../../src/decompiler/index.js';
 import { StylesheetManager, toBaseClassName } from '../../src/decompiler/stylesheet.js';
 import { parseArgs as parseReverseArgs } from '../../cli-reverse.js';
@@ -30,6 +32,59 @@ export default async function run(arg1, arg2) {
 
         const trans = formatColor({ r: 0, g: 0, b: 0, a: 0 });
         assert.strictEqual(trans, 'transparent');
+    });
+
+    it('extracts solid fallback color from gradient paints and formats borders and vector fills', () => {
+        // 1. getColorFromPaint with SOLID
+        const solidColor = getColorFromPaint({
+            type: 'SOLID',
+            color: { r: 0, g: 0.7098, b: 0.4431, a: 1 },
+            opacity: 1
+        });
+        assert.strictEqual(solidColor, '#00b571');
+
+        // 2. getColorFromPaint with GRADIENT_LINEAR
+        const gradColor = getColorFromPaint({
+            type: 'GRADIENT_LINEAR',
+            opacity: 1,
+            stops: [
+                { color: { r: 0, g: 0.7098, b: 0.4431, a: 1 }, position: 0.24 },
+                { color: { r: 0.023, g: 0.7845, b: 0.4984, a: 1 }, position: 0.82 }
+            ]
+        });
+        assert.strictEqual(gradColor, '#00b571');
+
+        // 3. getVectorFillAttribute with gradient fill
+        const vectorWithGrad = {
+            type: 'VECTOR',
+            fillPaints: [{
+                type: 'GRADIENT_LINEAR',
+                visible: true,
+                opacity: 1,
+                stops: [
+                    { color: { r: 0, g: 0.7098, b: 0.4431, a: 1 }, position: 0 },
+                    { color: { r: 0.023, g: 0.7845, b: 0.4984, a: 1 }, position: 1 }
+                ]
+            }]
+        };
+        assert.strictEqual(getVectorFillAttribute(vectorWithGrad), '#00b571');
+
+        // 4. computeNodeStyles generating border from gradient stroke
+        const cardWithGradStroke = {
+            type: 'FRAME',
+            strokeWeight: 1,
+            strokePaints: [{
+                type: 'GRADIENT_LINEAR',
+                visible: true,
+                opacity: 1,
+                stops: [
+                    { color: { r: 0, g: 0.7098, b: 0.4431, a: 1 }, position: 0 },
+                    { color: { r: 0.023, g: 0.7845, b: 0.4984, a: 1 }, position: 1 }
+                ]
+            }]
+        };
+        const styles = computeNodeStyles(cardWithGradStroke);
+        assert.strictEqual(styles['border'], '1px solid #00b571');
     });
 
     it('calculates linear gradient angle from affine transform matrix', () => {
