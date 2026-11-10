@@ -6,6 +6,7 @@ import {
     parseLetterSpacing,
     parseTextDecoration,
     parseTextTransform,
+    parseTextAlign,
     estimateTextDimensions,
     getFontMetrics
 } from '../../parsers/typography.js';
@@ -173,7 +174,7 @@ export function processTextElement(element, parentGuid, orderPosition, parentCon
             style: styleName,
             postscript: postscript
         },
-        textAlignHorizontal: (getProp('text-align', 'textAlign') || 'LEFT').toUpperCase(),
+        textAlignHorizontal: parseTextAlign(getProp('text-align', 'textAlign')),
         textAlignVertical: 'TOP',
         textAutoResize: textGeom.autoResize,
         lineHeight: lhObj,

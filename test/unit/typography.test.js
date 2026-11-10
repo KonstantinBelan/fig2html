@@ -7,7 +7,8 @@ import {
     parseLineHeight,
     parseLetterSpacing,
     parseTextDecoration,
-    parseTextTransform
+    parseTextTransform,
+    parseTextAlign
 } from '../../src/parsers/typography.js';
 
 export default async function run(arg1, arg2) {
@@ -40,6 +41,18 @@ export default async function run(arg1, arg2) {
         assert.strictEqual(parseTextDecoration('underline'), 'UNDERLINE');
         assert.strictEqual(parseTextDecoration('line-through'), 'STRIKETHROUGH');
         assert.strictEqual(parseTextTransform('uppercase'), 'UPPER');
+    });
+
+    it('parses text-align into valid Figma TextAlignHorizontal enum values', () => {
+        assert.strictEqual(parseTextAlign('center'), 'CENTER');
+        assert.strictEqual(parseTextAlign('right'), 'RIGHT');
+        assert.strictEqual(parseTextAlign('end'), 'RIGHT');
+        assert.strictEqual(parseTextAlign('justify'), 'JUSTIFIED');
+        assert.strictEqual(parseTextAlign('left'), 'LEFT');
+        assert.strictEqual(parseTextAlign('start'), 'LEFT');
+        assert.strictEqual(parseTextAlign('-webkit-match-parent'), 'LEFT');
+        assert.strictEqual(parseTextAlign('inherit'), 'LEFT');
+        assert.strictEqual(parseTextAlign(null), 'LEFT');
     });
 
     // 5. Image Registry & Dimensions
