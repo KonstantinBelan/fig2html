@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { generateFigFile } from './src/generator.js';
 import { convertFigToHtml } from './src/decompiler/index.js';
 import { ProgressBar } from './src/utils/progress-bar.js';
+import { isSafeSystemOutputPath } from './src/parsers/images.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -148,6 +149,12 @@ function formatBytes(bytes) {
 async function runConversion(options) {
     const inputPath = path.resolve(options.input);
     const outputPath = path.resolve(options.output);
+
+    if (!isSafeSystemOutputPath(outputPath)) {
+        console.error(`${colors.red}Error: Writing to system directory "${outputPath}" is disallowed for security reasons.${colors.reset}`);
+        process.exit(1);
+    }
+
     const isReverse = inputPath.toLowerCase().endsWith('.fig');
 
     if (isReverse) {

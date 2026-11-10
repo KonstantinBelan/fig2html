@@ -234,6 +234,7 @@ export async function processContainerElement(element, parentGuid, orderPosition
         gridChildWidth = Math.max(20, Math.floor((innerContentWidth - (numCols - 1) * colGap) / numCols));
     }
 
+    const currentDepth = ((parentContext && parentContext.depth) || 0) + 1;
     const currentContext = {
         isFlex: isFlex || isGrid || element.children.length > 0 || tagName === 'body',
         isColumn,
@@ -248,7 +249,8 @@ export async function processContainerElement(element, parentGuid, orderPosition
         paddingTop,
         gap,
         alignItems: getProp('align-items', 'alignItems') || 'stretch',
-        inherited: inheritedStyles
+        inherited: inheritedStyles,
+        depth: currentDepth
     };
 
     const childResults = [];
@@ -257,7 +259,7 @@ export async function processContainerElement(element, parentGuid, orderPosition
     for (const childNode of element.childNodes) {
         if (childNode.nodeType === 1) { // Element
             const childPos = FractionalIndexer.getPosition(childOrderIdx++);
-            const res = await processElement(childNode, currentGuid, childPos, currentContext);
+            const res = await processElement(childNode, currentGuid, childPos, currentContext, currentDepth);
             if (res) childResults.push(res);
         } else if (childNode.nodeType === 3) { // Direct text child node
             const rawText = childNode.textContent.replace(/[\r\n\t]+/g, ' ').replace(/ +/g, ' ').trim();

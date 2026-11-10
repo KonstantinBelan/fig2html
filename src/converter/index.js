@@ -34,7 +34,11 @@ export async function convertHtmlToNodes(htmlString, parentCanvasGuid, options =
     const blobOffset = options.blobOffset || 0;
     const imageRegistry = options.imageRegistry || new ImageRegistry({
         baseDir: options.baseDir || process.cwd(),
-        allowRemote: options.allowRemoteImages !== false
+        allowRemote: options.allowRemoteImages !== false,
+        allowExternalPaths: options.allowExternalPaths === true,
+        allowPrivateHosts: options.allowPrivateHosts === true,
+        allowedDomains: options.allowedDomains || null,
+        maxImageSize: options.maxImageSize || 15 * 1024 * 1024
     });
 
     // 1. Collect CSS custom properties and variables
@@ -118,11 +122,18 @@ export async function convertHtmlToNodes(htmlString, parentCanvasGuid, options =
         processElement: null
     };
 
+    const MAX_DOM_DEPTH = 64;
+
     /**
      * Traverses and processes a single DOM element node
      */
-    async function processElement(element, parentGuid, orderPosition = '!', parentContext = null) {
+    async function processElement(element, parentGuid, orderPosition = '!', parentContext = null, depth = 0) {
         if (!element || element.nodeType !== 1) return null;
+
+        if (depth > MAX_DOM_DEPTH) {
+            console.warn(`[WARN] Maximum DOM recursion depth (${MAX_DOM_DEPTH}) exceeded at <${element.tagName ? element.tagName.toLowerCase() : 'unknown'}>. Truncating subtree to prevent Stack Overflow DoS.`);
+            return null;
+        }
 
         if (['SCRIPT', 'STYLE', 'HEAD', 'META', 'LINK', 'TEMPLATE', 'NOSCRIPT', 'TITLE'].includes(element.tagName)) {
             return null;
@@ -163,7 +174,7 @@ export async function convertHtmlToNodes(htmlString, parentCanvasGuid, options =
     // Process root body element
     if (doc.body) {
         const rootPos = FractionalIndexer.getPosition(0);
-        await processElement(doc.body, parentCanvasGuid, rootPos, null);
+        await processElement(doc.body, parentCanvasGuid, rootPos, null, 0);
     }
 
     if (variableChanges.length > 0) {
