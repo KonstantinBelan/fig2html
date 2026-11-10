@@ -1,12 +1,14 @@
 <div align="center">
 
-<img src="docs/logo.jpeg" alt="figmatik logo" width="420" style="border-radius: 20px; margin-bottom: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
+<img src="docs/logo.jpeg" alt="figmatik logo" width="380" style="border-radius: 20px; margin-bottom: 16px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);">
 
-### Figma to Clean Responsive HTML/CSS & Bi-Directional Engine 2.0
+# Figmatik
+
+### Figma (.fig) to Clean Responsive HTML/CSS & Bi-Directional Engine 2.0
 
 [![npm version](https://img.shields.io/npm/v/figmatik.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/figmatik)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 206+ passed](https://img.shields.io/badge/tests-206%2B%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/runner.js)
+[![Tests: 238 passed](https://img.shields.io/badge/tests-238%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](docs/TESTING.md)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript: Ready](https://img.shields.io/badge/TypeScript-Ready-3178c6.svg?style=for-the-badge&logo=typescript&logoColor=white)](index.d.ts)
 [![Telegram](https://img.shields.io/badge/Telegram-@konstantin__belan-229ED9.svg?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/konstantin_belan)
@@ -14,863 +16,143 @@
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-8b5cf6.svg?style=for-the-badge)](https://github.com/KonstantinBelan/figmatik/pulls)
 
 <p align="center">
-  Высокопроизводительный декомпилятор нативных бинарных файлов Figma (<code>.fig</code>) в <b>чистый семантический адаптивный HTML5/CSS</b> и двусторонний компилятор <b>HTML/CSS ➔ .fig</b> по спецификации <b>Kiwi Schema v101</b>.<br>
-  Синтезирует чистый Flexbox и CSS Grid без <code>position: absolute</code>, сохраняет Figma Constraints, асимметричные отступы, аффинные вращения, запекает Retina @2x WebP/AVIF и объединяет экраны в единый адаптивный сайт.
+  <b>English</b> • <b><a href="README.ru.md">Русский</a></b>
 </p>
 
 <p align="center">
-  <b>Автор проекта</b>: <a href="https://t.me/konstantin_belan">Константин Белан (Konstantin Belan)</a> • Telegram: <a href="https://t.me/konstantin_belan"><b>@konstantin_belan</b></a> • Email: <a href="mailto:kosbelan@yandex.ru">kosbelan@yandex.ru</a>
+  <b>Figmatik</b> is a Swiss Army knife for Figma: converts native binary <code>.fig</code> files into clean, responsive <b>HTML5/CSS, Tailwind CSS (v3/v4), React, Vue, and Svelte</b> code in milliseconds — and compiles web layouts back into native <code>.fig</code> with genuine Auto Layout v4.<br><br>
+  <b>Zero plugins. No running Figma. No cloud APIs. 100% offline inside your CLI or Node.js.</b>
 </p>
 
 <p align="center">
-  <a href="#-установка-и-быстрый-старт">🚀 Установка и старт</a> •
-  <a href="#-демонстрация-cli">📺 Демонстрация</a> •
-  <a href="#-особенности-и-возможности">⚡ Возможности</a> •
-  <a href="docs/figma-design-guide.md">🎨 Руководство дизайнера</a> •
-  <a href="#-cli-справка">💻 CLI Справка</a> •
-  <a href="#-программный-api-nodejs">🛠 API</a> •
-  <a href="#-тестирование">🧪 Тесты</a> •
-  <a href="#-автор-и-контакты--author">👤 Автор</a>
+  <a href="#-quick-start-in-1-minute">🚀 Quick Start</a> •
+  <a href="#-why-figmatik">⚡ Highlights</a> •
+  <a href="#-documentation-library">📚 Documentation</a> •
+  <a href="#-author--contacts">👤 Author</a>
 </p>
 
 </div>
 
 ---
 
-## 📺 Демонстрация CLI
+## 📺 CLI Terminal Preview
 
 <p align="center">
-  <img src="docs/cli-demo.svg" alt="Figma Bi-Directional CLI Demo" width="100%">
+  <img src="docs/cli-demo.svg" alt="Figmatik Bi-Directional CLI Demo" width="100%">
 </p>
 
-<details>
-<summary><b>Показать текстовый лог работы терминала</b></summary>
+---
 
-#### 1. Прямая конвертация: `html-to-fig`
-```bash
-$ html-to-fig showcase.html showcase.fig
+## ⚡ Why Figmatik?
 
-┌──────────────────────────────────────────┐
-│             HTML to Figma CLI            │
-│               v1.5.5                     │
-└──────────────────────────────────────────┘
-⚡ Compiling: showcase.html -> showcase.fig...
-[██░░░░░░░░]  20% • Loading Kiwi schema...
-[█████░░░░░]  48% • Converting HTML to Figma nodes...
-[███████░░░]  70% • Encoding Kiwi binary format...
-[██████████] 100% • Packaging .fig archive... (0.7s)
-
-✔ Build complete in 684ms!
-┌─────────────────────────────────────────┐
-│ File:       showcase.fig                │
-│ Size:       54.1 KB                     │
-│ Nodes:      49 generated                │
-│   Frames:   23                          │
-│   Text:     21                          │
-│   Images:   2                           │
-│   Shapes:   3                           │
-│ Embedded:   2 image blobs               │
-│ Zstd ratio: 3.14x                       │
-└─────────────────────────────────────────┘
-
-Drag and drop showcase.fig into Figma to open.
-```
-
-#### 2. Обратная конвертация с резиновой вёрсткой: `fig-to-html`
-```bash
-$ fig-to-html showcase.fig -s --fluid --webp
-
-┌──────────────────────────────────────────┐
-│             Figma to HTML CLI            │
-│               v1.5.5                     │
-└──────────────────────────────────────────┘
-⚡ Decompiling: showcase.fig -> index.html (Fluid Layout)...
-[██░░░░░░░░]  20% • Decoding Kiwi binary AST...
-[████░░░░░░]  38% • Synthesizing smart layout...
-[███████░░░]  70% • Optimizing images (7/7 WebP)...
-[██████████] 100% • Writing dist/index.html... (0.1s)
-
-✔ Decompilation complete in 66ms!
-┌─────────────────────────────────────────┐
-│ HTML:       dist/index.html (4.9 KB)    │
-│ CSS:        dist/css/style.css (11.5 KB)│
-│ Assets:     dist/img/ (7 WebP images)   │
-│ Layout:     Fluid (100vw / 100dvh)      │
-│ Nodes:      52 total in fig             │
-│ Img Opt:    WEBP Lossless (-87%)        │
-└─────────────────────────────────────────┘
-
-Open dist/index.html in any browser.
-```
-</details>
+- 🎯 **100% Native `.fig` Without Plugins** — Direct binary reading and writing via Kiwi Schema v101 and Zstandard compression. Resulting files open in Figma Desktop and Web via standard drag-and-drop.
+- 🧼 **Clean Code, Zero `position: absolute`** — Heuristic *Layout Synthesis Engine* transforms even chaotic unorganized frames into semantic Flexbox, CSS Grid, or clean Tailwind utility classes.
+- 📱 **Automated Multi-Breakpoint Responsiveness** — Fuses related artboards (Desktop, Tablet, Mobile) into a single canonical responsive website with smooth mathematical `clamp()` interpolation and clean `@media` queries.
+- ⚛️ **Framework Components on the Fly** — Export your Figma design straight to typed **React TSX**, **Vue 3 SFC**, or **Svelte** components.
+- 🌊 **Enterprise Tailwind CSS (v3 & v4)** — Support for Oxide / CSS-first `@theme`, intelligent 4px scale snapping, and complete production-ready project scaffolding (`--scaffold`).
+- 🖼 **Retina @2x & Modern Media Formats** — Sharp hardware baking, lossless WebP/AVIF compression, responsive `srcset`, and Multiply-to-Alpha background removal for logos.
+- 🛡️ **Enterprise Security** — Built-in 3-layer protection against SSRF, DNS Rebinding, Zip Slip, Path Traversal, and DoS for bulletproof SaaS and Cloud API deployments.
 
 ---
 
-## ⚡ Особенности и возможности
+## 🚀 Quick Start in 1 Minute
 
-- **100% нативный .fig формат**: Файлы открываются в Figma Desktop и Figma Web без плагинов — просто перетащите файл в окно Figma.
-- **Конвертация всей страницы целиком**:
-  - Трансляция начинается непосредственно с корня документа (`<body>`).
-  - Сохраняются реальные размеры холста (например, вертикальные посты/слайды 1080×1350 или десктопные лэндинги) и фон страницы.
-- **Современный Auto Layout v4 (Flexbox)**:
-  - Чистая спецификация разметки без устаревших параметров: никаких предупреждений *"New auto layout version available"* в Figma.
-  - Направления: `display: flex` / `inline-flex` (`flex-direction: row | column`).
-  - Режимы сайзинга: **Hug contents** (`RESIZE_TO_FIT`), **Fixed** (`FIXED`), **Fill container** (`STRETCH`) по обеим осям (`stackPrimarySizing`, `stackCounterSizing`).
-  - Выравнивание: `justify-content` (`flex-start`, `center`, `flex-end`, `space-between`, `space-evenly`).
-  - Выравнивание по поперечной оси: `align-items` (`flex-start`, `center`, `flex-end`, `baseline`, `stretch`) с автоматическим растягиванием дочерних блоков.
-  - Дочерние параметры: `flex-grow`, `align-self: stretch`, `position: absolute`.
-  - Отступы: `gap`, `row-gap`, `column-gap`.
-  - Независимые паддинги: 4 стороны (`padding-top/right/bottom/left`).
-  - **Пре-компьютированный Layout Pass**: движок заранее рассчитывает физические размеры фреймов и координаты дочерних элементов (`transform.m02` / `transform.m12`), обеспечивая 100% совпадение позиционирования с браузером.
-  - **Эмуляция отступов (margin) для текста**: поскольку текстовые слои в Figma не имеют собственных полей `margin`, элементы с внешними отступами автоматически оборачиваются в Auto Layout контейнеры с сохранением разметки.
-- **Поддержка CSS Grid**:
-  - `display: grid` и `inline-grid`: автоматический парсинг `grid-template-columns` (`repeat(N, 1fr)`, `repeat(N, 200px)`, `1fr 2fr` и др.).
-  - Интеллектуальная трансляция сетки в Auto Layout v4 с `stackWrap: WRAP` и точным вычислением ширины ячеек.
-  - Декомпиляция в семантический CSS Grid: флаг `--layout grid` / `--grid`.
-- **Нативные Figma Variables и Design Tokens**:
-  - **HTML ➔ .fig**: экспорт `:root` CSS-переменных в нативные бинарные коллекции Figma (`VARIABLE_SET` и `VARIABLE` узлы: `COLOR`, `FLOAT`, `STRING`).
-  - **.fig ➔ HTML**: чтение переменных Figma и генерация CSS-переменных `:root` с поддержкой мульти-режимов тем (`[data-theme="Dark"]`).
-  - Экспорт дизайн-токенов в JSON: флаг `--tokens [path]` / `--extract-tokens`.
-- **Интерактивные состояния и варианты компонентов**:
-  - Автоматическое распознавание псевдоклассов `:hover`, `:active`, `:focus` в CSS.
-  - Генерация нативных взаимодействий Figma: `prototypeInteractions` с триггером `WHILE_HOVERING` и переходом `SWAP_STATE`.
-  - Декомпиляция вариантов (`SYMBOL` со `State=Hover`, `State=Active`) в чистые CSS-псевдоклассы без дублирования HTML-разметки.
-- **Типографика, Google Fonts и точные метрики**:
-  - Автоматическое обнаружение Google Fonts из `<link>` и `@import url(...)` с формированием единого предзагрузочного тега.
-  - Встроенная таблица метрик популярных семейств шрифтов (`FONT_METRICS_TABLE`: Inter, Roboto, Montserrat, Poppins, Fira Code и др.) для расчета размеров текста с точностью до долей пикселя.
-  - Полная поддержка CSS Custom Properties (`var(--font-display)`, `var(--text-color)`) с каскадным разрешением значений из `:root` и поддержкой fallbacks.
-  - Семейства шрифтов: `font-family`, автоматическое сопоставление со стандартными библиотеками шрифтов Figma (Inter, Plus Jakarta Sans, SF Pro Display и др.).
-  - Точное квантование весов `font-weight` (100–900, с поддержкой промежуточных значений вроде `510` -> `500 Medium`).
-  - Начертание: `font-style` (`italic`, `normal`).
-  - Межстрочный интервал: `line-height` (множители вроде `1.04` -> `104%`, проценты, фиксированные пиксели `px`, `normal`).
-  - Межбуквенный интервал: `letter-spacing` (`px`, `em`, `%`).
-  - Выравнивание: `text-align` (`left`, `center`, `right`, `justify`).
-  - Трансформация: `text-transform` (`uppercase`, `lowercase`, `capitalize`).
-  - Оформление: `text-decoration` (`underline`, `line-through`, `none`).
-  - **Rich Text**: смешанное форматирование внутри одного блока текста (`<b>`, `<i>`, `<span style="...">`, `<a>`) через `styleOverrideTable` и `characterStyleIDs`.
-- **Цвета и заливки**:
-  - HEX (3, 4, 6, 8 символов: `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`).
-  - RGB и RGBA (`rgb(r, g, b)`, `rgba(r, g, b, a)`, современный синтаксис `rgb(255 0 0 / 50%)`).
-  - HSL и HSLA (`hsl(h, s, l)`, `hsla(h, s, l, a)`).
-  - Все 148 стандартных W3C именованных цветов (`crimson`, `aliceblue`, `transparent` и т.д.).
-  - Динамический цвет `currentColor`.
-- **Градиенты**:
-  - `linear-gradient(...)`: математически точный расчёт 2x3 аффинной матрицы трансформации для любых углов (`deg`, `rad`, `turn`) и направлений (`to right`, `to bottom`, `to top right` и др.).
-  - `radial-gradient(...)`.
-  - Произвольное количество контрольных точек (color stops).
-- **Скругления и границы**:
-  - `border-radius`: единый радиус, 4 независимых угла (`border-top-left-radius` и др.), круг (`50%` -> `ELLIPSE`), пилюля (`9999px`).
-  - Сглаживание углов (squircle / iOS smooth corners).
-  - Границы: `border-width`, `border-style` (`solid`, `dashed`, `dotted`), `border-color`.
-  - Независимые толщины сторон: `border-top-width`, `border-right-width`, `border-bottom-width`, `border-left-width`.
-- **Эффекты, тени и режимы наложения**:
-  - `box-shadow`: множественные тени, размытие `blur`, растяжение `spread`, смещение `offset`, а также внутренние тени `inset` (`INNER_SHADOW`).
-  - Размытие слоев: `filter: blur(...)` (`FOREGROUND_BLUR`).
-  - Размытие фона: `backdrop-filter: blur(...)` (`BACKGROUND_BLUR`).
-  - Чистые режимы наложения: слои по умолчанию не засоряют инспектор свойств параметром `blendMode: NORMAL`, пока режим наложения явно не задан в CSS (`mix-blend-mode`).
-- **Изображения и векторные иконки**:
-  - `<img>`: локальные файлы, base64 data URIs (`data:image/png;base64,...`), удаленные URL (`http://`, `https://`).
-  - Определение реальных размеров из бинарных заголовков (PNG, JPEG, GIF, WebP, SVG).
-  - Режимы заполнения: `object-fit: cover` (`FILL`), `contain` (`FIT`), `fill` (`STRETCH`).
-  - Хеширование через SHA-1 и встраивание файлов в директорию `images/<sha1>` архива `.fig`.
-  - `<svg>`: встроенные SVG элементы, векторные иконки и иллюстрации.
-  - Поддержка `<use href="#id">` и SVG-спрайтов с сохранением обводок (`stroke`, `stroke-width`, `currentColor`) и заливок.
-- **Формы и компоненты**:
-  - Кнопки `<button>`, `a.btn`, `a.cta` (адаптивные Auto Layout фреймы с автоматическим Hug / Fixed сайзингом).
-  - Поля ввода `<input type="text|email|password|search">` с плейсхолдерами и чистыми параметрами типографики.
-  - Чекбоксы `<input type="checkbox">` и радиокнопки `<input type="radio">`.
-  - Разделители `<hr>` (`LINE` ноды).
-  - Таблицы `<table>`, `<tr>`, `<td>`, `<th>`.
-  - Списки `<ul>`, `<ol>`, `<li>`.
-
-### 🔄 Декомпилятор .fig ➔ HTML/CSS
-- **⚡ Pure ES Modules & TypeScript Ready (v1.5.5)**:
-  - **100% Pure ESM**: полный переход всей кодовой базы на нативные стандарты ECMAScript Modules (`import`/`export`, `node:path`, `node:url`, `"type": "module"`, Node.js 18+).
-  - **Официальные TypeScript-декларации (`index.d.ts`)**: строгая типизация публичного API (`generateFigFile`, `convertFigToHtml`, опций компилятора и декомпилятора, Kiwi AST типов), `tsconfig.json` и автоматическая валидация типов в CI (`npm run test:types`).
-- **💎 Semantic Styles, Spacing Tokens & A11y Standards (v1.5.4)**:
-  - **Глобальная дедупликация стилей (DRY CSS & Class Reuse)**: алгоритмический анализ сигнатур стилей элементов. При совпадении стилей на 100% (например, повторяющиеся карточки, плашки или кнопки `.frame-116047453`, `.frame-116047454-2`) движок объединяет их в единый переиспользуемый CSS-класс в HTML и CSS, избавляя проект от сотен строк мертвого дублирующегося кода.
-  - **Шкала примитивных Spacing-токенов (`:root`)**: автоматическое извлечение повторяющихся значений отступов (`padding`, `margin`, `gap`, `row-gap`, `column-gap`) в шкалу примитивных токенов `:root { --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; ... }` и подстановка `var(--space-*)` в CSS-правила.
-  - **Предотвращение коллизий токенов в `:root`**: изолированное хранение переменных с одинаковыми числовыми значениями — токены скруглений (`--radius-16px: 16px;`) и отступов (`--space-4: 16px;`) корректно сосуществуют в `:root {}` без взаимной перезаписи.
-  - **Доступность как стандарт (Accessibility / A11y)**:
-    - Декоративная графика (фоны, паттерны, разделители) автоматически получает `alt=""` и `aria-hidden="true"`.
-    - Векторные SVG-иконки помечаются `aria-hidden="true" focusable="false"`.
-    - Кнопки-иконки без текста автоматически получают вычисляемый семантический `aria-label` (`aria-label="Close"`, `aria-label="Menu"`, `aria-label="Search"`).
-    - Навигационные контейнеры получают тег `<nav aria-label="...">`.
-    - Кликабельные кнопки строго используют нативный `type="button"`, а ссылки — `<a href="#">`.
-    - В глобальный CSS Reset встроен доступный фокус с клавиатуры: `:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }`.
-  - **Автоматическое определение языка (i18n)**: анализ соотношения кириллицы и латиницы в тексте макета. Автоматическая генерация `<html lang="en">` с английскими A11y-лейблами или `<html lang="ru">` с русскоязычными лейблами (`Навигация`, `Закрыть`, `Меню`). Добавлен CLI-флаг `--lang <code>` для явного переопределения.
-  - **Иерархический анализатор заголовков (`<h1>`–`<h4>`)**: гарантия ровно одного `<h1>` на страницу (определяется как главный заголовок верхнего уровня), строгая иерархия `<h2>`–`<h4>` для секций и карточек с фильтрацией цен (`$99/mo`), числовых счетчиков (`100+`) и мелких служебных плашек.
-- **🎯 Pixel-Perfect Decompilation & Complex Landing Page Synthesis (v1.5.2)**:
-  - **Предотвращение коллизий CSS-классов с числовыми суффиксами**: строгое разделение авто-нумерованных классов (`.frame-2`, `.vector-3`) и слоев с явными именами (`Frame 2`, `Vector 3`), исключающее перезапись стилей шапки, навигации, иконок корзины, бейджей и футера.
-  - **Синтез параметрических фигур (`STAR`, `REGULAR_POLYGON`)**: генерация векторных SVG-путей для звёзд рейтинга и многоугольников даже при отсутствии запечённых геометрических блобов в `.fig`, включая поддержку скругления углов (`cornerRadius`).
-  - **Прецизионная декомпозиция аффинных матриц с отражением (`det < 0`)**: корректный расчёт угла поворота для элементов с зеркальным отражением ($\text{scaleX}(-1)$ / $\text{scaleY}(-1)$), устраняющий инвертированный поворот выносных указателей и декоративных стрелок.
-  - **Отражённые подложки и нормализация контейнеров**: поддержка отрицательного масштаба в `BoundingBox.fromNode` и нормализация геометрии в `promoteToContainer` для зеркальных плашек навигационных панелей.
-  - **Автоматический расчёт правила заполнения SVG (`fill-rule="evenodd"`)**: распознавание `windingRule: 'ODD'` в `fillGeometry` и многоконтурных путей, исключающее сплошную заливку отверстий и вырезов в составных векторных иконках (значки гарантии, бейджи, логотипы мессенджеров).
-  - **Семантические списки `<ol>` и `<ul>` с сохранением маркеров**: трансляция строк с `ORDERED_LIST` / `UNORDERED_LIST` в нативные `<ol><li>` / `<ul><li>` с нумерацией `list-style-type: decimal` и сохранением межстрочных интервалов `listSpacing`.
-  - **Поддержка ограничений размеров `minSize` / `maxSize`**: трансляция минимальных и максимальных габаритов из Figma Kiwi в нативные CSS-свойства `min-height`, `min-width`, `max-height`, `max-width`.
-  - **Вертикальное кадрирование шрифтов (`leadingTrim`)**: генерация современных свойств `text-box-trim: trim-both` и `text-box-edge: cap alphabetic` для точной посадки крупных заголовков и цифр без паразитных внешних зазоров.
-  - **Расширенный каталог Google Fonts**: поддержка шрифтов `Jura`, `Bahianita`, `Manrope`, `Outfit`, `Unbounded` и др. в автоматическом линковщике шрифтов.
-  - **Снятие паразитной изоляции стекового контекста для `mix-blend-mode`**: предотвращение назначения `overflow: hidden` на Figma-группы и исключение нежелательного `z-index` у контейнеров с наложениями `MULTIPLY` и `SOFT_LIGHT`.
-  - **Защита фиксированных размеров SVG-иконок**: применение `max-width: none` для иконок с явными габаритами, предотвращающее их сжатие глобальным CSS reset-правилом `svg { max-width: 100% }`.
-- **🖼 Graphic Subtree Collapsing & Cumulative Baking Engine (v1.5.1)**:
-  - **Автоматическое схлопывание вырожденных графических цепочек**: устранение «мусорной» виртуальной вложенности слоев в Figma (`Group -> Group -> Mask Group -> Group -> Image`), порождаемой при сложном составлении иллюстраций и экспорте макетов.
-  - **Кумулятивная 2D-аффинная геометрия**: матричное перемножение цепочки 2D-трансформаций ($M_{\text{cumulative}} = M_1 \times M_2 \times \dots \times M_n$) с извлечением результирующего угла поворота $\theta = \text{atan2}(b, a)$, масштабирования и смещения.
-  - **Аппаратное запекание через Sharp**: поворот растра на вычисленный кумулятивный угол, наложение масок и центрирование под точные габариты холста с истинной альфа-прозрачностью (Retina @2x) в единый оптимизированный файл PNG/WebP без белых артефактов и обрезаний.
-  - **Схлопывание дерева DOM**: замена 5+ уровней вложенных виртуальных слоёв-обёрток на один чистый семантический тег `<img>` (или карточку с единственным `<img>`) с точными габаритами и без каскадного сбоя CSS Box Model (без паразитных паддингов, паразитного `flex: 1`, относительных сдвигов и вложенных `rotate`).
-- **🧭 Движок Smart Anchor & Constraint Resolution (v1.5.1)**:
-  - **Интеллектуальный выбор CSS-привязок `right` и `bottom`**: для абсолютно позиционированных элементов (`position: absolute`) автоматический переход от жестких `top` / `left` к `bottom` и `right`.
-  - **Приоритет дизайнерских Figma Constraints**: строгий учёт явных привязок к краям (`horizontalConstraint === 'MAX'` ➔ `right`, `verticalConstraint === 'MAX'` ➔ `bottom`).
-  - **Геометрическая близость к граням родителя**: если элемент расположен ближе к правой или нижней грани контейнера ($|\text{distRight}| < |\text{distLeft}|$ или $|\text{distBottom}| < |\text{distTop}|$), движок автоматически генерирует `right` / `bottom`, сохраняя адаптивное поведение при ресайзе родительского фрейма.
-  - **Адаптивные медиа-запросы**: автоматический сброс противоположных координат (`left: auto` / `right: auto`, `top: auto` / `bottom: auto`) при смене стороны привязки между брейкпоинтами.
-- **📦 Сохранение явных размеров и отступов в Auto Layout (v1.5.1)**:
-  - **Сохранение Fixed height в Bento-сетках**: корректная обработка `Fixed height` (например, `height: 200px`) у карточек внутри синтезированных вертикальных колонок (`Column`) в Bento-сетках.
-  - Перенос `layoutGrow: 1` с дочерних карточек на саму синтезированную колонку и назначение `layoutAlign: STRETCH`, что предотвращает паразитное превращение карточек во `flex: 1` по высоте.
-  - Защита нативных Auto Layout фреймов с фиксированной высотой от ошибочного снятия высоты через `isEqualHeightGroup`.
-  - **Универсальная детекция асимметричных `padding` для всех осей**: прецизионный расчёт 4-сторонних отступов (`padding: top right bottom left`) для `HORIZONTAL`, `VERTICAL` и `GRID` контейнеров. Автоматическое восстановление опущенных в Kiwi нулевых сторон (`stackPaddingBottom: 0`, `stackPaddingRight: 0`), предотвращающее ошибочное схлопывание стилей в симметричный `padding: 24px 0px` вместо `padding: 24px 0px 0px 0px`.
-  - **Аппаратное запекание Multiply в истинную альфа-прозрачность (Multiply-to-Alpha Baking)**: для растровых логотипов и изображений с режимом `blendMode: MULTIPLY` на светлом или белом фоне автоматическое математическое преобразование белого фона в честный альфа-канал через Sharp ($\alpha = 255 - \min(R,G,B)$). Решает проблему браузерных изолированных стековых контекстов (`opacity`, `overflow: hidden`), гарантируя чистое бесшовное отображение логотипов партнеров без белых фоновых плашек.
-  - **Поддержка режима наложения Luminosity**: трансляция Figma `blendMode: LUMINOSITY` в связку CSS `mix-blend-mode: luminosity` и `filter: grayscale(1)`. Обеспечивает корректное монохромное отображение логотипов и графики на нейтральных и полупрозрачных фонах браузера в 100% соответствии с рендером Figma.
-  - **Интеллектуальная защита иерархии наложения слоёв (Stacking Order Resolution)**: автоматическое обнаружение предшествующих блоков с не-обрезанными абсолютными дочерними элементами, выходящими за границы родительского фрейма (bleeding absolute children), с геометрической проверкой пересечения вертикальных координат ($y_{\text{bottom}} > y_{\text{siblingTop}}$). Назначение `position: relative; z-index: 1;` защищает последующие потоковые секции страницы от перекрытия выступающими элементами.
-- **📱 Figma Adaptive Multi-Breakpoint Engine (v1.4.0)**:
-  - **Кросс-девайсная адаптивная верстка из связанных фреймов**: автоматическое объединение макетов разных экранов (например, Desktop `1440px`, Tablet `768px`, Mobile `375px`) в **единый канонический HTML-документ** без дублирования DOM-дерева.
-  - **AST Reconciliation & Similarity Matching**: интеллектуальный скоринг нод по контенту, именам слоев, типам и положению в иерархии с автоматическим связыванием соответствующих элементов.
-  - **Гибридный синтез стилей (Fluid `clamp()` + Media Queries)**:
-    - Непрерывные численные параметры (`font-size`, `padding`, `gap`, `border-radius`, `width`) интерполируются математической функцией `clamp(min, slope * 100vw + intercept, max)`, обеспечивая абсолютно плавное изменение размеров без скачков при ресайзе окна.
-    - Дискретные изменения каркаса (`flex-direction: row` ➔ `column`, `grid-template-columns`, `order`) аккуратно выносятся в медиа-запросы `@media (max-width: 768px)`.
-  - **Обработка эксклюзивных элементов (Exclusive Elements)**:
-    - Десктопное меню (`.nav-links`) и мобильная кнопка (`.burger-btn`) сосуществуют в одном семантическом HTML-дереве и переключаются через чистый `display: none` / `display: flex` без JavaScript.
-  - **Гибкая детекция и поддержка соглашений имён**:
-    - Теги: `Home [desktop]`, `Home [mobile]`, `Catalog @1440`, `Catalog @375`, `Landing / Desktop`, `Home Mobile`.
-  - **Поддержка Desktop-first и Mobile-first**:
-    - По умолчанию Desktop-first (`@media (max-width: ...)`).
-    - Флаг `--mobile-first` для генерации восходящих запросов (`@media (min-width: ...)`).
-- **🌐 Figma Multi-Page Import Engine (v1.3.0)**:
-  - **Многостраничный экспорт за одну команду**: декомпиляция проектов Figma с множеством экранов или вкладок в готовую модульную файловую структуру (`index.html`, `about.html`, `catalog.html`, `contacts.html`) с **единым оптимизированным файлом `css/style.css`**.
-  - **Трёхуровневая детекция страниц**:
-    - **Приоритет 1 (Явные теги и теги исключения)**: поиск маркированных фреймов (`[page]`, `[страница]`, `[p]`, `#page`, `/page` или кастомных через `--page-tag`). Имя страницы очищается и транслитерируется (`[page] Home` ➔ `index.html`, `[страница] О нас` ➔ `about.html`). Поддержка **тегов исключения** (`[exclude]`, `[исключить]`, `[исключение]`, `[ignore]`, `#exclude`, кастомных `--exclude-tag`), позволяющих исключить черновики, диалоги и модалки прямо в Figma.
-    - **Приоритет 2 (Экранные артборды и Outlier Detection)**: автоматическое распознавание верхнеуровневых фреймов экрана (по умолчанию `width >= 320px`, `height >= 400px`) при отсутствии тегов. Первый экран становится `index.html`, остальные — `<slug>.html`. **Кластеризация по медианному размеру (Outlier Detection)** автоматически отсекает мелкие всплывающие окна и попапы от основного экрана.
-    - **Приоритет 3 (Canvas вкладки)**: поддержка декомпиляции нативных страниц Figma (`CANVAS` узлы в Kiwi AST) по флагу `--all-canvases`.
-  - **Smart DRY CSS**: слои на разных страницах с одинаковыми именами и полностью совпадающими стилями объединяются в единое правило (например, общий `.btn` или `.header`).
-  - **Изоляция коллизий стилей (100% Conflict-Free)**: слои с одинаковыми именами, но разными параметрами автоматически изолируются страничными модификаторами (`.btn--cart`), предотвращая перезапись стилей.
-  - **Разделение свойств `.main-container`**: базовые стили пишутся в `.main-container`, а индивидуальные параметры страницы — в модификатор (`.page-home-container`, `.page-about-container`).
-  - **Единый пул ассетов и токенов**: изображения дедуплицируются по SHA-1 хешу в единую папку `img/`, а токены проекта объединяются в секцию `:root`.
-- **📐 Интеллектуальный синтез адаптивной верстки (Layout Synthesis Engine)**:
-  - **Полный отказ от `position: absolute`**: для макетов Figma, созданных дизайнерами **без единого Auto Layout**, движок автоматически группирует плоские абсолютные слои в гибкие Flexbox-контейнеры (`flex-direction: row | column`) и CSS Grid.
-  - **Фаза 1. Spatial Normalization & Indexing**: точное вычисление 2D-габаритов (`BoundingBox`), пространственное индексирование и разрешение порядка наложения z-index.
-  - **Фаза 2. Background & Container Induction**: автоматическое обнаружение прямоугольников-подложек (`RECTANGLE` с заливками, скруглениями или тенями), повышение их до семантических контейнеров и перенос стилей оформления на синтезированные `<div>` и `<button>` блоки.
-  - **Фаза 3. Recursive XY-Cut & Fuzzy Clustering**: метод рекурсивного ортогонального разрезания пространства по 1D-профилям проекций с допуском неточностей дизайнера $\epsilon = 3\text{px}$ (Fuzzy Tolerance Clustering) для выравнивания строк, колонок и элементов (`align-items: center | flex-start`, `justify-content: space-between`).
-  - **Фаза 4. Grid & Matrix Induction**: автоматическое распознавание регулярных матричных сеток карточек $N \times M$ и синтез нативного `display: grid; grid-template-columns: repeat(C, 1fr); column-gap: ...; row-gap: ...;` (с корректной трансляцией Kiwi-объектов `gridColumns.entries` в целочисленные повторения).
-  - **Фаза 5. Flexbox Property Synthesis**: вычисление внутренних отступов (`padding`), промежутков (`gap`), правил растяжения (`align-self: stretch`, `width: 100%`) и изоляция декоративных оверлеев (`DECORATIVE_OVERLAY`).
-  - **Иерархия слоёв и расчет `z-index`**: точное определение взаимного положения слоёв в Figma — фоновые подложки гарантированно получают `z-index: 0` и располагаются перед контентом, а для абсолютных фоновых декоративных изображений автоматически добавляется `pointer-events: none;`, предотвращая блокировку кликов по интерактивным элементам под ними.
-  - **Корректная обработка Clip Content**: учёт параметра `frameMaskDisabled` в Figma Kiwi — если «Clip Content» отключён дизайнером, свойство `overflow: hidden` не добавляется, сохраняя естественное переполнение контента.
-  - **Асимметричные отступы (`padding`)**: прецизионная трансляция 4-сторонних внутренних отступов с учётом опущенных нулевых значений из Kiwi (например, `padding: 64px 0px 0px 0px;`).
-  - **Управление через CLI**: флаг `--smart-layout` (включен по умолчанию) и `--no-smart-layout` для отката к абсолютному позиционированию при необходимости.
-- **Режимы вёрстки и адаптивность (Fluid & Relative)**:
-  - **Fluid (резиновая вёрстка)**: главный контейнер страницы растягивается на всю ширину (`width: 100vw; min-height: 100dvh;`), для типографики и отступов генерируются гибкие выражения `clamp()`, `min()`, `max()`, подключается `<meta name="viewport" content="width=device-width, initial-scale=1">`, а вместо фиксированных пикселей используются `rem`, `em`, `vw`, `vh`.
-  - **Relative (относительные единицы)**: замена всех фиксированных `px` на относительные единицы `rem`, `em`, `vw`, `vh` для гармоничного масштабирования шрифтов и отступов.
-  - **Default**: классическая фиксированная вёрстка с точным соответствием размерам в Figma в `px`.
-- **Оптимизация и обработка изображений**:
-  - Автоматическое масштабирование картинок по размеру в CSS с множителем x2 для идеального Retina-качества.
-  - Генерация адаптивных атрибутов `srcset` и `sizes` под экраны смартфонов, планшетов и компьютеров (с возможностью отключения через `--no-srcset`).
-  - Сжатие картинок без потери качества (Lossless) через Sharp/MozJPEG.
-  - Конвертация в ультрасовременные форматы `WebP` и `AVIF`.
-- **Полный CSS Reset**: генерация современного сброса стилей (`*, *::before, *::after { box-sizing: border-box; }`, сброс кнопок, полей ввода, списков, таблиц, ссылок), гарантирующий консистентное отображение во всех браузерах.
-- **Поддержка компонентов и переопределений (Instance Overrides)**:
-  - Автоматическое разрешение `INSTANCE` нод через клонирование мастер-компонентов (`SYMBOL`).
-  - Полное применение `symbolOverrides` и `componentPropAssignments`: подмена текста, переопределение размеров, заливок, обводок, видимости, `letterSpacing`, `lineHeight`, `fontSize`, `fontName`, скруглений и вариантов начертания.
-- **Реконструкция векторной графики (SVG)**:
-  - Декодирование бинарных потоков `commandsBlob` и `VectorNetwork` в нативные SVG `<path>`.
-  - Автоматическое объединение чисто векторных фреймов и групп в единые цельные `<svg>` иконки.
-  - Пропорциональное масштабирование координат векторов (`scale(sx, sy)`) под реальный размер фрейма.
-  - Атрибут `vector-effect="non-scaling-stroke"` для защиты толщины линий от искажений при масштабировании.
-- **Маски и запекание прозрачности (Mask Baking & Transparency)**:
-  - **Автоматическое запекание масок в графические ассеты**: по умолчанию при экспорте слоёв с масками (`mask: true`), наложенными на изображения, движок через Sharp (`blend: 'dest-in'`) аппаратно запекает маску прямо в файл ассета с истинной альфа-прозрачностью (`hasAlpha: true`, PNG 32-bit / WebP).
-  - Поддержка радиальных (`GRADIENT_RADIAL`) и линейных (`GRADIENT_LINEAR`) градиентных масок с сохранением углов и прозрачности, геометрических форм (`ELLIPSE`, `cornerRadius`) и растровых масок (`IMAGE`).
-  - Полное исключение костыльных `mix-blend-mode: darken` и искусственных белых фонов (`background-color: #ffffff;`), гарантирующее идеальное отображение на любых фонах в 100% браузеров без белых ореолов и проблем Safari.
-  - **Ручной режим CSS-масок по тегу (`[mask]`, `[маска]`)**: при наличии тегов `[mask]`, `[маска]`, `#mask`, `/mask` запекание в файл пропускается и генерируется нативный CSS `mask-image` / `-webkit-mask-image`.
-  - Сохранение фиксированных габаритов `width` и `height` у Mask Group контейнеров.
-- **Прецизионный Auto Layout и Flexbox**:
-  - Чёткое разделение основной и поперечной осей (`isRow` vs `!isRow`).
-  - Сохранение фиксированных размеров на основной оси при растяжении (`align-self: stretch`) по поперечной (например, `width: 256px` у растянутого сайдбара).
-  - Режимы распределения `SPACE_BETWEEN` и `SPACE_EVENLY` транслируются в чистый `justify-content: space-between`.
-  - Поддержка режимов **Hug contents** (отсутствие жестких `width`/`height`), **Fixed** (`px`), и **Fill container** (`flex: 1`).
-  - Автоматическое вертикальное центрирование текста при `textAlignVertical: CENTER`.
-- **Типографика и обрезка текста**:
-  - Поддержка множителей `line-height` (единицы `RAW`, `PERCENT`, `PIXELS`).
-  - Межбуквенный интервал `letter-spacing` (относительные `em` и фиксированные `px`, включая отрицательные значения вроде `-3%` -> `-0.03em`).
-  - **Градиентный текст**: поддержка линейных и радиальных градиентов для текстовых слоёв с автоматической генерацией `background-image: linear-gradient(...)`, `-webkit-background-clip: text`, `-webkit-text-fill-color: transparent`.
-  - Параметр **Truncate text** из Figma: генерация `text-overflow: ellipsis; white-space: nowrap; overflow: hidden; min-width: 0`.
-- **Типизированные `:root` CSS-переменные**:
-  - Контекстно-зависимая группировка: радиусы (`--radius-*`), цвета (`--color-*`), шрифты (`--font-*`), габариты холстов (`--slide-*`).
-  - Исключение случайной подстановки переменных одного типа в свойства другого (например, радиусов в ширину или отступы).
-
----
-
-## 🚀 Установка и быстрый старт
-
-### Установка через npm
+### 1. Installation
 
 ```bash
-# Глобальная установка CLI утилит (figmatik, fig2html, fig-to-html, html-to-fig, html2fig):
+# Globally via npm:
 npm install -g figmatik
 
-# Или установка в проект как зависимость:
-npm install figmatik
-
-# Или запуск без установки через npx:
+# Or run instantly without installation via npx:
 npx figmatik design.fig -s --webp
 ```
 
----
+### 2. Three Essential Workflows
 
-### Запуск через CLI
-
-Утилита предоставляет универсальную команду **`figmatik`** (автоматически определяющую направление по расширению входного файла), а также специализированные команды-алиасы:
-
-#### 1. Декомпиляция: .fig ➔ чистый HTML/CSS (`figmatik` / `fig2html` / `fig-to-html`)
 ```bash
-# Базовый запуск: создание автономного HTML-файла с встроенными стилями и картинками:
-figmatik design.fig
-# или:
-fig2html design.fig
+# 1. Decompile: .fig ➔ clean HTML + external CSS + WebP images:
+figmatik design.fig dist/index.html -s --webp --compress
 
-# С вынесением внешнего CSS (css/style.css) и картинок (img/*) в формате WebP:
-figmatik design.fig -s --webp
+# 2. Export to a typed React TSX component with Tailwind CSS:
+figmatik card.fig src/components/PricingCard.tsx --react --tailwind
 
-# Автоматическое слияние связанных экранов (Desktop, Tablet, Mobile) в единый responsive сайт (v1.4.0):
-figmatik design.fig index.html --responsive -s --webp
-
-# Указание языка документа (или автоопределение по тексту: en / ru):
-figmatik design.fig index.html --lang en -s --webp
-
-# Явное указание целевых брейкпоинтов:
-figmatik design.fig index.html --breakpoints 1440,1024,768,375 -s --webp
-
-# Подход Mobile-first (min-width вместо max-width):
-figmatik design.fig index.html --mobile-first -s --webp
-
-# Полноценная резиновая (fluid) вёрстка на всю ширину (100vw / 100dvh, clamp(), min(), max(), rem):
-figmatik design.fig index.html --fluid -s --webp
-
-# Использование относительных единиц измерения (rem, em, vw, vh вместо px):
-figmatik design.fig index.html --relative -s --webp
-
-# Декомпиляция с генерацией адаптивной CSS Grid сетки вместо Flexbox:
-figmatik design.fig index.html --grid -s --webp
-# или:
-figmatik design.fig index.html --layout grid -s --webp
-
-# Многостраничный экспорт в модульный сайт (dist/*.html + dist/css/style.css + dist/img/*):
-figmatik website.fig dist -s --webp
-
-# Экспорт всех Canvas-вкладок документа Figma:
-figmatik website.fig dist --all-canvases -s --webp
-
-# Экспорт только выбранных страниц через фильтр:
-figmatik website.fig dist --pages "Home, About, Pricing" -s --webp
-
-# Экспорт нативных Figma Variables в файл дизайн-токенов JSON (W3C Design Tokens format):
-figmatik design.fig index.html --tokens tokens.json
-
-# Экспорт с картинками в формате AVIF и сжатием без потери качества (lossless):
-figmatik design.fig index.html -s --avif --compress
-
-# Отключение адаптивного srcset (генерирует единую четкую 2x Retina картинку в src):
-figmatik design.fig index.html -s --no-srcset
-
-# Декомпиляция макетов без Auto Layout в чистый Flexbox/Grid (включено по умолчанию):
-figmatik unorganized.fig index.html -s --webp
-
-# Принудительный откат к традиционному position: absolute:
-figmatik unorganized.fig index.html --no-smart-layout
-
-# Тонкая настройка путей к CSS и картинкам:
-figmatik test/hard.fig index.html --extract-css --css-file styles/main.css --assets-dir assets
-```
-
-#### 2. Прямая компиляция: HTML ➔ .fig (`figmatik` / `html-to-fig` / `html2fig`)
-```bash
-# Простой запуск для HTML файла:
-figmatik index.html
-# или:
-html-to-fig index.html
-# или:
-html2fig index.html
-
-# Указание имени выходного файла:
+# 3. Direct compile: HTML/CSS ➔ native .fig file for Figma:
 figmatik landing.html landing.fig
 ```
 
-> 📖 **Подробное руководство для дизайнеров**: советы по созданию макетов для идеального 100% Pixel-Perfect экспорта в HTML/CSS читайте в [**docs/figma-design-guide.md**](docs/figma-design-guide.md).
+---
+
+## 📚 Documentation Library
+
+Explore comprehensive guides and deep architectural documentation:
+
+| Guide | Description |
+| :--- | :--- |
+| [⚡ **Features & Engine Architecture (docs/FEATURES.md)**](docs/FEATURES.md) | Full technical catalog: Layout Synthesis, Multi-breakpoint, Tailwind, A11y, Tokens, and rendering. |
+| [💻 **CLI Reference & One-Liners (docs/CLI.md)**](docs/CLI.md) | Complete reference for all 40+ flags across `figmatik`, `fig2html`, `html-to-fig`, plus 15 practical recipes. |
+| [🛠 **Programmatic API (docs/API.md)**](docs/API.md) | Node.js & TypeScript SDK reference (`convertFigToHtml`, `generateFigFile`, types, and recipes). |
+| [🛡️ **Security Architecture (docs/SECURITY.md)**](docs/SECURITY.md) | Threat model, Anti-SSRF, DNS Rebinding, Zip Slip, System Path Guard, and SaaS checklist. |
+| [🧪 **Testing Suite (docs/TESTING.md)**](docs/TESTING.md) | Test pyramid (238 tests: unit, integration, e2e), running & filtering, TypeScript checks, CI/CD. |
+| [🎨 **Designer Guide (docs/figma-design-guide.md)**](docs/figma-design-guide.md) | Practical guide for designers on structuring Figma files for 100% Pixel-Perfect export. |
+| [📜 **Changelog (docs/CHANGELOG.md)**](docs/CHANGELOG.md) | Full release history from 1.0.0 to 1.6.0 following the *Keep a Changelog* standard. |
 
 ---
 
-## 💻 CLI Справка
+## 💻 CLI Quick Overview
 
-### figmatik / fig2html (fig-to-html)
-```text
-USAGE:
-  $ figmatik <input.fig> [output.html] [options]
-  $ fig2html <input.fig> [output.html] [options]
-  $ fig-to-html <input.fig> [output.html] [options]
-  $ npx figmatik <input.fig> [output.html] [options]
-
-ARGUMENTS:
-  <input.fig>       Путь к исходному .fig файлу
-  [output.html]     Путь для выходного HTML файла (по умолчанию: <имя-файла>.html) или папка
-
-OPTIONS:
-  -i, --input <file>       Входной .fig файл
-  -o, --output <file>      Выходной .html файл или директория
-  -p, --page <name>        Имя страницы в Figma (по умолчанию: "Page 1")
-  --multi-page             Включить многостраничный режим (по умолчанию: включен при наличии страниц)
-  --single-page            Принудительный экспорт только одной (первой/указанной) страницы
-  --page-tag <tag>         Кастомный тег или список тегов в названии фреймов ([page],[страница])
-  --exclude-tag <tag>      Тег или список тегов для исключения фреймов из экспорта ([exclude],[исключить])
-  --no-outlier-detection   Отключить фильтрацию модалок и диалогов по медианному размеру
-  --pages <names>          Список конкретных страниц/фреймов для экспорта через запятую
-  --all-canvases           Экспортировать все Canvas-вкладки документа Figma как отдельные страницы
-  --min-page-width <px>    Минимальная ширина фрейма для признания отдельной страницей (по умолчанию: 320)
-  --min-page-height <px>   Минимальная высота фрейма для признания отдельной страницей (по умолчанию: 400)
-  --class-scope <mode>     Режим изоляции конфликтующих классов: modifier, scoped, numbered (по умолчанию: modifier)
-  -w, --watch              Режим наблюдения (авторебилд при изменении .fig)
-  --responsive             Автоматическое слияние связанных экранов в единый responsive сайт (по умолчанию: включено)
-  --no-responsive          Отключить слияние брейкпоинтов (экспортировать каждый экран отдельной HTML страницей)
-  --breakpoints <list>     Целевые ширины брейкпоинтов через запятую (например: "1440,768,375")
-  --mobile-first           Генерация стилей Mobile-first (min-width вместо max-width)
-  -s, --separate-files     Извлекать отдельный CSS (css/style.css) и картинки (img/*)
-  --extract-css            Вынести стили в отдельный .css файл вместо <style> в <head>
-  --css-file <path>        Путь для внешнего файла стилей (по умолчанию: "css/style.css")
-  --no-inline-images       Извлекать изображения в отдельные файлы вместо Base64
-  --assets-dir <dir>       Папка для извлеченных картинок (по умолчанию: "img")
-  --inline-styles          Генерировать инлайн-атрибуты style="..." вместо классов
-  --image-scale <n>        Множитель размера картинок от размера в CSS (по умолчанию: 2 для Retina x2)
-  --no-srcset              Отключить адаптивный srcset / sizes для разных устройств
-  -c, --compress           Сжатие изображений без потери качества (lossless)
-  --format <fmt>           Конвертация в современный формат: webp, avif, original (по умолчанию: original)
-  --webp                   Шорткат для --format webp
-  --avif                   Шорткат для --format avif
-  --layout <mode>          Режим вёрстки: default (px), relative (rem/em/vw/vh), fluid (clamp/min/max) или grid
-  --fluid                  Шорткат для --layout fluid (100vw/100dvh, clamp(), rem, vw/vh)
-  --relative, --rem        Шорткат для --layout relative (rem, em, vw/vh вместо px)
-  --grid                   Шорткат для --layout grid (CSS Grid разметка)
-  --tokens [path]          Экспорт Figma Variables в файл дизайн-токенов JSON (по умолчанию: tokens.json)
-  --spacing-tokens         Генерация шкалы примитивных :root отступов (--space-*) (по умолчанию: включено)
-  --no-spacing-tokens      Отключить генерацию :root spacing-токенов
-  --lang <code>            Язык HTML документа (например: en, ru; автоопределение по умолчанию)
-  --smart-layout           Синтез адаптивного Flexbox/Grid без position: absolute (по умолчанию: включен)
-  --no-smart-layout        Отключить синтез разметки и использовать абсолютное позиционирование
-  --tailwind               Включить генерацию нативных утилит Tailwind CSS
-  --tailwind-version <v>   Целевая версия Tailwind: v3 или v4 (по умолчанию: v4)
-  --tailwind-mode <mode>   Режим генерации: utility (классы в разметке) или hybrid (BEM + @apply)
-  --tailwind-tolerance <n> Порог привязки в px к стандартной сетке 4px (по умолчанию: 1)
-  --tailwind-arbitrary <s> Стратегия произвольных значений [...]: auto, snap или strict
-  --tailwind-prefix <pfx>  Префикс генерируемых классов Tailwind (например, "tw-")
-  --no-tailwind-cdn        Отключить внедрение скрипта Play CDN в автономный HTML
-  --framework <fmt>        Формат компонентов: html, react, vue, svelte (по умолчанию: html)
-  --react, --jsx, --tsx    Шорткат для --framework react (генерация React TSX компонента)
-  --vue                    Шорткат для --framework vue (генерация Vue 3 SFC)
-  --svelte                 Шорткат для --framework svelte (генерация Svelte компонента)
-  --scaffold [dir]         Создать полноценный enterprise-проект с package.json и сборщиком
-  -v, --verbose            Подробные логи процесса
-  -h, --help               Справка по командам
-  -V, --version            Версия утилиты
-```
-
-### figmatik / html-to-fig (html2fig)
-```text
-USAGE:
-  $ figmatik <input.html> [output.fig] [options]
-  $ html-to-fig <input.html> [output.fig] [options]
-  $ html2fig <input.html> [output.fig] [options]
-
-ARGUMENTS:
-  <input.html>      Путь к исходному HTML файлу
-  [output.fig]      Путь к создаваемому .fig файлу (по умолчанию: <имя-файла>.fig)
-
-OPTIONS:
-  -i, --input <file>       Входной файл
-  -o, --output <file>      Выходной файл
-  -t, --template <file>    Файл шаблона .fig (по умолчанию: templates/template.fig)
-  -p, --page <name>        Имя страницы в Figma (по умолчанию: "Page 1")
-  -w, --watch              Режим наблюдения (автосборка при изменении)
-  --no-remote-images     Отключить скачивание внешних картинок (HTTP/HTTPS)
-  -v, --verbose            Подробные логи процесса сборки
-  -h, --help               Справка по командам
-  -V, --version            Версия утилиты
-```
-
----
-
-## 🌊 Enterprise Tailwind CSS (v3 & v4)
-
-Figmatik предоставляет 100% полноценную enterprise-поддержку **Tailwind CSS** как для обратной декомпиляции (`.fig ➔ HTML/JSX/Vue/Svelte`), так и для прямой компиляции (`HTML+Tailwind ➔ .fig`).
-
-### Ключевые возможности Tailwind в Figmatik:
-1. **Поддержка версий v3 и v4 (Oxide / CSS-first)**:
-   - **Tailwind v4**: генерация директив `@import "tailwindcss";` и секций `@theme` с нативными CSS-переменными темы.
-   - **Tailwind v3**: создание классических файлов `tailwind.config.js` и `postcss.config.js`.
-2. **Двусторонняя компиляция (Round-Trip)**:
-   - **Figma ➔ Tailwind**: точный маппинг Auto Layout, типографики, скруглений, теней, градиентов (`bg-gradient-to-*`, `from-*`, `to-*`), blend modes (`mix-blend-*`) и SVG-иконок (`w-*`, `h-*`, `text-current`).
-   - **Tailwind ➔ Figma**: предварительный компилятор вычисляет стили классов (`flex-col gap-4 bg-blue-600 rounded-2xl`) и собирает нативные Kiwi узлы с Auto Layout (`stackSpacing: 16`, `cornerRadius: 16`).
-3. **Умная привязка к 4px сетке (Scale Snapping)**:
-   - Значения отступов и размеров автоматически привязываются к стандартной шкале Tailwind (`p-4`, `gap-6`, `rounded-xl`).
-   - При отклонении от сетки свыше порога толерантности генерируются валидные произвольные JIT-значения `[17px]`.
-4. **Компонентные форматы (React JSX/TSX, Vue, Svelte)**:
-   - `--react`: генерация функционального React-компонента на TypeScript с `className`, типизированным интерфейсом `Props` и самозакрывающимися тегами.
-   - `--vue`: генерация Single File Component (`.vue`) с блоками `<template>` и `<script setup>`.
-   - `--svelte`: генерация компонента Svelte (`.svelte`).
-5. **Готовый скаффолдинг проектов (`--scaffold`)**:
-   - Автоматическое создание полноценного проекта с `package.json`, PostCSS или `@tailwindcss/cli`, файлами стилей и скриптами `dev` и `build`.
-6. **Гибридный режим BEM + `@apply` (`--tailwind-mode hybrid`)**:
-   - Сохраняет семантические имена классов в HTML (`.hero-card`) и генерирует чистый файл стилей с директивами `@apply p-6 bg-white rounded-xl shadow-md;`.
-
-### Примеры использования в CLI:
-```bash
-# 1. Декомпиляция с утилитами Tailwind и zero-dependency CDN превью:
-fig2html design.fig --tailwind
-
-# 2. Экспорт в типизированный компонент React TSX:
-fig2html design.fig App.tsx --react
-
-# 3. Экспорт в компонент Vue 3:
-fig2html design.fig Card.vue --vue
-
-# 4. Скаффолдинг готового production-проекта Tailwind v4:
-fig2html design.fig --scaffold ./my-tailwind-app
-
-# 5. Гибридный режим (семантические классы в HTML + @apply в CSS):
-fig2html design.fig -s --tailwind --tailwind-mode hybrid
-
-# 6. Прямая компиляция HTML-страницы со стилями Tailwind в .fig:
-html-to-fig tailwind-page.html native-auto-layout.fig
-```
-
----
-
-## 🛠 Программный API (Node.js)
-
-Вы можете использовать библиотеку в своих скриптах и бэкендах:
-
-### 1. Обратная декомпиляция (.fig ➔ HTML/CSS)
-```javascript
-import { convertFigToHtml } from 'figmatik';
-
-async function decompile() {
-    // 1. Автономный единый HTML файл (все стили в <head><style>, картинки в Base64):
-    const result1 = await convertFigToHtml('showcase.fig', {
-        outputHtmlPath: 'output.html',
-        pageName: 'Page 1',
-        inlineImages: true,
-        verbose: true
-    });
-
-    // 2. Модульная структура с отдельным CSS (css/style.css), картинками WebP и сжатием без потерь:
-    const result2 = await convertFigToHtml('showcase.fig', {
-        outputHtmlPath: 'dist/index.html',
-        separateFiles: true, // создает dist/css/style.css и dist/img/*
-        imageScale: 2,       // масштабирование под CSS размер x2 для Retina качества
-        responsiveImages: true, // генерация srcset и sizes под разные устройства
-        compress: true,      // сжатие без потери качества (lossless)
-        imageFormat: 'webp', // современные форматы: 'webp', 'avif' или 'original'
-        verbose: true
-    });
-
-    // 3. Полноценная резиновая (fluid) вёрстка на всю ширину страницы:
-    const result3 = await convertFigToHtml('showcase.fig', {
-        outputHtmlPath: 'dist/fluid.html',
-        layoutMode: 'fluid', // 'fluid' (100vw, 100dvh, clamp, min, max, rem) | 'relative' (rem, em, vw, vh) | 'default' (px)
-        separateFiles: true,
-        imageFormat: 'webp',
-        verbose: true
-    });
-
-    // 4. Полноценный многостраничный экспорт сайта (index.html, about.html, catalog.html + css/style.css):
-    const result4 = await convertFigToHtml('website.fig', {
-        outputHtmlPath: 'dist/index.html',
-        multiPage: true,      // автоопределение тегов [page] и экранных артбордов
-        separateFiles: true,  // единый оптимизированный css/style.css и дедуплицированный пул img/*
-        imageFormat: 'webp',
-        verbose: true
-    });
-
-    // 5. Адаптивное слияние связанных экранов (Desktop, Tablet, Mobile) в единый сайт (v1.4.0):
-    const result5 = await convertFigToHtml('responsive.fig', {
-        outputHtmlPath: 'dist/index.html',
-        responsive: true,     // объединяет связанные фреймы в 1 канонический HTML-документ
-        separateFiles: true,  // dist/index.html + dist/css/style.css
-        breakpoints: '1440,768,375'
-    });
-    console.log(`Экспортировано ${result4.pages.length} страниц: ${result4.pages.map(p => p.fileName).join(', ')}`);
-
-    console.log(`Декомпилировано ${result2.totalNodes} нод за ${result2.durationMs}мс!`);
-    console.log(`HTML: ${result2.outputPath}, CSS: ${result2.cssPath}, Assets: ${result2.assetsDir}`);
-}
-
-decompile();
-```
-
-### 2. Прямая компиляция (HTML ➔ .fig)
-```javascript
-import { generateFigFile } from 'figmatik';
-
-async function build() {
-    const result = await generateFigFile({
-        htmlPath: 'test/hard.html',
-        outputPath: 'output.fig',
-        templatePath: 'templates/template.fig', // опционально
-        pageName: 'Page 1',
-        verbose: true
-    });
-
-    console.log(`Создано ${result.generatedNodes} нод за ${result.durationMs}мс!`);
-    console.log(`Файл: ${result.outputPath} (${result.fileSizeBytes} байт)`);
-}
-
-build();
-```
-
----
-
-## 🧪 Тестирование
-
-Проект покрыт всесторонними автоматическими тестами (146 теста):
-- Парсинг цветов (HEX, RGB, RGBA, HSL, HSLA, named, modern space-slash syntax, alpha)
-- Линейные и радиальные градиенты, расчёт и обратный пересчет углов матриц трансформации
-- Тени (drop-shadow, inset, multiple, zero spread) и фильтры размытия
-- Типографика (font-weight, style, line-height multipliers, letter-spacing, Rich Text)
-- Определение габаритов изображений и хеширование SHA-1
-- Сквозная генерация и проверка валидности структуры декодером Figma Kiwi
-- Тестирование на сложных реальных макетах (`test/showcase.html` и `test/hard.html`)
-- Декомпиляция .fig в валидный адаптивный HTML с сохранением семантики, Flexbox и графики
-- Автоматическое формирование `:root` переменных и семантических классов слоев с транслитерацией
-- Определение форматов изображений по Magic Bytes и экспорт раздельных файлов (`css/style.css`, `img/*`)
-- Изменение размера изображений по размеру в CSS с множителем x2 для лучшего Retina-качества
-- Добавление адаптивных размеров под разные устройства (mobile, tablet, desktop) через `srcset` и `sizes`
-- Возможность отключения `srcset` / `sizes` через параметр CLI (`--no-srcset`)
-- Сжатие размера и качества картинок без потери качества (lossless, mozjpeg, webp/avif lossless)
-- Конвертация изображений в современные медиа-форматы (`WebP`, `AVIF`) через параметры CLI
-- Относительные единицы измерения (`rem`, `em`, `vw`, `vh`) вместо фиксированных `px` (`--relative`, `--rem`)
-- Полноценная резиновая (fluid) вёрстка на всю ширину страницы (`width: 100vw; min-height: 100dvh;`) с функциями `min()`, `max()`, `clamp()` (`--fluid`)
-- Добавление `<meta name="viewport" content="width=device-width, initial-scale=1">` для полной мобильной адаптивности
-- Полный Round-Trip тест: HTML ➔ .fig ➔ HTML с проверкой целостности всех элементов
-- Декодирование бинарных `commandsBlob` и `VectorNetwork` в масштабируемые SVG пути
-- Сохранение фиксированных габаритов Auto Layout при растяжении по поперечной оси (`align-self: stretch`)
-- Полная поддержка `symbolOverrides` для инстансов компонентов (подмена текста, переопределения `letter-spacing`, `line-height` и стилей)
-- Корректная обработка масок и встраивание замаскированных картинок в поток документа
-- Поддержка нативных переменных Figma (`VARIABLE_SET`, `VARIABLE`) и экспорт дизайн-токенов в JSON (`--tokens`)
-- Трансляция CSS Grid (`repeat(N, 1fr)`) в Auto Layout Wrap и обратная декомпиляция (`--layout grid`, `--grid`)
-- Генерация интерактивных связей прототипа (`prototypeInteractions`) для состояний `:hover`
-- Интерактивный терминальный прогресс-бар в реальном времени с процентами, этапами и таймером для конвертации больших файлов (`cli.js`, `cli-reverse.js`)
-- Трансляция Figma Auto line-height (100% или AUTO) в нативный CSS `line-height: normal` (вместо жесткого `1`)
-- Автоматическое обнаружение Google Fonts и расчет размеров текста по таблице метрик `FONT_METRICS_TABLE`
-- Оптимизация памяти при чтении бинарных `.fig` (ленивое декодирование изображений в Base64)
-- **Layout Synthesis Engine**:
-  - Геометрические операции `BoundingBox`: вычисление пересечений, объединений, расстояний и частичных перекрытий границ
-  - 1D-проекции и нечеткая кластеризация интервалов (Fuzzy Interval Clustering, $\epsilon = 3\text{px}$)
-  - Детекция карточек-подложек и повышение прямоугольников до семантических контейнеров с переносом стилей
-  - Изоляция декоративных оверлеев (бейджи, кнопки закрытия) с сохранением локального `position: absolute`
-  - Распознавание $N \times M$ матричных сеток элементов с равномерным шагом и отступами
-  - Рекурсивный синтез разметки Recursive XY-Cut: построение колонок и строк Flexbox с автоматическим вычислением gap и padding
-  - Равномерное адаптивное распределение `flex: 1` для карточек и элементов равной ширины с поддержкой смешанных строк (outlier items сохраняют фиксированную ширину)
-  - Приоритет верхнего выравнивания (`align-items: flex-start`) для строк карточек и блоков при совпадении верхних границ (`allTopsAligned`) для аккуратной адаптивности при разной высоте контента
-  - Снятие избыточных `width` и `height` с кнопок (`.btn-*`, `button`) и синтезированных строк/контейнеров
-  - Корректная иерархия наложения абсолютных оверлеев с назначением `z-index` (>= 10) над контентом карточек и предотвращением обрезки через `overflow: hidden`
-  - Предварительная изоляция выступающих за границы холста или перекрывающих элементы оверлеев, предотвращающая искажение внутренних отступов (`padding`) контейнеров
-  - Поддержка настроек цветокоррекции изображений Figma (`paintFilter`: Exposure, Contrast, Saturation, Temperature, Tint) с трансляцией в CSS `filter`
-  - Адаптивный резиновый корневой контейнер `.main-container` с `max-width` вместо фиксированного `width`
-  - Интеллектуальный расчет ритма секций: при неравномерных зазорах дочерним блокам назначаются точечные `margin-top` вместо искусственного общего `gap`
-  - Трансляция Auto Layout `SPACE_BETWEEN` и `SPACE_EVENLY` в `justify-content: space-between`
-  - Интеллектуальный расчет взаимного порядка слоев и `z-index` (фоновые подложки с `z-index: 0` vs контент с `z-index: 1`) с добавлением `pointer-events: none` для фоновых декоративных изображений
-  - Сохранение фиксированных размеров `width` и `height` у Mask Group контейнеров
-  - Парсинг объектов `gridColumns.entries` в Kiwi в целочисленный синтаксис `repeat(N, 1fr)` в CSS Grid
-  - Наложение линейных и радиальных градиентов на текст (`-webkit-background-clip: text`, `-webkit-text-fill-color: transparent`, `background-image: linear-gradient(...)`)
-  - Прецизионное сохранение 4-сторонних асимметричных `padding` с восстановлением опущенных Kiwi нулевых сторон
-  - Отключение `overflow: hidden` при отключенном Clip Content (`frameMaskDisabled: true`)
-  - Парсинг CLI-флагов `--smart-layout` и `--no-smart-layout`
-  - End-to-End декомпиляция макетов без единого Auto Layout фрейма в чистый Flexbox и CSS Grid без `position: absolute`
-  - Проверка сохранения традиционного абсолютного позиционирования при флаге `--no-smart-layout`
-- **Figma Multi-Page Import Engine (v1.3.0)**:
-  - Транслитерация кириллических названий страниц в URL-совместимые латинские имена файлов (`RU_MAP`)
-  - Распознавание явных тегов страниц (`[page]`, `[страница]`, `[p]`, `#page`, `/page`) и кастомных тегов (`--page-tag`)
-  - Поддержка тегов исключения (`[exclude]`, `[исключить]`, `[исключение]`, `[ignore]`, `#exclude`, `--exclude-tag`)
-  - Автоматическое определение страниц по экранным артбордам (`width >= 320px`, `height >= 400px`)
-  - Кластеризация по медианному размеру (Outlier Detection) для отсечения модальных окон и диалогов
-  - Экспорт нативных Canvas-вкладок Figma документа (`--all-canvases`, `--pages`, `--single-page`)
-  - Интеллектуальная дедупликация идентичных стилей между страницами в единый CSS-класс (Smart DRY CSS)
-  - Автоматическое разрешение коллизий стилей при одинаковых именах слоев через страничный модификатор (`.btn--cart`)
-  - Разделение свойств корневого `.main-container` и страницы (`.page-index-container`, `.page-about-container`)
-  - Сквозной E2E-тест многостраничного экспорта: генерация сайта `dist/*.html` с общим `dist/css/style.css` и дедуплицированными ассетами
-- **Figma Adaptive Multi-Breakpoint Engine (v1.4.0) & Mask Baking**:
-  - Распознавание тегов брейкпоинтов во всех синтаксисах (`[desktop]`, `[mobile]`, `@1440`, `@375`, `/desktop`, `Mobile`)
-  - Группировка экранных фреймов в канонические адаптивные страницы
-  - AST Similarity Matching и сопоставление соответствующих элементов между вьюпортами
-  - Изоляция эксклюзивных десктопных и мобильных элементов (`display: none` / `display: flex`)
-  - Синтез непрерывных формул `clamp()` и дискретных `@media` запросов
-  - Сквозная декомпиляция мульти-брейкпоинт проектов в единый канонический HTML-документ
-  - Автоматическое запекание радиальных/линейных масок в растровые изображения через Sharp (`dest-in`) с истинным альфа-каналом и исключение артефактов `mix-blend-mode`
-  - Поддержка явных тегов `[mask]`, `[маска]`, `#mask`, `/mask` для сохранения CSS `mask-image`
-- **Pixel-Perfect Decompilation & Complex Landing Page Synthesis (v1.5.2)**:
-  - Предотвращение коллизий CSS-классов с числовыми суффиксами и защита уникальных правил
-  - Синтез параметрических путей `STAR` и `REGULAR_POLYGON` со скруглением `cornerRadius`
-  - Декомпозиция матриц с отрицательным определителем ($\det < 0$) и зеркальным отражением ($\text{scaleX}(-1)$ / $\text{scaleY}(-1)$)
-  - Поддержка зеркальных подложек в `BoundingBox.fromNode` и продвижение в контейнеры
-  - Генерация семантических списков `<ol><li>` и `<ul><li>` с `list-style-type: decimal` и шагом `listSpacing`
-  - Поддержка вертикального кадрирования `leadingTrim: 'CAP_HEIGHT'` (`text-box-trim: trim-both`)
-  - Поддержка ограничений размеров `minSize` и `maxSize` (`min-height`, `min-width`)
-  - Сохранение вырезов составных векторных иконок через `fill-rule="evenodd"` и `clip-rule="evenodd"`
-  - Снятие паразитной изоляции стекового контекста для режимов наложения `mix-blend-mode`
-  - Расширенная библиотека Google Fonts (`Jura`, `Bahianita`, `Manrope`, `Outfit`, `Unbounded` и др.)
-- **Pure ES Modules & TypeScript Ready (v1.5.5)**:
-  - 100% Pure ESM архитектура без сборщиков (No Build Step) и прямое выполнение в Node.js 18, 20, 22
-  - Официальный файл типов `index.d.ts` для NodeNext и TypeScript-проектов
-  - Автоматическая проверка типов в CI workflow через `npm run test:types`
-- **Semantic Styles, Spacing Tokens & A11y Standards (v1.5.4)**:
-  - Алгоритмическая дедупликация идентичных стилей безымянных/повторяющихся слоев в единый общий класс
-  - Извлечение примитивных токенов `--space-*` в `:root` и подстановка в `padding`, `margin`, `gap`
-  - Предотвращение коллизий в `:root` между `--radius-*` и `--space-*` при совпадении числовых значений (например, 16px)
-  - Стандарты доступности A11y: `aria-hidden` и `focusable="false"` для декоративной графики и SVG, авто-лейблы `aria-label` для кнопок-иконок
-  - Автоматическое определение языка документа (`<html lang="en">` vs `<html lang="ru">`) и локализация A11y атрибутов
-  - Строгий иерархический контроль ровно одного `<h1>` на страницу и фильтрация цен/числовых метрик
-- **Graphic Subtree Collapsing & Cumulative Baking Engine (v1.5.1)**:
-  - Математическое умножение 2D-матриц Figma Kiwi и кумулятивное накопление трансформаций
-  - Вычисление результирующего угла поворота $\theta = \text{atan2}(b, a)$, масштаба и трансляции
-  - Детекция вырожденных графических цепочек (`detectGraphicSubtreeChain`)
-  - Защита от ложных срабатываний: отклонение поддеревьев с текстом, кнопками или параллельным контентом
-  - Аппаратное запекание составного ассета через Sharp с поворотом, маской и масштабированием Retina 2x под точные габариты холста
-  - Схлопывание виртуальных слоёв в дереве DOM и генерация чистого семантического `<img>` без паразитных отступов и `flex`
-  - Декомпиляция аффинных вращений из матриц трансформации с сохранением координат дочерних элементов
-- **Bento & Smart Anchors Engine (v1.5.1)**:
-  - Сохранение явного `Fixed height` (200px) у карточек внутри синтезированных Bento-колонок
-  - Разрешение привязок `bottom`/`right` vs `top`/`left` на основе геометрической близости к граням и Figma Constraints (`MAX`)
-  - Автоматический сброс противоположных координат (`auto`) при смене стороны привязки в адаптивных медиа-запросах
-  - Сохранение асимметричного 4-стороннего `padding` для всех типов Auto Layout контейнеров (`HORIZONTAL`, `VERTICAL`, `GRID`)
-  - Защита иерархии наложения слоёв (`position: relative; z-index: 1`) с проверкой физических вертикальных координат перекрытия
-  - Аппаратное запекание растровых изображений с `blendMode: MULTIPLY` в альфа-прозрачность (`bakeMultiplyImages`)
-  - Поддержка `blendMode: LUMINOSITY` в CSS с автоматической генерацией `filter: grayscale(1)`
-
-### 🚀 Запуск тестов
-
-Тестовый раннер поддерживает запуск как всего набора тестов, так и фильтрацию по названию (`--grep`), домену (`--domain`) или прямой запуск отдельных файлов:
+The **`figmatik`** command automatically detects conversion direction by file extension:
 
 ```bash
-# 1. Запуск всех 146 тестов:
-npm test
-# или:
-node test/runner.js
+# Decompile (.fig -> HTML):
+figmatik input.fig [output.html] [options]
 
-# 2. Фильтрация по шаблону названия (--grep / -g):
-npm test -- --grep "color"
-node test/runner.js -g "gradient"
-
-# 3. Фильтрация по домену тестов (--domain / -d: unit | integration | e2e):
-node test/runner.js --domain unit
-node test/runner.js -d integration
-node test/runner.js -d e2e
-
-# 4. Прямой запуск конкретного тест-файла:
-node test/unit/color.test.js
-node test/integration/tokens.test.js
-node test/e2e/roundtrip.test.js
-
-# 5. Проверка статических типов TypeScript:
-npm run test:types
+# Compile (HTML -> .fig):
+figmatik input.html [output.fig] [options]
 ```
 
-Структура тестов декомпозирована по трём уровням:
-- **`test/unit/` (29 тестов)**: модульные тесты парсеров (`color`, `gradient`, `effects`, `typography`, `images`, `cli`, `units`, `svg-path`, `security`).
-- **`test/integration/` (107 тестов)**: компонентные и интеграционные тесты подсистем (`decompiler`, `tokens`, `layout-synthesis`, `multi-page`, `responsive-breakpoints`, `graphic-collapser`, `visual-accuracy`, `semantic-styles`).
-- **`test/e2e/` (10 тестов)**: сквозные тесты прямой и обратной трансляции (`html-to-fig`, `fig-to-html`, `roundtrip`).
-- Проверка статических типов TypeScript: `npm run test:types` (компиляция без ошибок в режиме `--noEmit`)
+Dedicated CLI aliases are also available for specific pipelines:
+- `fig2html` / `fig-to-html` — decompiler only (`.fig ➔ HTML/CSS/Tailwind`);
+- `html-to-fig` / `html2fig` — compiler only (`HTML/CSS ➔ .fig`).
 
 ---
 
-## 📁 Структура проекта
+## 🛠 Programmatic Node.js / TypeScript API
 
-```text
-figmatik/
-├── cli.js                  # Главный CLI интерфейс (figmatik: HTML -> FIG и автодетекция)
-├── cli-reverse.js          # CLI интерфейс декомпилятора (fig2html: FIG -> HTML)
-├── index.js                # Главная точка входа программного API (двусторонний)
-├── package.json            # Зависимости и метаданные проекта
-├── docs/
-│   ├── logo.jpeg           # Официальный логотип проекта
-│   ├── cli-demo.svg        # Векторная демонстрация работы терминала (SVG)
-│   └── figma-design-guide.md # Руководство для дизайнеров
-├── templates/
-│   └── template.fig        # Эталонный бинарный шаблон Figma контейнера
-├── src/
-│   ├── generator.js        # Оркестратор сборки бинарного .fig (Kiwi + Zstd)
-│   ├── schema.js           # Компилятор и кэш Kiwi схемы
-│   ├── converter/          # МОДУЛЬНЫЙ КОМПИЛЯТОР HTML/CSS -> FIGMA AST
-│   │   ├── index.js        # Главный контроллер convertHtmlToNodes()
-│   │   ├── style-resolver.js      # Каскадные стили, CSS-переменные, padding/margin/borders
-│   │   ├── rich-text.js           # Обработка смешанного форматирования текста (characterStyleIDs)
-│   │   ├── variables-collector.js # Сбор :root переменных (VARIABLE_SET / VARIABLE)
-│   │   ├── layout-engine.js       # Auto Layout v4, sizing, constraints и Layout Pass
-│   │   └── element-processors/    # Обработчики конкретных типов HTML-элементов
-│   │       ├── container.js       # Фреймы, div, section, header, footer, form
-│   │       ├── text.js            # p, h1-h6, span, inline теги с метриками шрифтов
-│   │       ├── image.js           # img, picture, base64, SVG-подложки
-│   │       ├── svg.js             # SVG-иконки, <use> символы, векторные пути
-│   │       ├── interactive.js     # button, input, ссылки, состояния :hover
-│   │       └── media.js           # Вспомогательные медиа-элементы (audio/video плейсхолдеры)
-│   ├── decompiler/         # ДВИЖОК ОБРАТНОЙ КОНВЕРТАЦИИ (FIG -> HTML)
-│   │   ├── index.js        # Главный оркестратор декомпиляции
-│   │   ├── graphic-collapser.js # Кумулятивная аффинная геометрия и схлопывание поддеревьев
-│   │   ├── page-detector.js # Детекция страниц (теги, артборды, Canvas) и санитизация URL
-│   │   ├── breakpoint-detector.js # Детекция брейкпоинтов и группировка адаптивных страниц
-│   │   ├── ast-aligner.js  # AST Similarity Matching и сопоставление нод между экранами
-│   │   ├── geometry.js     # BoundingBox, 1D-проекции, Fuzzy Clustering и интервалы
-│   │   ├── container-detector.js # Обнаружение карточек-подложек и изолирование оверлеев
-│   │   ├── synthesizer.js  # Recursive XY-Cut, детекция сеток N x M и Auto Layout синтез
-│   │   ├── reader.js       # Чтение .fig ZIP, декомпрессия Kiwi и извлечение картинок
-│   │   ├── tree.js         # Восстановление иерархии сцены, инстансы компонентов и overrides
-│   │   ├── stylesheet.js   # Менеджер CSS-классов, генерация :root переменных, DRY CSS
-│   │   ├── css/            # МОДУЛЬНЫЙ ГЕНЕРАТОР CSS И СТИЛЕЙ
-│   │   │   ├── index.js    # computeNodeStyles, toStyleString и реэкспорт
-│   │   │   ├── color-formatter.js      # HEX, RGBA, HSLA, MIME-типы
-│   │   │   ├── gradient-formatter.js   # Градиенты, матрицы поворота, углы
-│   │   │   ├── effects-formatter.js    # box-shadow, фильтры размытия, paintFilter
-│   │   │   ├── typography-formatter.js # font-weight, font-style, leading-trim
-│   │   │   └── layout-styles.js        # Flexbox, CSS Grid, Smart Anchors, Constraints
-│   │   ├── responsive-css.js # Генерация адаптивных медиа-запросов и fluid clamp() формул
-│   │   ├── units.js        # Преобразование единиц (rem, em, vw, vh) и fluid-расчеты
-│   │   ├── html.js         # Генерация семантического HTML5, форм и A11y разметки
-│   │   ├── image-optimizer.js # Оптимизация картинок (Retina 2x, WebP/AVIF, srcset)
-│   │   └── vector.js       # Декодирование VectorNetwork и commandsBlob в SVG
-│   ├── parsers/
-│   │   ├── color.js        # Парсер всех типов CSS цветов
-│   │   ├── gradient.js     # Парсер линейных и радиальных градиентов
-│   │   ├── effects.js      # Парсер теней и размытий
-│   │   ├── typography.js   # Шрифты, стили текста, CSS переменные, габариты
-│   │   ├── images.js       # Реестр изображений, SHA-1, base64, remote fetch
-│   │   └── svg.js          # Обработчик встроенного SVG и <use> символов
-│   └── utils/
-│       └── guid.js         # Генератор GUID и лексикографических индексов
-└── test/
-    ├── runner.js           # Модульный раннер тестов с поддержкой --grep и --domain
-    ├── unit/               # Модульные тесты парсеров (29 тестов)
-    ├── integration/        # Интеграционные тесты декомпилятора и синтеза (107 тестов)
-    ├── e2e/                # Сквозные тесты компиляции и декомпиляции (10 тестов)
-    ├── test.html           # Базовый тестовый HTML
-    ├── showcase.html       # Демонстрационный макет со всеми базовыми фичами
-    └── hard.html           # Сложный макет (Instagram deck, CSS vars, SVG use, сетки)
+```typescript
+import { convertFigToHtml, generateFigFile } from 'figmatik';
+
+// 1. Decompile .fig to responsive HTML with WebP
+const webResult = await convertFigToHtml('landing.fig', {
+    outputHtmlPath: 'dist/index.html',
+    separateFiles: true,
+    imageFormat: 'webp',
+    responsive: true
+});
+
+// 2. Compile HTML back to native .fig
+const figResult = await generateFigFile({
+    htmlPath: 'templates/invoice.html',
+    outputPath: 'build/invoice.fig',
+    pageName: 'Invoice Template'
+});
 ```
+
+*For complete signatures, TypeScript interfaces, and integration examples, see [docs/API.md](docs/API.md).*
 
 ---
 
-## 👤 Автор и контакты / Author
+## 👤 Author & Contacts
 
-**Константин Белан (Konstantin Belan)**
+**Konstantin Belan (Константин Белан)**
 
 - 💬 **Telegram**: [@konstantin_belan](https://t.me/konstantin_belan)
 - ✉️ **Email**: [kosbelan@yandex.ru](mailto:kosbelan@yandex.ru)
 - 🐙 **GitHub**: [@KonstantinBelan](https://github.com/KonstantinBelan)
 
-По вопросам сотрудничества, предложений по улучшению декомпилятора и компилятора Figma, а также коммерческой интеграции — пишите напрямую в Telegram [@konstantin_belan](https://t.me/konstantin_belan).
+For commercial integration, custom feature requests, or partnership proposals, please reach out directly on Telegram [@konstantin_belan](https://t.me/konstantin_belan).
 
 ---
 
-## 📄 Лицензия
+## 📄 License
 
-MIT
+This project is licensed under the [MIT](LICENSE) License.
