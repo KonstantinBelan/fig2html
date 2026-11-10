@@ -41,7 +41,8 @@
         "src",
         "templates",
         "LICENSE",
-        "README.md"
+        "README.md",
+        "README.ru.md"
     ],
     "scripts": {
         "start": "node cli-reverse.js",
