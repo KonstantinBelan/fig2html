@@ -10,6 +10,7 @@ import AdmZip from 'adm-zip';
 
 import {
     isPathInsideBaseDir,
+    isSafeSystemOutputPath,
     isPrivateOrRestrictedHost,
     isRestrictedOrPrivateDomain,
     isValidImageMagicBytes,
@@ -396,6 +397,30 @@ export default async function run(arg1, arg2) {
         const inputHtml = renderNodeToHtml(inputNode, null, new Map());
         assert(!inputHtml.includes('onfocus="alert(1)'));
         assert(inputHtml.includes('type="text"'));
+    });
+
+    it('blocks arbitrary file overwrite to system directories in CLI (isSafeSystemOutputPath)', () => {
+        assert.strictEqual(isSafeSystemOutputPath('/etc/cron.d/job'), false);
+        assert.strictEqual(isSafeSystemOutputPath('/usr/bin/malicious'), false);
+        assert.strictEqual(isSafeSystemOutputPath('/var/www/html/shell.php'), false);
+        assert.strictEqual(isSafeSystemOutputPath('C:\\Windows\\System32\\cmd.exe'), false);
+
+        // Safe relative and project paths are allowed
+        assert.strictEqual(isSafeSystemOutputPath('./output.fig'), true);
+        assert.strictEqual(isSafeSystemOutputPath('dist/index.html'), true);
+        assert.strictEqual(isSafeSystemOutputPath('/Users/developer/project/output.fig'), true);
+    });
+
+    it('enforces strict/server isolation profile (securityLevel: strict / server)', () => {
+        const strictRegistry = new ImageRegistry({ securityLevel: 'strict' });
+        assert.strictEqual(strictRegistry.allowRemote, false);
+        assert.strictEqual(strictRegistry.allowExternalPaths, false);
+        assert.strictEqual(strictRegistry.allowPrivateHosts, false);
+        assert.strictEqual(strictRegistry.maxImageSize, 10 * 1024 * 1024);
+
+        const localRegistry = new ImageRegistry({ securityLevel: 'local' });
+        assert.strictEqual(localRegistry.allowRemote, true);
+        assert.strictEqual(localRegistry.maxImageSize, 15 * 1024 * 1024);
     });
 }
 

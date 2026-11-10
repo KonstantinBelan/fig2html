@@ -6,6 +6,33 @@ import net from 'node:net';
 import dns from 'node:dns/promises';
 import { renderSvgToPng } from './svg.js';
 
+// 2b. Safe Undici Dispatcher to prevent DNS Rebinding TOCTOU attacks at socket connection time
+let safeUndiciAgent = null;
+try {
+    const undiciMod = await import('undici');
+    if (undiciMod && undiciMod.Agent) {
+        const nodeDns = await import('node:dns');
+        safeUndiciAgent = new undiciMod.Agent({
+            connect: {
+                lookup: (hostname, opts, cb) => {
+                    nodeDns.lookup(hostname, { ...opts, all: true }, (err, addresses) => {
+                        if (err) return cb(err);
+                        const addrs = Array.isArray(addresses) ? addresses : [addresses];
+                        for (const a of addrs) {
+                            const ip = typeof a === 'string' ? a : a.address;
+                            if (isPrivateOrRestrictedHost(ip)) {
+                                return cb(new Error(`Blocked socket connect to restricted IP: ${ip}`));
+                            }
+                        }
+                        if (opts && opts.all) cb(null, addresses);
+                        else cb(null, addresses[0].address, addresses[0].family);
+                    });
+                }
+            }
+        });
+    }
+} catch (_) {}
+
 /**
  * Checks if a target file path resides strictly inside a base directory to prevent Path Traversal,
  * resolving real disk paths via fs.realpathSync to prevent symlink bypass.
@@ -302,16 +329,43 @@ export function createFallbackImage() {
     );
 }
 
+/**
+ * Verifies that a target file path does not attempt to write to critical system directories
+ * @param {string} targetPath
+ * @returns {boolean}
+ */
+export function isSafeSystemOutputPath(targetPath) {
+    if (!targetPath || typeof targetPath !== 'string') return false;
+    const clean = targetPath.trim();
+    if (/^[a-zA-Z]:[\\/](windows|program files)/i.test(clean)) {
+        return false;
+    }
+    const resolved = path.resolve(clean);
+    const systemDirs = [
+        '/etc', '/usr', '/bin', '/sbin', '/var', '/opt', '/lib', '/lib64', '/boot', '/dev', '/proc', '/sys',
+        '/private/etc', '/private/var'
+    ];
+    for (const sysDir of systemDirs) {
+        if (resolved === sysDir || resolved.startsWith(sysDir + '/') || resolved.startsWith(sysDir + path.sep)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 export class ImageRegistry {
     constructor(options = {}) {
+        this.securityLevel = options.securityLevel || 'local'; // 'local' | 'strict' | 'server'
+        const isStrict = this.securityLevel === 'strict' || this.securityLevel === 'server';
+
         this.baseDir = options.baseDir || process.cwd();
-        this.allowRemote = options.allowRemote !== false;
-        this.allowExternalPaths = options.allowExternalPaths === true;
+        this.allowRemote = isStrict ? (options.allowRemote === true) : (options.allowRemote !== false);
+        this.allowExternalPaths = isStrict ? false : (options.allowExternalPaths === true);
         this.allowPrivateHosts = options.allowPrivateHosts === true;
         this.allowedDomains = Array.isArray(options.allowedDomains)
             ? options.allowedDomains.map(d => d.trim().toLowerCase())
             : null;
-        this.maxImageSize = options.maxImageSize || 15 * 1024 * 1024; // 15MB default limit
+        this.maxImageSize = options.maxImageSize || (isStrict ? 10 * 1024 * 1024 : 15 * 1024 * 1024);
         this.images = new Map(); // sha1Hex -> Buffer
         this.sourceCache = new Map(); // srcKey -> { sha1Hex, sha1Buffer, width, height }
     }
@@ -424,10 +478,14 @@ export class ImageRegistry {
                         }
 
                         if (!isBlocked) {
-                            const res = await fetch(cleanSrc, {
+                            const fetchOpts = {
                                 signal: AbortSignal.timeout(5000),
                                 redirect: 'error'
-                            });
+                            };
+                            if (!this.allowPrivateHosts && safeUndiciAgent) {
+                                fetchOpts.dispatcher = safeUndiciAgent;
+                            }
+                            const res = await fetch(cleanSrc, fetchOpts);
 
                             if (res.ok) {
                                 // Content-Type validation
