@@ -15,6 +15,37 @@ export type LayoutMode = 'default' | 'relative' | 'fluid' | 'grid';
 export type ClassScopeMode = 'modifier' | 'scoped' | 'numbered';
 export type ScaleMode = 'FILL' | 'FIT' | 'CROP' | 'TILE';
 export type EffectType = 'DROP_SHADOW' | 'INNER_SHADOW' | 'FOREGROUND_BLUR' | 'BACKGROUND_BLUR';
+export type TailwindVersion = 'v3' | 'v4';
+export type TailwindMode = 'utility' | 'hybrid';
+export type TailwindArbitrary = 'auto' | 'snap' | 'strict';
+export type Framework = 'html' | 'react' | 'vue' | 'svelte';
+
+export interface TailwindOptions {
+    /** Enable Tailwind CSS output instead of vanilla CSS */
+    tailwind?: boolean;
+    /** Target Tailwind version: 'v3' | 'v4' (default: 'v4') */
+    tailwindVersion?: TailwindVersion;
+    /** Generation mode: 'utility' (pure classes in HTML) | 'hybrid' (BEM + @apply in CSS) */
+    tailwindMode?: TailwindMode;
+    /** Snapping tolerance in px for matching standard 4px scale (default: 1) */
+    tailwindTolerance?: number;
+    /** Arbitrary values strategy: 'auto' | 'snap' | 'strict' (default: 'auto') */
+    tailwindArbitrary?: TailwindArbitrary;
+    /** Prefix for generated Tailwind classes (e.g. 'tw-') */
+    tailwindPrefix?: string;
+    /** Zero-dependency Tailwind CDN injection into standalone HTML (default: true) */
+    tailwindCdn?: boolean;
+    /** Framework component format: 'html' | 'react' | 'vue' | 'svelte' (default: 'html') */
+    framework?: Framework;
+    /** Generate complete project scaffolding with package.json and config */
+    scaffold?: boolean | string;
+    /** TypeScript component generation for React (default: true) */
+    typescript?: boolean;
+    /** Keep semantic class names alongside Tailwind utility classes */
+    keepSemanticClasses?: boolean;
+    /** Target custom React/Vue/Svelte component name */
+    componentName?: string;
+}
 
 export interface FigmaGuid {
     sessionID: number;
@@ -71,7 +102,7 @@ export interface FigToHtmlPage {
     html: string;
 }
 
-export interface FigToHtmlOptions {
+export interface FigToHtmlOptions extends TailwindOptions {
     /** Output directory or HTML file path */
     outputHtmlPath?: string;
     /** Canvas or page name in Figma to decompile (default: "Page 1") */
@@ -143,6 +174,8 @@ export interface FigToHtmlOptions {
 export interface FigToHtmlResult {
     html: string;
     css: string | null;
+    tokens?: any;
+    tokensPath?: string | null;
     outputPath: string | null;
     cssPath: string | null;
     assetsDir: string | null;
@@ -152,6 +185,12 @@ export interface FigToHtmlResult {
     stats: ConversionStats;
     isMultiPage?: boolean;
     pages?: FigToHtmlPage[];
+    tailwind?: boolean;
+    framework?: Framework;
+    componentCode?: string | null;
+    componentPath?: string | null;
+    scaffoldDir?: string | null;
+    scaffoldFiles?: string[] | null;
 }
 
 export interface HtmlToFigOptions {

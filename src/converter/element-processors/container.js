@@ -10,7 +10,8 @@ import {
 import {
     cloneNode,
     parseGridColumns,
-    extractVarName
+    extractVarName,
+    parseCssLength
 } from '../style-resolver.js';
 import {
     computeContainerDimensions,
@@ -180,6 +181,19 @@ export async function processContainerElement(element, parentGuid, orderPosition
         frameNode.borderLeftWeight = borderLeftW;
         frameNode.borderRightWeight = borderRightW;
         frameNode.borderStrokeWeightsIndependent = true;
+        frameNode.strokeWeight = Math.max(borderWidth, borderTopW, borderBottomW, borderLeftW, borderRightW);
+    }
+
+    const minW = styles.minWidth ? parseCssLength(styles.minWidth, 16, parentContext?.width || 1440, 1440) : 0;
+    const minH = styles.minHeight ? parseCssLength(styles.minHeight, 16, parentContext?.height || 900, 900) : 0;
+    const maxW = styles.maxWidth ? parseCssLength(styles.maxWidth, 16, parentContext?.width || 1440, 1440) : 0;
+    const maxH = styles.maxHeight ? parseCssLength(styles.maxHeight, 16, parentContext?.height || 900, 900) : 0;
+
+    if (minW > 0 || minH > 0) {
+        frameNode.minSize = { value: { x: minW || 0, y: minH || 0 } };
+    }
+    if (maxW > 0 || maxH > 0) {
+        frameNode.maxSize = { value: { x: maxW > 0 ? maxW : Infinity, y: maxH > 0 ? maxH : Infinity } };
     }
 
     // 3. Setup Auto Layout
@@ -251,8 +265,9 @@ export async function processContainerElement(element, parentGuid, orderPosition
                 const childPos = FractionalIndexer.getPosition(childOrderIdx++);
                 const textGuid = guidGen.next();
                 const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles.fontSize;
+                const fontWeight = getProp('font-weight', 'fontWeight') || inheritedStyles.fontWeight;
                 const { styleName, postscript, cleanFamily } = parseFontStyle(
-                    inheritedStyles.fontWeight,
+                    fontWeight,
                     inheritedStyles.fontStyle,
                     inheritedStyles.fontFamily
                 );
@@ -260,8 +275,9 @@ export async function processContainerElement(element, parentGuid, orderPosition
                 const lsResult = parseLetterSpacing(inheritedStyles.letterSpacing, fontSize);
                 const textGeom = estimateTextDimensions(rawText, fontSize, 0, false, cleanFamily);
 
-                const textColor = parseColor(inheritedStyles.color) || { r: 0.1, g: 0.1, b: 0.1, a: 1.0 };
-                const textColorVar = inheritedStyles.colorVar || (textColor.a === 1 && colorToVarMap ? colorToVarMap.get(colorToHexKey(textColor)) : null);
+                const directColor = getProp('color', 'color');
+                const textColor = (directColor ? parseColor(directColor) : null) || parseColor(inheritedStyles.color) || { r: 0.1, g: 0.1, b: 0.1, a: 1.0 };
+                const textColorVar = (directColor ? null : inheritedStyles.colorVar) || (textColor.a === 1 && colorToVarMap ? colorToVarMap.get(colorToHexKey(textColor)) : null);
                 const textPaint = {
                     type: 'SOLID',
                     color: textColor,

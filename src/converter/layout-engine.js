@@ -1,4 +1,10 @@
 // src/converter/layout-engine.js
+import { parseCssLength } from './style-resolver.js';
+
+const INLINE_TAGS = new Set([
+    'span', 'a', 'label', 'button', 'badge', 'em', 'strong',
+    'small', 'code', 'b', 'i', 'sub', 'sup', 'mark', 'time', 'abbr', 'cite'
+]);
 
 /**
  * Computes initial container dimensions before child elements are processed
@@ -22,7 +28,8 @@ export function computeContainerDimensions(element, styles, parentContext) {
 
     const tagName = element.tagName.toLowerCase();
     let frameWidth = width;
-    const isInlineEl = display === 'inline-block' || display === 'inline-flex' || display === 'inline' || tagName === 'button';
+    const isNaturallyInline = INLINE_TAGS.has(tagName) && (!display || display === 'inline' || display === 'inline-block' || display === 'inline-flex');
+    const isInlineEl = display === 'inline-block' || display === 'inline-flex' || display === 'inline' || isNaturallyInline;
     const hasTextChildren = Array.from(element.childNodes).some(n => n.nodeType === 3 && n.textContent.trim().length > 0);
     const isGridChild = parentContext && (parentContext.isMultiColGrid || parentContext.gridChildWidth > 0);
 
@@ -30,6 +37,11 @@ export function computeContainerDimensions(element, styles, parentContext) {
         frameWidth = parentContext.gridChildWidth;
     } else if (tagName === 'body') {
         frameWidth = width || 1440;
+    } else if (isInlineEl && !hasExplicitWidth && (hasTextChildren || element.children.length === 0)) {
+        const textContent = element.textContent.trim();
+        const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles?.fontSize || 14;
+        const charW = fontSize * 0.58;
+        frameWidth = Math.ceil(paddingLeft + paddingRight + (textContent.length > 0 ? textContent.length * charW : 24));
     } else if (!frameWidth || frameWidth === 0) {
         if (parentContext && parentContext.isColumn && alignSelf !== 'center' && alignSelf !== 'flex-start' && !isMarginAuto && !isInlineEl) {
             frameWidth = parentContext.width;
@@ -37,7 +49,7 @@ export function computeContainerDimensions(element, styles, parentContext) {
             frameWidth = parentContext.width;
         } else if (isInlineEl || (parentContext && !parentContext.isColumn && hasTextChildren && element.children.length === 0)) {
             const textContent = element.textContent.trim();
-            const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles.fontSize || 14;
+            const fontSize = parseFloat(getProp('font-size', 'fontSize')) || inheritedStyles?.fontSize || 14;
             const charW = fontSize * 0.58;
             frameWidth = Math.ceil(paddingLeft + paddingRight + textContent.length * charW);
         } else if (parentContext && !parentContext.isColumn) {
@@ -47,15 +59,20 @@ export function computeContainerDimensions(element, styles, parentContext) {
         }
     }
 
+    if (styles.maxWidth && styles.maxWidth !== 'none') {
+        const maxW = parseCssLength(styles.maxWidth, 16, parentContext?.width || 1440, 1440);
+        if (maxW > 0 && frameWidth > maxW) frameWidth = Math.round(maxW);
+    }
+
     const frameHeight = height || (hasExplicitHeight ? height : 40);
 
-    // Circle shape detection (border-radius: 50% with equal width & height)
+    // Circle shape detection (border-radius: 50% with equal width & height, containing NO children and NO text content)
     const isCircle = (borderRadius >= frameWidth / 2 && frameWidth === frameHeight) ||
         element.classList.contains('rounded-full') ||
         element.classList.contains('avatar') ||
         element.classList.contains('avatar-circle');
 
-    const frameType = (isCircle && element.children.length === 0) ? 'ELLIPSE' : 'FRAME';
+    const frameType = (isCircle && element.children.length === 0 && !element.textContent.trim()) ? 'ELLIPSE' : 'FRAME';
 
     return {
         frameWidth,
@@ -102,16 +119,40 @@ export function setupAutoLayout(frameNode, element, styles, layoutParams, parent
     } = styles;
 
     if (tagName === 'body') {
-        frameNode.stackMode = 'VERTICAL';
+        frameNode.stackMode = (isFlex && !isColumn) ? 'HORIZONTAL' : 'VERTICAL';
         frameNode.stackSpacing = gap || 0;
         frameNode.stackHorizontalPadding = paddingLeft || 0;
         frameNode.stackPaddingRight = paddingRight || 0;
         frameNode.stackVerticalPadding = paddingTop || 0;
         frameNode.stackPaddingBottom = paddingBottom || 0;
-        frameNode.stackPrimaryAlignItems = 'MIN';
-        frameNode.stackCounterAlignItems = 'MIN';
-        frameNode.stackPrimarySizing = 'RESIZE_TO_FIT';
-        frameNode.stackCounterSizing = 'FIXED';
+
+        if (isFlex) {
+            const jc = getProp('justify-content', 'justifyContent');
+            const ai = getProp('align-items', 'alignItems');
+
+            if (jc === 'center') frameNode.stackPrimaryAlignItems = 'CENTER';
+            else if (jc === 'flex-end' || jc === 'end') frameNode.stackPrimaryAlignItems = 'MAX';
+            else if (jc === 'space-between') frameNode.stackPrimaryAlignItems = 'SPACE_BETWEEN';
+            else frameNode.stackPrimaryAlignItems = 'MIN';
+
+            if (ai === 'center') frameNode.stackCounterAlignItems = 'CENTER';
+            else if (ai === 'flex-end' || ai === 'end') frameNode.stackCounterAlignItems = 'MAX';
+            else frameNode.stackCounterAlignItems = 'MIN';
+
+            const isFixedH = (frameNode.size?.y >= 900 || hasExplicitHeight);
+            if (!isColumn) {
+                frameNode.stackPrimarySizing = 'FIXED';
+                frameNode.stackCounterSizing = isFixedH ? 'FIXED' : 'RESIZE_TO_FIT';
+            } else {
+                frameNode.stackPrimarySizing = isFixedH ? 'FIXED' : 'RESIZE_TO_FIT';
+                frameNode.stackCounterSizing = 'FIXED';
+            }
+        } else {
+            frameNode.stackPrimaryAlignItems = 'MIN';
+            frameNode.stackCounterAlignItems = 'MIN';
+            frameNode.stackPrimarySizing = 'RESIZE_TO_FIT';
+            frameNode.stackCounterSizing = 'FIXED';
+        }
     } else if (isFlex || isGrid) {
         frameNode.stackMode = isColumn ? 'VERTICAL' : 'HORIZONTAL';
         frameNode.stackSpacing = gap || 0;
@@ -209,6 +250,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
         hasExplicitWidth,
         isWidthPercent,
         hasExplicitHeight,
+        isHeightPercent,
         flexGrow,
         isInlineEl,
         rawWidthStr
@@ -225,7 +267,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
     if (isMarginAuto && parentContext.isColumn) {
         frameNode.stackChildAlignSelf = 'CENTER';
     } else if (parentContext.isColumn) {
-        const shouldStretchW = (alignSelf === 'stretch' || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start')) && !isInline && !isContentWidth;
+        const shouldStretchW = (alignSelf === 'stretch' || isWidthPercent || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start')) && !isInline && !isContentWidth;
         if (shouldStretchW) {
             frameNode.stackChildAlignSelf = 'STRETCH';
             if (!isColumn) {
@@ -241,7 +283,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
             frameNode.stackChildAlignSelf = 'MIN';
         }
 
-        if (flexGrow > 0) {
+        if (flexGrow > 0 || isHeightPercent) {
             frameNode.stackChildPrimaryGrow = 1.0;
             if (isColumn) {
                 frameNode.stackPrimarySizing = 'FIXED';
@@ -250,7 +292,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
             }
         }
     } else {
-        const shouldStretchH = alignSelf === 'stretch' || (!hasExplicitHeight && (!alignSelf || alignSelf === 'auto') && parentContext.alignItems === 'stretch');
+        const shouldStretchH = alignSelf === 'stretch' || isHeightPercent || (!hasExplicitHeight && (!alignSelf || alignSelf === 'auto') && parentContext.alignItems === 'stretch');
         if (shouldStretchH) {
             frameNode.stackChildAlignSelf = 'STRETCH';
             if (isColumn) {
@@ -266,7 +308,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
             frameNode.stackChildAlignSelf = 'MIN';
         }
 
-        if (flexGrow > 0) {
+        if (flexGrow > 0 || isWidthPercent) {
             frameNode.stackChildPrimaryGrow = 1.0;
             if (!isColumn) {
                 frameNode.stackPrimarySizing = 'FIXED';

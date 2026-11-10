@@ -6,7 +6,9 @@ import {
     parseLetterSpacing,
     parseTextDecoration,
     parseTextTransform,
-    estimateTextDimensions
+    parseTextAlign,
+    estimateTextDimensions,
+    getFontMetrics
 } from '../../parsers/typography.js';
 import { isRichTextContainer, extractRichText } from '../rich-text.js';
 
@@ -16,7 +18,24 @@ export function isTextElement(element, styles) {
     const hasNoChildren = element.children.length === 0;
     const textContent = element.textContent.trim();
     const hasRichChildren = isRichTextContainer(element);
-    const isChildlessTextDiv = (tagName === 'div' && hasNoChildren && textContent.length > 0 && styles.fills.length === 0 && styles.borderWidth === 0);
+
+    // If an element has container styling (background fill, border, radius, or padding),
+    // it represents a UI component (badge, button, chip, pill) and must be rendered as an Auto Layout FRAME container, not a flat TEXT node
+    const pTop = parseFloat(styles.getProp ? styles.getProp('padding-top', 'paddingTop', 'padding') : 0) || 0;
+    const pRight = parseFloat(styles.getProp ? styles.getProp('padding-right', 'paddingRight', 'padding') : 0) || 0;
+    const pBottom = parseFloat(styles.getProp ? styles.getProp('padding-bottom', 'paddingBottom', 'padding') : 0) || 0;
+    const pLeft = parseFloat(styles.getProp ? styles.getProp('padding-left', 'paddingLeft', 'padding') : 0) || 0;
+    const hasPadding = pTop > 0 || pRight > 0 || pBottom > 0 || pLeft > 0;
+    const hasFills = Boolean(styles.fills && styles.fills.length > 0);
+    const hasBorders = Boolean(styles.borderWidth > 0 || (styles.strokePaints && styles.strokePaints.length > 0) || styles.borderTopW > 0 || styles.borderBottomW > 0 || styles.borderLeftW > 0 || styles.borderRightW > 0);
+    const hasRadius = Boolean(styles.borderRadius > 0);
+    const hasContainerStyling = hasFills || hasBorders || hasRadius || hasPadding;
+
+    if (hasContainerStyling) {
+        return false;
+    }
+
+    const isChildlessTextDiv = (tagName === 'div' && hasNoChildren && textContent.length > 0 && !hasContainerStyling);
 
     return (isTextTag && hasNoChildren && textContent.length > 0) || (hasRichChildren && !styles.fills.length && styles.borderWidth === 0) || isChildlessTextDiv;
 }
@@ -116,14 +135,18 @@ export function processTextElement(element, parentGuid, orderPosition, parentCon
         targetWidth = targetWidth > 0 ? Math.min(targetWidth, maxWidthProp) : maxWidthProp;
     }
 
-    const charWidth = fontSize * 0.58;
+    const metrics = getFontMetrics ? getFontMetrics(cleanFamily) : null;
+    const charWidth = fontSize * (metrics?.avgCharWidthRatio || 0.53);
     const hasNewlines = displayCharacters.includes('\n');
-    const isMultiLine = isParagraph || hasNewlines || (targetWidth > 0 && (displayCharacters.length * charWidth) > targetWidth);
+    const singleLineWidth = Math.ceil(displayCharacters.length * charWidth);
+    const hasExplicitWidth = Boolean(width > 0 && !styles.isWidthPercent);
+    const exceedsTargetWidth = Boolean(targetWidth > 0 && singleLineWidth > targetWidth);
+    const isMultiLine = hasNewlines || (isParagraph && exceedsTargetWidth);
 
     const textGeom = estimateTextDimensions(
         displayCharacters,
         fontSize,
-        isMultiLine ? targetWidth : width,
+        isMultiLine ? targetWidth : (hasExplicitWidth ? width : 0),
         isMultiLine,
         cleanFamily
     );
@@ -151,7 +174,7 @@ export function processTextElement(element, parentGuid, orderPosition, parentCon
             style: styleName,
             postscript: postscript
         },
-        textAlignHorizontal: (getProp('text-align', 'textAlign') || 'LEFT').toUpperCase(),
+        textAlignHorizontal: parseTextAlign(getProp('text-align', 'textAlign')),
         textAlignVertical: 'TOP',
         textAutoResize: textGeom.autoResize,
         lineHeight: lhObj,
@@ -187,7 +210,7 @@ export function processTextElement(element, parentGuid, orderPosition, parentCon
         textNode.transform = { m00: 1, m01: 0, m02: posX, m10: 0, m11: 1, m12: posY };
     } else if (parentContext && parentContext.isFlex) {
         if (flexGrow > 0) textNode.stackChildPrimaryGrow = 1.0;
-        if (alignSelf === 'stretch' || (parentContext.isColumn && isParagraph && !inFlexRow)) {
+        if (alignSelf === 'stretch' || styles.isWidthPercent || (parentContext.isColumn && isMultiLine && !inFlexRow)) {
             textNode.stackChildAlignSelf = 'STRETCH';
         } else if (alignSelf === 'center') {
             textNode.stackChildAlignSelf = 'CENTER';
@@ -209,7 +232,7 @@ export function processTextElement(element, parentGuid, orderPosition, parentCon
         textNode.textAutoResize = 'HEIGHT';
 
         const isCol = parentContext.isColumn;
-        const shouldStretch = alignSelf === 'stretch' || (isCol && isParagraph && !inFlexRow);
+        const shouldStretch = alignSelf === 'stretch' || styles.isWidthPercent || (isCol && isMultiLine && !inFlexRow);
         const wrapperW = (isCol || shouldStretch)
             ? (parentContext.width || textGeom.width)
             : (textGeom.width + marginOffsets.left + marginOffsets.right);

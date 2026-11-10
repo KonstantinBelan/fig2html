@@ -104,7 +104,16 @@ const SUITES = [
     { title: '35. Graphic Subtree Collapsing & Cumulative Baking Engine Tests', file: './integration/graphic-collapser.test.js' },
     { title: '36. SmartSteam Complex Landing Page Decompilation & Visual Accuracy Tests', file: './integration/visual-accuracy.test.js' },
     { title: '37. Semantic Styles, A11y Standards & Spacing Tokens Engine Tests', file: './integration/semantic-styles.test.js' },
-    { title: '38. Security Guards & SSRF Protection Tests', file: './unit/security.test.js' }
+    { title: '38. Security Guards & SSRF Protection Tests', file: './unit/security.test.js' },
+    { title: '39. Tailwind CSS Core Engine & Mapper Tests (Sprint 1)', file: './unit/tailwind-mapper.test.js' },
+    { title: '40. Tailwind CSS Auto Layout & Grid Synthesis Tests (Sprint 2)', file: './integration/tailwind-layout.test.js' },
+    { title: '41. Tailwind CSS Typography, Gradients & Effects Tests (Sprint 3)', file: './unit/tailwind-effects.test.js' },
+    { title: '42. Tailwind CSS Responsive Multi-Breakpoint Tests (Sprint 4)', file: './integration/tailwind-responsive.test.js' },
+    { title: '43. Tailwind CSS Theme Exporter, Hybrid & Scaffolding Tests (Sprint 5)', file: './integration/tailwind-scaffold.test.js' },
+    { title: '44. Tailwind CSS Component Frameworks (React, Vue, Svelte) Tests (Sprint 6)', file: './unit/tailwind-frameworks.test.js' },
+    { title: '45. Tailwind CSS Bi-Directional Roundtrip Tests (Sprint 7)', file: './e2e/tailwind-roundtrip.test.js' },
+    { title: '46. Tailwind CSS Public API, Frameworks & Scaffolding E2E Tests (Sprint 8)', file: './e2e/tailwind-cli-e2e.test.js' },
+    { title: '47. Total Engine Audit & Conversion Verification Tests', file: './integration/conversion-audit.test.js' }
 ];
 
 async function run() {

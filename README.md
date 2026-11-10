@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/figmatik.svg?style=for-the-badge&logo=npm)](https://www.npmjs.com/package/figmatik)
 [![License: MIT](https://img.shields.io/badge/License-MIT-10b981.svg?style=for-the-badge)](LICENSE)
-[![Tests: 146 passed](https://img.shields.io/badge/tests-146%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/runner.js)
+[![Tests: 206+ passed](https://img.shields.io/badge/tests-206%2B%20passed-22c55e.svg?style=for-the-badge&logo=node.js&logoColor=white)](test/runner.js)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18.0.0-339933.svg?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript: Ready](https://img.shields.io/badge/TypeScript-Ready-3178c6.svg?style=for-the-badge&logo=typescript&logoColor=white)](index.d.ts)
 [![Telegram](https://img.shields.io/badge/Telegram-@konstantin__belan-229ED9.svg?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/konstantin_belan)
@@ -459,6 +459,18 @@ OPTIONS:
   --lang <code>            Язык HTML документа (например: en, ru; автоопределение по умолчанию)
   --smart-layout           Синтез адаптивного Flexbox/Grid без position: absolute (по умолчанию: включен)
   --no-smart-layout        Отключить синтез разметки и использовать абсолютное позиционирование
+  --tailwind               Включить генерацию нативных утилит Tailwind CSS
+  --tailwind-version <v>   Целевая версия Tailwind: v3 или v4 (по умолчанию: v4)
+  --tailwind-mode <mode>   Режим генерации: utility (классы в разметке) или hybrid (BEM + @apply)
+  --tailwind-tolerance <n> Порог привязки в px к стандартной сетке 4px (по умолчанию: 1)
+  --tailwind-arbitrary <s> Стратегия произвольных значений [...]: auto, snap или strict
+  --tailwind-prefix <pfx>  Префикс генерируемых классов Tailwind (например, "tw-")
+  --no-tailwind-cdn        Отключить внедрение скрипта Play CDN в автономный HTML
+  --framework <fmt>        Формат компонентов: html, react, vue, svelte (по умолчанию: html)
+  --react, --jsx, --tsx    Шорткат для --framework react (генерация React TSX компонента)
+  --vue                    Шорткат для --framework vue (генерация Vue 3 SFC)
+  --svelte                 Шорткат для --framework svelte (генерация Svelte компонента)
+  --scaffold [dir]         Создать полноценный enterprise-проект с package.json и сборщиком
   -v, --verbose            Подробные логи процесса
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
@@ -485,6 +497,52 @@ OPTIONS:
   -v, --verbose            Подробные логи процесса сборки
   -h, --help               Справка по командам
   -V, --version            Версия утилиты
+```
+
+---
+
+## 🌊 Enterprise Tailwind CSS (v3 & v4)
+
+Figmatik предоставляет 100% полноценную enterprise-поддержку **Tailwind CSS** как для обратной декомпиляции (`.fig ➔ HTML/JSX/Vue/Svelte`), так и для прямой компиляции (`HTML+Tailwind ➔ .fig`).
+
+### Ключевые возможности Tailwind в Figmatik:
+1. **Поддержка версий v3 и v4 (Oxide / CSS-first)**:
+   - **Tailwind v4**: генерация директив `@import "tailwindcss";` и секций `@theme` с нативными CSS-переменными темы.
+   - **Tailwind v3**: создание классических файлов `tailwind.config.js` и `postcss.config.js`.
+2. **Двусторонняя компиляция (Round-Trip)**:
+   - **Figma ➔ Tailwind**: точный маппинг Auto Layout, типографики, скруглений, теней, градиентов (`bg-gradient-to-*`, `from-*`, `to-*`), blend modes (`mix-blend-*`) и SVG-иконок (`w-*`, `h-*`, `text-current`).
+   - **Tailwind ➔ Figma**: предварительный компилятор вычисляет стили классов (`flex-col gap-4 bg-blue-600 rounded-2xl`) и собирает нативные Kiwi узлы с Auto Layout (`stackSpacing: 16`, `cornerRadius: 16`).
+3. **Умная привязка к 4px сетке (Scale Snapping)**:
+   - Значения отступов и размеров автоматически привязываются к стандартной шкале Tailwind (`p-4`, `gap-6`, `rounded-xl`).
+   - При отклонении от сетки свыше порога толерантности генерируются валидные произвольные JIT-значения `[17px]`.
+4. **Компонентные форматы (React JSX/TSX, Vue, Svelte)**:
+   - `--react`: генерация функционального React-компонента на TypeScript с `className`, типизированным интерфейсом `Props` и самозакрывающимися тегами.
+   - `--vue`: генерация Single File Component (`.vue`) с блоками `<template>` и `<script setup>`.
+   - `--svelte`: генерация компонента Svelte (`.svelte`).
+5. **Готовый скаффолдинг проектов (`--scaffold`)**:
+   - Автоматическое создание полноценного проекта с `package.json`, PostCSS или `@tailwindcss/cli`, файлами стилей и скриптами `dev` и `build`.
+6. **Гибридный режим BEM + `@apply` (`--tailwind-mode hybrid`)**:
+   - Сохраняет семантические имена классов в HTML (`.hero-card`) и генерирует чистый файл стилей с директивами `@apply p-6 bg-white rounded-xl shadow-md;`.
+
+### Примеры использования в CLI:
+```bash
+# 1. Декомпиляция с утилитами Tailwind и zero-dependency CDN превью:
+fig2html design.fig --tailwind
+
+# 2. Экспорт в типизированный компонент React TSX:
+fig2html design.fig App.tsx --react
+
+# 3. Экспорт в компонент Vue 3:
+fig2html design.fig Card.vue --vue
+
+# 4. Скаффолдинг готового production-проекта Tailwind v4:
+fig2html design.fig --scaffold ./my-tailwind-app
+
+# 5. Гибридный режим (семантические классы в HTML + @apply в CSS):
+fig2html design.fig -s --tailwind --tailwind-mode hybrid
+
+# 6. Прямая компиляция HTML-страницы со стилями Tailwind в .fig:
+html-to-fig tailwind-page.html native-auto-layout.fig
 ```
 
 ---

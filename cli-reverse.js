@@ -94,6 +94,18 @@ ${colors.bold}OPTIONS:${colors.reset}
   ${colors.cyan}--lang <code>${colors.reset}             HTML document language code (e.g. en, ru; auto-detected by default)
   ${colors.cyan}--smart-layout${colors.reset}           Synthesize clean Flexbox & Grid without absolute positioning (default: enabled)
   ${colors.cyan}--no-smart-layout${colors.reset}        Disable Smart Layout Synthesis and fallback to absolute positioning
+  ${colors.cyan}--tailwind${colors.reset}               Enable Tailwind CSS utility classes output
+  ${colors.cyan}--tailwind-version <v3|v4>${colors.reset} Target Tailwind version: v3 or v4 (default: v4)
+  ${colors.cyan}--tailwind-mode <mode>${colors.reset}    Generation mode: utility or hybrid (default: utility)
+  ${colors.cyan}--tailwind-tolerance <px>${colors.reset} Snapping tolerance in px for 4px scale (default: 1)
+  ${colors.cyan}--tailwind-arbitrary <strat>${colors.reset} Arbitrary value strategy: auto, snap, or strict (default: auto)
+  ${colors.cyan}--tailwind-prefix <pfx>${colors.reset}   Add custom class prefix (e.g. "tw-")
+  ${colors.cyan}--no-tailwind-cdn${colors.reset}         Disable automatic Play CDN script injection in HTML
+  ${colors.cyan}--framework <fmt>${colors.reset}         Component framework: html, react, vue, or svelte (default: html)
+  ${colors.cyan}--react, --jsx, --tsx${colors.reset}     Shortcut for --framework react (generates React TSX component)
+  ${colors.cyan}--vue${colors.reset}                    Shortcut for --framework vue (generates Vue 3 SFC)
+  ${colors.cyan}--svelte${colors.reset}                 Shortcut for --framework svelte (generates Svelte component)
+  ${colors.cyan}--scaffold [dir]${colors.reset}          Scaffold complete production Tailwind project with package.json
   ${colors.cyan}-v, --verbose${colors.reset}              Print verbose execution logs
   ${colors.cyan}-h, --help${colors.reset}                 Display this help message
   ${colors.cyan}-V, --version${colors.reset}              Display version number
@@ -101,6 +113,15 @@ ${colors.bold}OPTIONS:${colors.reset}
 ${colors.bold}EXAMPLES:${colors.reset}
   ${colors.gray}# Simple reverse conversion (single self-contained HTML):${colors.reset}
   $ fig2html design.fig
+
+  ${colors.gray}# Decompile to HTML with Tailwind CSS utilities and CDN:${colors.reset}
+  $ fig2html design.fig --tailwind
+
+  ${colors.gray}# Generate a React TSX component with Tailwind:${colors.reset}
+  $ fig2html design.fig App.tsx --react
+
+  ${colors.gray}# Scaffold complete enterprise Tailwind v4 project:${colors.reset}
+  $ fig2html design.fig --scaffold ./my-tailwind-app
 
   ${colors.gray}# Extract separate CSS (css/style.css) and images (img/*) with WebP format:${colors.reset}
   $ fig2html design.fig -s --webp
@@ -150,7 +171,16 @@ function parseArgs(args) {
         smartLayout: true,
         responsive: true,
         breakpoints: null,
-        mobileFirst: false
+        mobileFirst: false,
+        tailwind: false,
+        tailwindVersion: 'v4',
+        tailwindMode: 'utility',
+        tailwindTolerance: 1,
+        tailwindArbitrary: 'auto',
+        tailwindPrefix: '',
+        tailwindCdn: true,
+        scaffold: false,
+        framework: 'html'
     };
 
     const positionals = [];
@@ -258,6 +288,44 @@ function parseArgs(args) {
             options.smartLayout = true;
         } else if (arg === '--no-smart-layout' || arg === '--no-smart') {
             options.smartLayout = false;
+        } else if (arg === '--tailwind') {
+            options.tailwind = true;
+        } else if (arg === '--tailwind-version' && args[i + 1] && !args[i + 1].startsWith('-')) {
+            options.tailwind = true;
+            options.tailwindVersion = args[++i].toLowerCase();
+        } else if (arg === '--tailwind-mode' && args[i + 1] && !args[i + 1].startsWith('-')) {
+            options.tailwind = true;
+            options.tailwindMode = args[++i].toLowerCase();
+        } else if (arg === '--tailwind-tolerance' && args[i + 1] && !args[i + 1].startsWith('-')) {
+            options.tailwind = true;
+            options.tailwindTolerance = parseFloat(args[++i]);
+        } else if (arg === '--tailwind-arbitrary' && args[i + 1] && !args[i + 1].startsWith('-')) {
+            options.tailwind = true;
+            options.tailwindArbitrary = args[++i].toLowerCase();
+        } else if (arg === '--tailwind-prefix' && args[i + 1] && !args[i + 1].startsWith('-')) {
+            options.tailwind = true;
+            options.tailwindPrefix = args[++i];
+        } else if (arg === '--scaffold') {
+            options.tailwind = true;
+            if (args[i + 1] && !args[i + 1].startsWith('-')) {
+                options.scaffold = args[++i];
+            } else {
+                options.scaffold = true;
+            }
+        } else if (arg === '--framework' && args[i + 1] && !args[i + 1].startsWith('-')) {
+            options.tailwind = true;
+            options.framework = args[++i].toLowerCase();
+        } else if (arg === '--react' || arg === '--jsx' || arg === '--tsx') {
+            options.tailwind = true;
+            options.framework = 'react';
+        } else if (arg === '--vue') {
+            options.tailwind = true;
+            options.framework = 'vue';
+        } else if (arg === '--svelte') {
+            options.tailwind = true;
+            options.framework = 'svelte';
+        } else if (arg === '--no-tailwind-cdn') {
+            options.tailwindCdn = false;
         } else if (arg === '-v' || arg === '--verbose') {
             options.verbose = true;
         } else if (!arg.startsWith('-')) {
@@ -275,10 +343,18 @@ function parseArgs(args) {
     if (!options.output && options.input) {
         const ext = path.extname(options.input);
         const base = path.basename(options.input, ext);
-        options.output = `${base}.html`;
+        if (options.framework === 'react') {
+            options.output = `${base}.tsx`;
+        } else if (options.framework === 'vue') {
+            options.output = `${base}.vue`;
+        } else if (options.framework === 'svelte') {
+            options.output = `${base}.svelte`;
+        } else {
+            options.output = `${base}.html`;
+        }
     }
 
-    if (options.output && !options.output.endsWith('.html')) {
+    if (options.output && !options.output.endsWith('.html') && !/\.(tsx|jsx|vue|svelte)$/i.test(options.output)) {
         if (!args.includes('--inline-images') && !args.includes('--no-separate-files')) {
             options.separateFiles = true;
             options.extractCss = true;
@@ -338,15 +414,30 @@ async function runConversion(options) {
             tokens: options.tokens,
             spacingTokens: options.spacingTokens,
             lang: options.lang,
+            tailwind: options.tailwind,
+            tailwindVersion: options.tailwindVersion,
+            tailwindMode: options.tailwindMode,
+            tailwindTolerance: options.tailwindTolerance,
+            tailwindArbitrary: options.tailwindArbitrary,
+            tailwindPrefix: options.tailwindPrefix,
+            tailwindCdn: options.tailwindCdn,
+            scaffold: options.scaffold,
+            framework: options.framework,
             onProgress: (pct, msg) => bar && bar.update(pct, msg)
         });
     } finally {
         if (bar) bar.stop();
     }
 
-    const finalHtmlPath = result.outputPath && fs.existsSync(result.outputPath)
+    let finalHtmlPath = result.outputPath && fs.existsSync(result.outputPath)
         ? result.outputPath
         : (fs.existsSync(outputPath) ? outputPath : null);
+    if (finalHtmlPath && fs.statSync(finalHtmlPath).isDirectory()) {
+        const candidateIndex = path.join(finalHtmlPath, 'index.html');
+        if (fs.existsSync(candidateIndex)) {
+            finalHtmlPath = candidateIndex;
+        }
+    }
     const outStat = finalHtmlPath ? fs.statSync(finalHtmlPath) : null;
 
     console.log(`\n${colors.green}${colors.bold}✔ Decompilation complete in ${result.durationMs}ms!${colors.reset}`);
@@ -371,6 +462,18 @@ async function runConversion(options) {
     if (options.layoutMode && options.layoutMode !== 'default') {
         const layoutLabel = options.layoutMode === 'fluid' ? 'Fluid (100vw/100dvh)' : (options.layoutMode === 'grid' ? 'CSS Grid' : 'Relative (rem/vw)');
         console.log(`│ ${colors.bold}Layout:${colors.reset}     ${layoutLabel.padEnd(27)} │`);
+    }
+    if (result.tailwind) {
+        const twVer = (options.tailwindVersion || 'v4').toUpperCase();
+        const twMode = options.tailwindMode === 'hybrid' ? 'Hybrid BEM+@apply' : 'Utility Classes';
+        console.log(`│ ${colors.bold}Tailwind:${colors.reset}   ${(`${twVer} (${twMode})`).padEnd(27)} │`);
+    }
+    if (result.framework && result.framework !== 'html') {
+        const fwName = result.framework === 'react' ? 'React (TSX)' : (result.framework.charAt(0).toUpperCase() + result.framework.slice(1));
+        console.log(`│ ${colors.bold}Framework:${colors.reset}  ${fwName.padEnd(27)} │`);
+    }
+    if (result.scaffoldFiles && result.scaffoldFiles.length > 0) {
+        console.log(`│ ${colors.bold}Scaffold:${colors.reset}   ${(`${result.scaffoldFiles.length} files generated`).padEnd(27)} │`);
     }
     if (result.cssPath && fs.existsSync(result.cssPath)) {
         const cssStat = fs.statSync(result.cssPath);

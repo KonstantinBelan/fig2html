@@ -34,3 +34,23 @@ export function formatColor(color, opacityMultiplier = 1) {
     }
     return `rgba(${r}, ${g}, ${b}, ${a})`;
 }
+
+/**
+ * Resolves a CSS color string from a paint (SOLID or GRADIENT_*).
+ * For gradients, extracts a solid fallback color from the first visible color stop (alpha > 0.05) or the first stop.
+ * @param {object} paint
+ * @returns {string|null} CSS color string (hex or rgba) or null if invisible/empty
+ */
+export function getColorFromPaint(paint) {
+    if (!paint || paint.visible === false) return null;
+    if (paint.type === 'SOLID' && paint.color) {
+        return formatColor(paint.color, paint.opacity);
+    }
+    if (paint.type && paint.type.startsWith('GRADIENT_') && Array.isArray(paint.stops) && paint.stops.length > 0) {
+        const stop = paint.stops.find(s => s?.color && (s.color.a === undefined || s.color.a > 0.05)) || paint.stops[0];
+        if (stop && stop.color) {
+            return formatColor(stop.color, paint.opacity);
+        }
+    }
+    return null;
+}

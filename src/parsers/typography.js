@@ -348,6 +348,20 @@ export function parseTextTransform(ttValue) {
 }
 
 /**
+ * Parses CSS text-align into valid Figma TextAlignHorizontal enum
+ * @param {string} taValue
+ * @returns {'LEFT' | 'CENTER' | 'RIGHT' | 'JUSTIFIED'}
+ */
+export function parseTextAlign(taValue) {
+    if (!taValue) return 'LEFT';
+    const clean = String(taValue).toLowerCase().trim();
+    if (clean === 'center') return 'CENTER';
+    if (clean === 'right' || clean === 'end') return 'RIGHT';
+    if (clean === 'justify') return 'JUSTIFIED';
+    return 'LEFT';
+}
+
+/**
  * Estimates text dimensions based on character content, font metrics, and container constraints
  */
 export function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, isParagraph = false, family = 'Inter') {
@@ -377,7 +391,8 @@ export function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, i
         };
     }
 
-    if (isParagraph && explicitWidth > 100) {
+    const singleLineWidth = Math.ceil(text.length * charWidth);
+    if (isParagraph && explicitWidth > 100 && singleLineWidth > explicitWidth) {
         const charsPerLine = Math.max(1, Math.floor(explicitWidth / charWidth));
         const linesCount = Math.max(1, Math.ceil(text.length / charsPerLine));
         return {
@@ -387,7 +402,6 @@ export function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, i
         };
     }
 
-    const singleLineWidth = Math.ceil(text.length * charWidth);
     return {
         width: explicitWidth > 0 ? explicitWidth : Math.max(10, singleLineWidth),
         height: lineHeight,

@@ -11,6 +11,19 @@ import {
     getVectorStrokeAttributes,
     getVectorFillAttribute
 } from './vector.js';
+import {
+    resolveNodeTailwindClasses,
+    synthesizeNodeResponsiveTailwind,
+    mapStylesToTailwind,
+    matchColor,
+    injectTailwindCdn,
+    generateHybridApplyStylesheet,
+    extractFigmaVariablesTheme,
+    transformHtmlToJsx,
+    generateReactComponent,
+    generateVueComponent,
+    generateSvelteComponent
+} from './tailwind/index.js';
 
 /**
  * Escapes characters for safe HTML attribute and text content rendering
@@ -47,9 +60,10 @@ export function isValidClassName(name) {
  * @param {object} textData
  * @param {object} defaultNode
  * @param {StylesheetManager} [stylesheetManager=null]
+ * @param {object} [options={}]
  * @returns {string} HTML string with styled <span> tags where necessary
  */
-export function renderRichText(textData, defaultNode, stylesheetManager = null) {
+export function renderRichText(textData, defaultNode, stylesheetManager = null, options = {}) {
     if (!textData || !textData.characters) {
         return '';
     }
@@ -119,7 +133,8 @@ export function renderRichText(textData, defaultNode, stylesheetManager = null) 
                     }
                 } else if (solid) {
                     const rawColor = formatColor(solid.color, solid.opacity);
-                    const subColor = stylesheetManager ? stylesheetManager.substituteVar('color', rawColor) : rawColor;
+                    const isTwUtility = Boolean(options.tailwind && options.tailwindMode !== 'hybrid');
+                    const subColor = (!isTwUtility && stylesheetManager) ? stylesheetManager.substituteVar('color', rawColor) : rawColor;
                     spanStyles['color'] = subColor;
                     const defaultHasGrad = Array.isArray(defaultNode?.fillPaints) && defaultNode.fillPaints.some(f => f.visible !== false && (f.type === 'GRADIENT_LINEAR' || f.type === 'GRADIENT_RADIAL'));
                     if (defaultHasGrad) {
@@ -152,6 +167,17 @@ export function renderRichText(textData, defaultNode, stylesheetManager = null) 
 
             if (override.textDecoration === 'UNDERLINE') spanStyles['text-decoration'] = 'underline';
             else if (override.textDecoration === 'STRIKETHROUGH') spanStyles['text-decoration'] = 'line-through';
+
+            if (options.tailwind && options.tailwindMode !== 'hybrid' && Object.keys(spanStyles).length > 0) {
+                const { classes: spanTwClasses, remainingStyles: spanRemStyles } = mapStylesToTailwind(spanStyles, options);
+                if (spanTwClasses.length > 0) {
+                    const classProp = options.framework === 'react' ? 'className' : 'class';
+                    const remStyleStr = toStyleString(spanRemStyles);
+                    const remStyleAttr = remStyleStr ? ` style="${remStyleStr}"` : '';
+                    resultParts.push(`<span ${classProp}="${spanTwClasses.join(' ')}"${remStyleAttr}>${escaped}</span>`);
+                    continue;
+                }
+            }
 
             const styleStr = toStyleString(spanStyles);
             if (styleStr) {
@@ -199,14 +225,20 @@ const A11Y_I18N = {
         action: 'Действие',
         close: 'Закрыть',
         menu: 'Меню',
-        search: 'Поиск'
+        search: 'Поиск',
+        breadcrumb: 'Хлебные крошки',
+        pagination: 'Пагинация',
+        complementary: 'Дополнительно'
     },
     en: {
         navigation: 'Navigation',
         action: 'Action',
         close: 'Close',
         menu: 'Menu',
-        search: 'Search'
+        search: 'Search',
+        breadcrumb: 'Breadcrumb',
+        pagination: 'Pagination',
+        complementary: 'Complementary'
     }
 };
 
@@ -285,6 +317,62 @@ function getButtonAriaLabel(node, lang = 'en') {
 }
 
 /**
+ * Recursively checks if a node or its subtree contains a heading element
+ * @param {object} node
+ * @param {number} [depth=0]
+ * @returns {boolean}
+ */
+export function hasHeadingDescendant(node, depth = 0) {
+    if (!node || depth > 10) return false;
+    if (node.type === 'TEXT') {
+        const text = node.textData?.characters || '';
+        const clean = text.trim();
+        if (!clean || isPriceOrMetricText(clean)) return false;
+
+        const name = (node.name || '').toLowerCase().trim();
+        if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(name)) return true;
+        if (/^(h[1-6]|hero[-_ ]?title|main[-_ ]?title|section[-_ ]?title|section[-_ ]?heading|card[-_ ]?title|item[-_ ]?title)([-_ ]|$)/i.test(name)) {
+            return true;
+        }
+
+        const fs = node.fontSize || 16;
+        const { fontWeight } = parseFontWeightAndStyle(node.fontName?.style);
+        if (fs >= 24 && fontWeight >= 500) return true;
+        if (fs >= 18 && fontWeight >= 500) return true;
+        if (fs >= 15 && fontWeight >= 600) return true;
+        return false;
+    }
+    if (Array.isArray(node.children)) {
+        for (const child of node.children) {
+            if (hasHeadingDescendant(child, depth + 1)) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Derives a clean accessibility label for a section landmark
+ * @param {object} node
+ * @param {string} [lang='en']
+ * @returns {string}
+ */
+export function getSectionAriaLabel(node, lang = 'en') {
+    if (!node) return '';
+    const name = (node.name || '').trim();
+    const clean = name.replace(/[-_]*(section|block|part|container|wrapper)[-_]*/gi, ' ').trim();
+    if (!clean || /^(frame|group|rectangle|component|instance|box|el)[-_ ]?\d*$/i.test(clean)) {
+        return '';
+    }
+    return clean
+        .split(/\s+/)
+        .map(w => {
+            if (/^(faq|cta|ui|ux|api|ai)$/i.test(w)) return w.toUpperCase();
+            return w.charAt(0).toUpperCase() + w.slice(1);
+        })
+        .join(' ');
+}
+
+/**
  * Computes accessible alt text and aria attributes for images
  * @param {object} node
  * @param {string} defaultName
@@ -313,10 +401,14 @@ function getAccessibleImageAttributes(node, defaultName) {
 export function determineTextTag(node, context = {}) {
     const name = (node.name || '').toLowerCase().trim();
 
-    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'label', 'blockquote', 'code'].includes(name)) {
+    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'span', 'label', 'blockquote', 'code', 'figcaption', 'summary'].includes(name)) {
         if (name === 'h1') context.pageH1Assigned = true;
         return name;
     }
+
+    if (name === 'caption' || name === 'figcaption') return 'figcaption';
+    if (name === 'summary') return 'summary';
+    if (name === 'quote' || name === 'testimonial-quote') return 'blockquote';
 
     const text = node.textData?.characters || '';
     const cleanText = text.trim();
@@ -373,34 +465,72 @@ export function determineTextTag(node, context = {}) {
 export function determineContainerTag(node, parentNode = null, options = {}) {
     const name = (node.name || '').toLowerCase().trim();
 
+    // 0. Interactive boundary: elements inside button or link must NEVER be interactive or sectioning landmarks
+    if (options.inButton || options.inLink) {
+        return 'div';
+    }
+
     // 1. Exact semantic tag names
-    if (['header', 'nav', 'footer', 'section', 'article', 'aside', 'main', 'form'].includes(name)) {
+    if (['header', 'nav', 'footer', 'section', 'article', 'aside', 'main', 'form', 'figure'].includes(name)) {
+        if (name === 'header' && (options.inHeader || options.inFooter)) return 'div';
+        if (name === 'footer' && (options.inFooter || options.inHeader)) return 'div';
+        if (name === 'main' && options.inMain) return 'div';
+        if (name === 'nav' && options.inNav) return 'div';
         return name;
     }
 
-    // 2. Button checks
-    if (/^(btn|button)([-_ ]|$)/i.test(name) || /[-_ ](btn|button)$/i.test(name)) {
-        return 'button';
+    // 2. Button checks (exclude button wrappers / containers)
+    const isButtonContainer = /^(btn|button)[-_ ](group|wrapper|container|row|list|box|items|bar|wrap|section)\b/i.test(name) || name === 'buttons' || name === 'button-group';
+    if (!isButtonContainer) {
+        if (/^(btn|button)([-_ ]|$)/i.test(name) || /[-_ ](btn|button)$/i.test(name)) {
+            return 'button';
+        }
     }
 
-    // 3. Link checks
-    if (/^(link|nav[-_ ]?link|url|btn[-_ ]?link)([-_ ]|$)/i.test(name) || /[-_ ]link$/i.test(name)) {
-        return 'a';
+    // 3. Link checks (exclude link lists / wrappers)
+    const isLinkContainer = /^(link|nav[-_ ]?link)[-_ ](list|wrapper|group|container|row|box|items|menu)\b/i.test(name) || name === 'links' || name === 'nav-links';
+    if (!isLinkContainer) {
+        if (/^(link|nav[-_ ]?link|url|btn[-_ ]?link)([-_ ]|$)/i.test(name) || /[-_ ]link$/i.test(name)) {
+            return 'a';
+        }
     }
 
-    // 4. Header patterns
-    if (/^(header|top[-_ ]?bar|navbar|nav[-_ ]?bar|app[-_ ]?bar)($|[-_ ])/i.test(name)) {
-        return 'header';
+    // 4. Header patterns (page header or scoped article/section header)
+    if (!options.inHeader && !options.inFooter) {
+        const isHeaderSub = /^(header|top[-_ ]?bar)[-_ ](content|inner|wrapper|container|box|left|right|center|logo|text|title|row)\b/i.test(name);
+        const isHeaderName = !isHeaderSub && (
+            /^(header|top[-_ ]?bar|navbar|nav[-_ ]?bar|app[-_ ]?bar)($|[-_ ])/i.test(name) ||
+            /[-_ ](header|head)$/i.test(name)
+        );
+        if (isHeaderName) {
+            if (!parentNode || parentNode.isRoot || parentNode.isPageWrapper) {
+                options.hasRootHeader = true;
+            }
+            return 'header';
+        }
     }
 
-    // 5. Footer patterns
-    if (/^(footer|bottom[-_ ]?bar)($|[-_ ])/i.test(name)) {
-        return 'footer';
+    // 5. Footer patterns (page footer or scoped article/section footer)
+    if (!options.inFooter && !options.inHeader) {
+        const isFooterSub = /^(footer|bottom[-_ ]?bar)[-_ ](content|inner|wrapper|container|box|left|right|center|logo|text|title|row|col|column|copyright|social|brand)\b/i.test(name);
+        const isFooterName = !isFooterSub && (
+            /^(footer|bottom[-_ ]?bar)($|[-_ ])/i.test(name) ||
+            /[-_ ](footer|foot)$/i.test(name)
+        );
+        if (isFooterName) {
+            if (!parentNode || parentNode.isRoot || parentNode.isPageWrapper) {
+                options.hasRootFooter = true;
+            }
+            return 'footer';
+        }
     }
 
     // 6. Navigation patterns
-    if (/^(nav|navigation|nav[-_ ]?links?|nav[-_ ]?menu|menu[-_ ]?links?)($|[-_ ])/i.test(name)) {
-        return 'nav';
+    if (!options.inNav) {
+        const isNavSub = /^nav[-_ ](item|link|button|icon|text)\b/i.test(name);
+        if (!isNavSub && /^(nav|navigation|nav[-_ ]?links?|nav[-_ ]?menu|menu[-_ ]?links?|breadcrumbs?|pagination|pager)($|[-_ ])/i.test(name)) {
+            return 'nav';
+        }
     }
 
     // 7. Form patterns
@@ -408,39 +538,89 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
         return 'form';
     }
 
-    // 8. Main content patterns
-    if (/^(main|main[-_ ]?content|content[-_ ]?wrapper|page[-_ ]?body)$/i.test(name)) {
+    // 8. Figure patterns
+    if (/^(figure|image[-_ ]?figure)$/i.test(name)) {
+        return 'figure';
+    }
+
+    // 9. Aside / complementary patterns
+    const isAsideSub = /^(aside|sidebar|drawer)[-_ ](content|inner|wrapper|container|box|items|list|links?)\b/i.test(name);
+    if (!isAsideSub && /^(aside|sidebar|side[-_ ]?nav|drawer|callout|notice[-_ ]?banner|promo[-_ ]?banner|alert[-_ ]?box)([-_ ]|$)/i.test(name)) {
+        return 'aside';
+    }
+
+    // 10. Article patterns (standalone self-contained items: card, post, product, review, testimonial, slide)
+    if (Array.isArray(node.children) && node.children.length > 0) {
+        const isArticleContainer = /^(cards?|articles?|posts?|products?|reviews?|testimonials?|items?|pricing|slides?)[-_ ](grid|list|group|wrapper|container|row|box|items|wrap|slider|carousel)\b/i.test(name) ||
+            /^(cards|posts|products|reviews|testimonials|articles|slides)$/i.test(name);
+        const isArticleSub = /[-_ ](header|head|footer|foot|body|title|heading|content|inner|image|img|icon|badge|price|meta|veil|scrim|lead|copy)\b/i.test(name);
+        if (!isArticleContainer && !isArticleSub && /^(article|post|card|product[-_ ]?card|review[-_ ]?card|testimonial[-_ ]?card|pricing[-_ ]?card|pricing[-_ ]?tier|pricing[-_ ]?plan|team[-_ ]?card|member[-_ ]?card|blog[-_ ]?card|news[-_ ]?card|feature[-_ ]?card|service[-_ ]?card|slide)([-_ ]|$)/i.test(name)) {
+            return 'article';
+        }
+    }
+
+    // 11. Main content patterns
+    if (!options.inMain && /^(main|main[-_ ]?content|content[-_ ]?wrapper|page[-_ ]?body|deck)$/i.test(name)) {
+        options.hasRootMain = true;
         return 'main';
     }
 
-    // 9. Named section patterns
-    const isSectionName = name.includes('section') ||
-        /^(hero|features?|pricing|testimonials?|reviews?|faq|cta|call[-_ ]?to[-_ ]?action|about|about[-_ ]?us|contact|contact[-_ ]?us|services?|portfolio|gallery|team|partners?|clients?|stats|how[-_ ]?it[-_ ]?works|benefits?|advantages?|catalog|products?)([-_ ]|$)/i.test(name);
+    // 12. Named section patterns (excluding sub-containers like hero-top, hero-inner, features-grid)
+    const isSectionSub = /^(section|hero|features?|pricing|testimonials?|reviews?|faq|cta|about|contact|services?|team|catalog|products?)[-_ ](top|bottom|header|head|footer|foot|body|title|heading|content|inner|wrapper|container|row|col|grid|card|box|left|right|center)\b/i.test(name);
+    const isSectionName = !isSectionSub && (name.includes('section') ||
+        /^(hero|features?|pricing|testimonials?|reviews?|faq|cta|call[-_ ]?to[-_ ]?action|about|about[-_ ]?us|contact|contact[-_ ]?us|services?|portfolio|gallery|team|partners?|clients?|stats|how[-_ ]?it[-_ ]?works|benefits?|advantages?|catalog|products?|specs|specifications|download|newsletter|overview)([-_ ]|$)/i.test(name));
     if (isSectionName && Array.isArray(node.children) && node.children.length > 0) {
         return 'section';
     }
 
-    // 10. Structural/positional heuristics for direct root children
-    const isDirectChildOfRoot = Boolean(parentNode && (parentNode.isRoot || !parentNode.parentNode));
-    if (isDirectChildOfRoot && Array.isArray(node.children) && node.children.length > 0) {
+    // 13. Positional heuristics for top-level children of the root artboard or page wrapper
+    const isTopLevelContainer = Boolean(
+        (parentNode && parentNode.isRoot === true) ||
+        (parentNode && parentNode.isPageWrapper === true)
+    );
+    if (isTopLevelContainer && Array.isArray(node.children) && node.children.length > 0) {
+        const siblings = parentNode.children || [];
+        const siblingCount = siblings.length;
+        const nodeIndex = siblings.indexOf(node);
         const y = node.y !== undefined ? node.y : (node.transform?.m12 ?? 0);
         const height = node.size?.y || 0;
+        const pageHeight = parentNode.size?.y || 0;
 
-        // Topmost bar < 180px height
-        if (y <= 30 && height > 0 && height <= 180 && !options.hasRootHeader) {
+        // Pattern 1: Single child of root is the main page wrapper/container
+        if (siblingCount === 1) {
+            if (!options.inMain && !options.hasRootMain && (height >= 300 || /^(main|content|dashboard|app|body|page|container|wrapper)([-_ ]|$)/i.test(name))) {
+                options.hasRootMain = true;
+                return 'main';
+            }
+            return 'div';
+        }
+
+        // Pattern 2: Multiple siblings
+        // Topmost header bar: first sibling, near top, reasonable header height
+        if (siblingCount > 1 && nodeIndex === 0 && y <= 40 && height > 0 && height <= 180 && height < pageHeight * 0.35 && !options.hasRootHeader && !options.inHeader) {
             options.hasRootHeader = true;
             return 'header';
         }
 
-        // Bottom bar
-        const pageHeight = parentNode.size?.y || 0;
-        if (pageHeight > 0 && (y + height >= pageHeight - 60) && height >= 60 && !options.hasRootFooter) {
+        // Bottom footer bar: last sibling, lower part of page (y >= 50% and y >= 200), reasonable footer height (<= 550px and <= 35% of page)
+        const isLastSibling = nodeIndex === siblingCount - 1;
+        const isExcludedFromFooter = /^(main|content|dashboard|deck|grid|cards?|hero|form|body|wrapper|container|code[-_ ]?box|box|slider|carousel|catalog|catalog[-_ ]?grid)([-_ ]|$)/i.test(name);
+        if (siblingCount > 1 && isLastSibling && !isExcludedFromFooter && pageHeight > 0 && y >= pageHeight * 0.5 && y > 200 && height >= 40 && height <= 550 && height <= pageHeight * 0.35 && (y + height >= pageHeight - 120) && !options.hasRootFooter && !options.inFooter) {
             options.hasRootFooter = true;
             return 'footer';
         }
 
-        // Other major top-level blocks
-        if (height >= 120) {
+        // Major dominant middle content block
+        if (!options.inMain && !options.hasRootMain && siblingCount > 1 && height >= 400 && height >= pageHeight * 0.4 && /^(main|deck|content|dashboard)([-_ ]|$)/i.test(name)) {
+            options.hasRootMain = true;
+            return 'main';
+        }
+
+        // Other major top-level blocks:
+        // Under W3C Living Standard: a section MUST have a heading or thematic name.
+        // If it has a heading descendant or a semantic section name, promote to <section>.
+        // Otherwise, it is a generic layout container and must remain <div>.
+        if (height >= 120 && (hasHeadingDescendant(node) || isSectionName)) {
             return 'section';
         }
     }
@@ -460,6 +640,13 @@ export function determineContainerTag(node, parentNode = null, options = {}) {
  */
 export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetManagerOrOptions = {}, maybeOptions = {}, maybeIndent = 2) {
     if (!node || node.visible === false || node.mask === true || node.isMask === true) return '';
+
+    if (!parentNode) {
+        node.isRoot = true;
+    }
+    if (parentNode && (parentNode.isRoot || parentNode.isPageWrapper) && parentNode.children?.length === 1) {
+        node.isPageWrapper = true;
+    }
 
     let stylesheetManager = null;
     let options = {};
@@ -481,16 +668,49 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
 
     const indent = '  '.repeat(indentLevel);
     const nodeName = node.name || '';
-    const assignedClass = stylesheetManager
+    const isTailwind = Boolean(options.tailwind);
+    const isHybrid = options.tailwindMode === 'hybrid';
+    const isReact = options.framework === 'react';
+    const classProp = isReact ? 'className' : 'class';
+
+    let assignedClass = stylesheetManager
         ? stylesheetManager.getNodeClass(node)
         : (isValidClassName(nodeName) ? nodeName : '');
-    const classAttr = assignedClass ? ` class="${assignedClass}"` : '';
 
     const styles = (stylesheetManager && stylesheetManager.getNodeStyles(node))
         || computeNodeStyles(node, parentNode, imageRegistry, options);
 
-    const isInline = stylesheetManager ? (options.inlineStyles === true) : (options.inlineStyles !== false);
-    const styleStr = toStyleString(styles);
+    let twClassString = '';
+    let remainingStyles = styles;
+
+    if (isTailwind && !isHybrid) {
+        const twOptions = (options.extractCss || options.inlineStyles)
+            ? options
+            : { ...options, cssAssetUrlPrefix: options.assetUrlPrefix || 'img/' };
+
+        if (options.pageBreakpoints && options.pageBreakpoints.length > 1) {
+            const twResult = synthesizeNodeResponsiveTailwind(node, options.pageBreakpoints, imageRegistry, twOptions, parentNode);
+            twClassString = twResult.classString;
+            remainingStyles = twResult.remainingStyles || {};
+        } else {
+            const twResult = resolveNodeTailwindClasses(node, parentNode, imageRegistry, twOptions);
+            twClassString = twResult.classString;
+            remainingStyles = twResult.remainingStyles || {};
+        }
+    }
+
+    const finalClass = isTailwind && !isHybrid
+        ? (options.keepSemanticClasses && assignedClass ? `${assignedClass} ${twClassString}`.trim() : (twClassString || assignedClass))
+        : assignedClass;
+
+    const classAttr = finalClass ? ` ${classProp}="${escapeHtml(finalClass)}"` : '';
+
+    const isInline = isTailwind && !isHybrid
+        ? (options.inlineStyles === true || Object.keys(remainingStyles).length > 0)
+        : (stylesheetManager ? (options.inlineStyles === true) : (options.inlineStyles !== false));
+
+    const stylesToRender = (isTailwind && !isHybrid) ? remainingStyles : styles;
+    const styleStr = toStyleString(stylesToRender);
     const styleAttr = isInline && styleStr ? ` style="${styleStr}"` : '';
 
     // 1. INPUT ELEMENT DETECTION
@@ -500,20 +720,20 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
         const placeholderText = placeholderNode ? (placeholderNode.textData?.characters || placeholderNode.name || '') : '';
         const phAttr = placeholderText ? ` placeholder="${escapeHtml(placeholderText)}"` : '';
 
-        return `${indent}<input type="${inputType}"${classAttr}${phAttr}${styleAttr}>\n`;
+        return `${indent}<input type="${inputType}"${classAttr}${phAttr}${styleAttr} />\n`;
     }
 
     // 2. CHECKBOX / RADIO DETECTION
     if (nodeName === 'Checkbox' && node.type === 'RECTANGLE' && node.size?.x <= 24) {
-        return `${indent}<input type="checkbox"${classAttr}${styleAttr}>\n`;
+        return `${indent}<input type="checkbox"${classAttr}${styleAttr} />\n`;
     }
     if (nodeName === 'Radio' && node.type === 'ELLIPSE' && node.size?.x <= 24) {
-        return `${indent}<input type="radio"${classAttr}${styleAttr}>\n`;
+        return `${indent}<input type="radio"${classAttr}${styleAttr} />\n`;
     }
 
     // 3. DIVIDER / HORIZONTAL RULE (<hr>)
     if ((nodeName === 'Divider' || nodeName === 'Line' || nodeName === 'hairline') && node.type === 'RECTANGLE' && (node.size?.y <= 3 || !node.children?.length)) {
-        return `${indent}<div${classAttr || ' class="hairline"'}${styleAttr}></div>\n`;
+        return `${indent}<div${classAttr || ` ${classProp}="hairline"`}${styleAttr}></div>\n`;
     }
 
     // 4. IMAGE RECTANGLE (<img />)
@@ -548,7 +768,7 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
             }
 
             const imgAttrs = getAccessibleImageAttributes(node, nodeName);
-            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr}${imgAttrs}${classAttr}${styleAttr}>\n`;
+            return `${indent}<img src="${imgSrc}"${srcsetAttr}${sizesAttr}${imgAttrs}${classAttr}${styleAttr} />\n`;
         }
     }
 
@@ -571,8 +791,8 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
                     fill = 'currentColor';
                 }
 
-                const fillVal = stylesheetManager ? stylesheetManager.substituteVar('fill', fill) : fill;
-                const strokeVal = stylesheetManager ? stylesheetManager.substituteVar('stroke', stroke) : stroke;
+                const fillVal = (!isTailwind || isHybrid) && stylesheetManager ? stylesheetManager.substituteVar('fill', fill) : fill;
+                const strokeVal = (!isTailwind || isHybrid) && stylesheetManager ? stylesheetManager.substituteVar('stroke', stroke) : stroke;
 
                 // Scale factor for normalized vectorNetworkBlob coordinates
                 let sx = 1;
@@ -690,7 +910,7 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
         }
 
         const tag = determineTextTag(node, options.headingContext);
-        const textContent = renderRichText(node.textData || { characters: node.name }, node, stylesheetManager);
+        const textContent = renderRichText(node.textData || { characters: node.name }, node, stylesheetManager, options);
 
         return `${indent}<${tag}${classAttr}${styleAttr}>${textContent}</${tag}>\n`;
     }
@@ -707,7 +927,28 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
     } else if (tag === 'a') {
         extraAttrs += ' href="#"';
     } else if (tag === 'nav') {
-        extraAttrs += ` aria-label="${escapeHtml(getAccessibleLabel('navigation', docLang))}"`;
+        const lowerName = (node.name || '').toLowerCase();
+        let navLabel = getAccessibleLabel('navigation', docLang);
+        if (lowerName.includes('breadcrumb')) {
+            navLabel = getAccessibleLabel('breadcrumb', docLang);
+        } else if (lowerName.includes('pagination') || lowerName.includes('pager')) {
+            navLabel = getAccessibleLabel('pagination', docLang);
+        }
+        extraAttrs += ` aria-label="${escapeHtml(navLabel)}"`;
+    } else if (tag === 'section') {
+        // W3C / WCAG 2.2: If section does not have an explicit heading descendant,
+        // provide aria-label derived from its name so it becomes an accessible landmark
+        if (!hasHeadingDescendant(node)) {
+            const sectionLabel = getSectionAriaLabel(node, docLang);
+            if (sectionLabel) {
+                extraAttrs += ` aria-label="${escapeHtml(sectionLabel)}"`;
+            }
+        }
+    } else if (tag === 'aside') {
+        const asideLabel = getSectionAriaLabel(node, docLang) || getAccessibleLabel('complementary', docLang);
+        if (asideLabel) {
+            extraAttrs += ` aria-label="${escapeHtml(asideLabel)}"`;
+        }
     }
 
     // Self-closing if empty and not a container tag
@@ -717,8 +958,20 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
 
     let innerHtml = '';
     if (node.children && node.children.length > 0) {
+        const childOptions = {
+            ...options,
+            parentTag: tag,
+            inHeader: options.inHeader || tag === 'header',
+            inFooter: options.inFooter || tag === 'footer',
+            inButton: options.inButton || tag === 'button',
+            inLink: options.inLink || tag === 'a',
+            inMain: options.inMain || tag === 'main',
+            inNav: options.inNav || tag === 'nav',
+            inArticle: options.inArticle || tag === 'article',
+            inAside: options.inAside || tag === 'aside'
+        };
         for (const child of node.children) {
-            innerHtml += renderNodeToHtml(child, node, imageRegistry, stylesheetManager, options, indentLevel + 1);
+            innerHtml += renderNodeToHtml(child, node, imageRegistry, stylesheetManager, childOptions, indentLevel + 1);
         }
     }
 
@@ -791,6 +1044,9 @@ export function generateGoogleFontsUrl(fontFamilies) {
  * @returns {string} Complete HTML document
  */
 export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {}) {
+    for (const root of rootNodes) {
+        if (root) root.isRoot = true;
+    }
     const title = options.title || (rootNodes[0]?.name) || 'Exported Figma Design';
     const fontFamilies = collectFontFamilies(rootNodes);
     const googleFontsUrl = generateGoogleFontsUrl(fontFamilies);
@@ -842,7 +1098,11 @@ export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {})
     // Generate CSS rules (classes + :root) or base resets if inlineStyles is requested
     let cssContent = options.cssContent || '';
     if (!cssContent) {
-        if (options.inlineStyles) {
+        if (options.tailwind && options.tailwindMode === 'hybrid') {
+            cssContent = generateHybridApplyStylesheet(stylesheetManager.uniqueRules, options);
+        } else if (options.tailwind) {
+            cssContent = '';
+        } else if (options.inlineStyles) {
             cssContent = `  *, *::before, *::after {\n    box-sizing: border-box;\n    margin: 0;\n    padding: 0;\n  }\n  body {\n    margin: 0;\n    padding: 0;\n    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;\n    -webkit-font-smoothing: antialiased;\n    -moz-osx-font-smoothing: grayscale;\n    background-color: ${rootBg};\n    color: #c9d1d9;\n    line-height: 1.5;\n  }\n  button, input, optgroup, select, textarea {\n    font-family: inherit;\n    font-size: 100%;\n    line-height: inherit;\n    color: inherit;\n    margin: 0;\n    padding: 0;\n    border: 0;\n    background: transparent;\n    vertical-align: baseline;\n  }\n  button, [type="button"], [type="reset"], [type="submit"] {\n    -webkit-appearance: button;\n    appearance: button;\n    cursor: pointer;\n    background: transparent;\n    border: none;\n    outline: none;\n  }\n  input, textarea {\n    outline: none;\n    background: transparent;\n    border: none;\n  }\n  h1, h2, h3, h4, h5, h6, p {\n    margin: 0;\n    font-size: inherit;\n    font-weight: inherit;\n  }\n  ul, ol {\n    list-style: none;\n    margin: 0;\n    padding: 0;\n  }\n  img, svg {\n    max-width: 100%;\n    display: block;\n  }\n  a {\n    color: inherit;\n    text-decoration: inherit;\n  }\n  :focus-visible {\n    outline: 2px solid currentColor;\n    outline-offset: 2px;\n  }`;
         } else {
             cssContent = stylesheetManager.generateFullStylesheet(rootBg);
@@ -856,18 +1116,44 @@ export function generateFullHtmlDocument(rootNodes, imageRegistry, options = {})
     let bodyContent = '';
     for (const root of rootNodes) {
         if (root.isStateGroup) continue;
-        bodyContent += renderNodeToHtml(root, null, imageRegistry, stylesheetManager, options, 2);
+        const pageOptions = {
+            ...options,
+            hasRootHeader: false,
+            hasRootFooter: false,
+            hasRootMain: false,
+            inHeader: false,
+            inFooter: false,
+            inButton: false,
+            inLink: false,
+            inMain: false,
+            inNav: false,
+            inArticle: false,
+            inAside: false
+        };
+        bodyContent += renderNodeToHtml(root, null, imageRegistry, stylesheetManager, pageOptions, 2);
     }
 
     const cssHref = options.cssHref || options.cssFile || 'css/style.css';
-    const styleTagOrLink = options.extractCss
-        ? `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`
-        : `  <style>\n${cssContent}\n  </style>\n`;
+    const isTwUtility = Boolean(options.tailwind && options.tailwindMode !== 'hybrid');
+    let styleTagOrLink = '';
+    if (cssContent.trim()) {
+        styleTagOrLink = options.extractCss
+            ? `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`
+            : `  <style>\n${cssContent}\n  </style>\n`;
+    } else if (options.extractCss && !isTwUtility) {
+        styleTagOrLink = `  <link rel="stylesheet" href="${escapeHtml(cssHref)}">\n`;
+    }
 
-    const bodyClass = options.pageSlug ? `page-${options.pageSlug}` : (options.bodyClass || '');
+    let bodyClass = options.pageSlug ? `page-${options.pageSlug}` : (options.bodyClass || '');
+    if (isTwUtility && rootBg) {
+        const bgMatch = matchColor(rootBg, options);
+        if (bgMatch && bgMatch.classSuffix && bgMatch.classSuffix !== 'transparent') {
+            bodyClass = `${bodyClass} bg-${bgMatch.classSuffix} m-0 p-0 antialiased`.trim();
+        }
+    }
     const bodyClassAttr = bodyClass ? ` class="${escapeHtml(bodyClass)}"` : '';
 
-    const html = `<!DOCTYPE html>
+    let html = `<!DOCTYPE html>
 <html lang="${escapeHtml(docLang)}">
 <head>
   <meta charset="UTF-8">
@@ -879,13 +1165,59 @@ ${bodyContent}</body>
 </html>
 `;
 
+    // Inject Tailwind Play CDN if requested and not in scaffold mode
+    if (options.tailwind && options.tailwindCdn !== false && !options.scaffold) {
+        const themeData = extractFigmaVariablesTheme(options.variables || [], options.variableSets || []);
+        if (fontFamilies && fontFamilies.size > 0) {
+            themeData.fontFamily = themeData.fontFamily || themeData.fonts || {};
+            const sansFonts = [];
+            const monoFonts = [];
+            const serifFonts = [];
+            for (const fam of fontFamilies) {
+                const clean = fam.toLowerCase();
+                if (clean.includes('mono') || clean.includes('code') || clean.includes('consolas') || clean.includes('menlo')) {
+                    monoFonts.push(fam);
+                } else if (clean.includes('serif') || clean.includes('georgia') || clean.includes('times') || clean.includes('garamond') || clean.includes('merriweather') || clean.includes('playfair') || clean.includes('lora')) {
+                    serifFonts.push(fam);
+                } else {
+                    sansFonts.push(fam);
+                }
+            }
+            if (sansFonts.length > 0) {
+                const primarySans = sansFonts[0];
+                themeData.fontFamily.sans = [primarySans, 'sans-serif'];
+                themeData.fontFamily.display = [primarySans, 'sans-serif'];
+            }
+            if (monoFonts.length > 0) {
+                themeData.fontFamily.mono = [monoFonts[0], 'monospace'];
+            }
+            if (serifFonts.length > 0) {
+                themeData.fontFamily.serif = [serifFonts[0], 'serif'];
+            }
+        }
+        html = injectTailwindCdn(html, themeData);
+    }
+
+    // Component framework transformation if requested
+    let componentCode = null;
+    const componentName = options.componentName || (rootNodes[0]?.name ? rootNodes[0].name.replace(/[^a-zA-Z0-9_]/g, '') : 'FigmaComponent') || 'FigmaComponent';
+    if (options.framework === 'react') {
+        componentCode = generateReactComponent(bodyContent.trim(), componentName, { typescript: options.typescript !== false });
+    } else if (options.framework === 'vue') {
+        componentCode = generateVueComponent(bodyContent.trim(), componentName);
+    } else if (options.framework === 'svelte') {
+        componentCode = generateSvelteComponent(bodyContent.trim(), componentName);
+    }
+
     const tokens = stylesheetManager.exportDesignTokens();
 
-    if (options.extractCss || options.returnCss || options.returnTokens) {
+    if (options.extractCss || options.returnCss || options.returnTokens || options.framework) {
         return {
             html,
             css: cssContent,
             tokens,
+            componentCode,
+            framework: options.framework || 'html',
             toString() { return this.html; }
         };
     }

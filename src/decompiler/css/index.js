@@ -12,7 +12,8 @@ import {
 
 import {
     getExtensionForMime,
-    formatColor
+    formatColor,
+    getColorFromPaint
 } from "./color-formatter.js";
 
 import {
@@ -197,11 +198,23 @@ export function computeNodeStyles(node, parentNode, imageRegistry, options = {})
     }
 
     // 2. Borders & Strokes
-    if (!isSvgVector && Array.isArray(node.strokePaints) && node.strokePaints.length > 0 && node.strokeWeight > 0) {
-        const solidStroke = node.strokePaints.find(s => s.visible !== false && s.type === 'SOLID');
-        if (solidStroke) {
-            const strokeColor = formatColor(solidStroke.color, solidStroke.opacity);
-
+    const hasStrokeWeight = (node.strokeWeight > 0) || (node.borderStrokeWeightsIndependent && (
+        (node.borderTopWeight || 0) > 0 ||
+        (node.borderRightWeight || 0) > 0 ||
+        (node.borderBottomWeight || 0) > 0 ||
+        (node.borderLeftWeight || 0) > 0
+    ));
+    const strokePaints = Array.isArray(node.strokePaints) ? node.strokePaints : (Array.isArray(node.strokes) ? node.strokes : null);
+    if (!isSvgVector && strokePaints && strokePaints.length > 0 && hasStrokeWeight) {
+        let strokeColor = null;
+        for (const paint of strokePaints) {
+            const color = getColorFromPaint(paint);
+            if (color && color !== 'transparent') {
+                strokeColor = color;
+                break;
+            }
+        }
+        if (strokeColor) {
             const fmtBorderW = (w) => useRelativeUnits ? (w <= 1 ? '1px' : toRem(w)) : `${w}px`;
 
             if (node.borderStrokeWeightsIndependent) {
@@ -941,8 +954,8 @@ export function computeNodeStyles(node, parentNode, imageRegistry, options = {})
         const maxH = node.maxSize?.value?.y ?? node.maxSize?.y ?? node.maxHeight;
         if (minW && minW > 0) styles['min-width'] = fmtW(minW);
         if (minH && minH > 0) styles['min-height'] = fmtH(minH);
-        if (maxW && maxW > 0) styles['max-width'] = fmtW(maxW);
-        if (maxH && maxH > 0) styles['max-height'] = fmtH(maxH);
+        if (maxW && maxW > 0 && Number.isFinite(maxW)) styles['max-width'] = fmtW(maxW);
+        if (maxH && maxH > 0 && Number.isFinite(maxH)) styles['max-height'] = fmtH(maxH);
 
         if (parentIsGrid) {
             styles['width'] = '100%';
@@ -1084,6 +1097,7 @@ export function toStyleString(styleObj) {
 export {
     getExtensionForMime,
     formatColor,
+    getColorFromPaint,
     getLinearGradientAngle,
     parseTransformMatrix,
     getNodeTransformInfo,

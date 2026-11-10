@@ -225,7 +225,9 @@ export class StylesheetManager {
                             modes: { [modeName]: val }
                         });
                         if (rType === 'COLOR') {
-                            this.colorVariables.set(val, varName);
+                            if (val !== '#ffffff' && val !== '#000000') {
+                                this.colorVariables.set(val, varName);
+                            }
                         } else if (rType === 'FLOAT') {
                             if (cleanName.includes('radius')) {
                                 this.radiusVariables.set(val, varName);
@@ -642,8 +644,7 @@ export class StylesheetManager {
         // 6. Re-inject Native Figma Variables and Design Tokens
         for (const [varName, info] of this.nativeVariables.entries()) {
             const isBaseWhiteOrBlack = info.value === '#ffffff' || info.value === '#000000';
-            const hasMultiModeOverride = info.modes && Object.keys(info.modes).length > 1;
-            if (isBaseWhiteOrBlack && hasMultiModeOverride && this.colorVariables.has(info.value)) {
+            if (isBaseWhiteOrBlack) {
                 continue;
             }
             this.rootVariables.set(varName, info.value);
