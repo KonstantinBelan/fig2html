@@ -11,7 +11,7 @@ import { transformHtmlToJsx, generateVueComponent } from '../../src/decompiler/t
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const responsiveFigPath = path.resolve(__dirname, '../demo/demo-responsive/demo-responsive.fig');
+const responsiveFigPath = path.resolve(__dirname, '../demo-responsive.fig');
 
 export default async function ({ it, itAsync }) {
     await itAsync('preserves independent corner radii from border-radius shorthand (8px 0 0 8px)', async () => {

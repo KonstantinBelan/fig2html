@@ -17,6 +17,7 @@ test/*.fig
 !templates/*.fig
 !test/showcase.fig
 !test/hard.fig
+!test/demo-responsive.fig
 fleader/
 test/demo/*
 hard-reverse.html
