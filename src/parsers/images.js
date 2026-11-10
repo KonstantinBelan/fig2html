@@ -3,22 +3,48 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import net from 'node:net';
+import dns from 'node:dns/promises';
 import { renderSvgToPng } from './svg.js';
 
 /**
- * Checks if a target file path resides strictly inside a base directory to prevent Path Traversal
+ * Checks if a target file path resides strictly inside a base directory to prevent Path Traversal,
+ * resolving real disk paths via fs.realpathSync to prevent symlink bypass.
  * @param {string} targetPath
  * @param {string} baseDir
  * @returns {boolean}
  */
 export function isPathInsideBaseDir(targetPath, baseDir) {
     if (!targetPath || !baseDir) return false;
-    const resolvedBase = path.resolve(baseDir);
-    const resolvedTarget = path.isAbsolute(targetPath)
-        ? path.resolve(targetPath)
-        : path.resolve(resolvedBase, targetPath);
-    const rel = path.relative(resolvedBase, resolvedTarget);
-    return !rel.startsWith('..') && !path.isAbsolute(rel);
+    try {
+        const canonicalBase = fs.existsSync(baseDir)
+            ? fs.realpathSync(path.resolve(baseDir))
+            : path.resolve(baseDir);
+        const absTarget = path.isAbsolute(targetPath)
+            ? path.resolve(targetPath)
+            : path.resolve(canonicalBase, targetPath);
+
+        let canonicalTarget = absTarget;
+        if (fs.existsSync(absTarget)) {
+            canonicalTarget = fs.realpathSync(absTarget);
+        } else {
+            // If target does not exist on disk, check closest existing directory ancestor to resolve symlinks
+            let current = path.dirname(absTarget);
+            let suffix = path.basename(absTarget);
+            while (current && current !== path.dirname(current)) {
+                if (fs.existsSync(current)) {
+                    canonicalTarget = path.join(fs.realpathSync(current), suffix);
+                    break;
+                }
+                suffix = path.join(path.basename(current), suffix);
+                current = path.dirname(current);
+            }
+        }
+
+        const rel = path.relative(canonicalBase, canonicalTarget);
+        return !rel.startsWith('..') && !path.isAbsolute(rel);
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -44,6 +70,17 @@ export function isPrivateOrRestrictedHost(hostname) {
     // 1. Localhost and local domain names
     if (clean === 'localhost' || clean.endsWith('.localhost') || clean.endsWith('.local') || clean.endsWith('.internal')) {
         return true;
+    }
+
+    // 1b. nip.io and sslip.io mapping to private IPs
+    const nipMatch = clean.match(/(?:^|\.)((?:\d{1,3}\.){3}\d{1,3})\.(?:nip|sslip)\.io$/);
+    if (nipMatch) {
+        if (isPrivateOrRestrictedHost(nipMatch[1])) return true;
+    }
+    const dashedMatch = clean.match(/(?:^|\.)(\d{1,3})-(\d{1,3})-(\d{1,3})-(\d{1,3})\.(?:nip|sslip)\.io$/);
+    if (dashedMatch) {
+        const reconstructed = `${dashedMatch[1]}.${dashedMatch[2]}.${dashedMatch[3]}.${dashedMatch[4]}`;
+        if (isPrivateOrRestrictedHost(reconstructed)) return true;
     }
 
     // 2. Numeric/hex/octal integer IP representations (e.g. 2130706433 or 0x7f000001)
@@ -99,6 +136,79 @@ export function isPrivateOrRestrictedHost(hostname) {
     }
 
     return false;
+}
+
+/**
+ * Verifies magic bytes signature of common image formats (PNG, JPEG, GIF, WebP, SVG, AVIF, BMP)
+ * @param {Buffer} buffer
+ * @returns {boolean}
+ */
+export function isValidImageMagicBytes(buffer) {
+    if (!buffer || buffer.length < 4) return false;
+
+    // PNG: 89 50 4E 47
+    if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
+        return true;
+    }
+
+    // JPEG: FF D8 FF
+    if (buffer[0] === 0xFF && buffer[1] === 0xD8 && buffer[2] === 0xFF) {
+        return true;
+    }
+
+    // GIF: "GIF8" (47 49 46 38)
+    if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) {
+        return true;
+    }
+
+    // WebP: RIFF .... WEBP
+    if (buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') {
+        return true;
+    }
+
+    // BMP: "BM" (42 4D)
+    if (buffer[0] === 0x42 && buffer[1] === 0x4D) {
+        return true;
+    }
+
+    // AVIF: ....ftypavif or avis
+    if (buffer.length >= 12 && buffer.toString('ascii', 4, 8) === 'ftyp' &&
+        (buffer.toString('ascii', 8, 12) === 'avif' || buffer.toString('ascii', 8, 12) === 'avis')) {
+        return true;
+    }
+
+    // SVG: XML text containing <svg
+    const headText = buffer.slice(0, Math.min(buffer.length, 1024)).toString('utf8');
+    if (headText.includes('<svg')) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Asynchronously checks if a domain name resolves to any restricted or private IP addresses
+ * @param {string} hostname
+ * @returns {Promise<boolean>}
+ */
+export async function isRestrictedOrPrivateDomain(hostname) {
+    if (!hostname || typeof hostname !== 'string') return true;
+    const clean = hostname.trim().toLowerCase().replace(/^\[|\]$/g, '');
+    if (isPrivateOrRestrictedHost(clean)) return true;
+    if (net.isIP(clean)) return isPrivateOrRestrictedHost(clean);
+
+    try {
+        const addresses = await dns.lookup(clean, { all: true });
+        if (!addresses || addresses.length === 0) return true;
+        for (const addr of addresses) {
+            if (isPrivateOrRestrictedHost(addr.address)) {
+                return true;
+            }
+        }
+        return false;
+    } catch {
+        return true;
+    }
 }
 
 /**
@@ -198,6 +308,10 @@ export class ImageRegistry {
         this.allowRemote = options.allowRemote !== false;
         this.allowExternalPaths = options.allowExternalPaths === true;
         this.allowPrivateHosts = options.allowPrivateHosts === true;
+        this.allowedDomains = Array.isArray(options.allowedDomains)
+            ? options.allowedDomains.map(d => d.trim().toLowerCase())
+            : null;
+        this.maxImageSize = options.maxImageSize || 15 * 1024 * 1024; // 15MB default limit
         this.images = new Map(); // sha1Hex -> Buffer
         this.sourceCache = new Map(); // srcKey -> { sha1Hex, sha1Buffer, width, height }
     }
@@ -208,12 +322,23 @@ export class ImageRegistry {
         }
 
         // If buffer is SVG XML, rasterize it to high-res PNG for native Figma rendering
-        const headerText = buffer.slice(0, 100).toString('utf8').trim();
-        if (headerText.startsWith('<svg') || headerText.includes('<?xml') || headerText.includes('<svg')) {
+        const headerText = buffer.slice(0, Math.min(buffer.length, 1024)).toString('utf8').trim();
+        const isSvg = headerText.includes('<svg') || headerText.includes('<?xml');
+        if (isSvg) {
             const pngBuf = renderSvgToPng(buffer.toString('utf8'), targetWidth);
             if (pngBuf) {
                 buffer = pngBuf;
             }
+        }
+
+        let dims = getImageDimensions(buffer);
+
+        // Security check: if buffer is not recognized as a valid image format,
+        // do NOT register the unknown/sensitive buffer into this.images to prevent data exfiltration
+        if (!dims) {
+            console.warn(`[WARN] Unrecognized or invalid image format for "${name}". Using fallback image to prevent data leakage.`);
+            buffer = createFallbackImage();
+            dims = getImageDimensions(buffer) || { width: 1, height: 1 };
         }
 
         const sha1 = crypto.createHash('sha1').update(buffer).digest();
@@ -222,8 +347,6 @@ export class ImageRegistry {
         if (!this.images.has(sha1Hex)) {
             this.images.set(sha1Hex, buffer);
         }
-
-        const dims = getImageDimensions(buffer) || { width: 300, height: 200 };
 
         return {
             sha1Hex,
@@ -256,6 +379,11 @@ export class ImageRegistry {
                 } else {
                     buffer = Buffer.from(decodeURIComponent(data), 'utf8');
                 }
+
+                if (!isValidImageMagicBytes(buffer)) {
+                    console.warn(`[WARN] Data URI for "${name}" failed magic bytes validation. Replacing with fallback.`);
+                    buffer = null;
+                }
             }
         }
         // 2. Remote URL (http / https) with SSRF & private host protection
@@ -263,15 +391,100 @@ export class ImageRegistry {
             if (this.allowRemote && typeof fetch === 'function') {
                 try {
                     const parsedUrl = new URL(cleanSrc);
+                    const hostname = parsedUrl.hostname.toLowerCase();
+
                     if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
                         console.warn(`[WARN] Blocked unsupported URL protocol "${parsedUrl.protocol}" for image "${cleanSrc}".`);
-                    } else if (!this.allowPrivateHosts && isPrivateOrRestrictedHost(parsedUrl.hostname)) {
+                    } else if (this.allowedDomains && this.allowedDomains.length > 0 && !this.allowedDomains.some(d => d === hostname || hostname.endsWith('.' + d))) {
+                        console.warn(`[WARN] Blocked remote image "${cleanSrc}": domain "${hostname}" is not in allowedDomains list.`);
+                    } else if (!this.allowPrivateHosts && isPrivateOrRestrictedHost(hostname)) {
                         console.warn(`[WARN] Blocked remote image "${cleanSrc}": resolved to private, local, or restricted host.`);
                     } else {
-                        const res = await fetch(cleanSrc, { signal: AbortSignal.timeout(5000) });
-                        if (res.ok) {
-                            const arrayBuf = await res.arrayBuffer();
-                            buffer = Buffer.from(arrayBuf);
+                        let isBlocked = false;
+                        if (!this.allowPrivateHosts && !net.isIP(hostname)) {
+                            // Perform DNS lookup to prevent DNS rebind / private IP domain resolution (e.g. nip.io)
+                            try {
+                                const addresses = await dns.lookup(hostname, { all: true });
+                                if (!addresses || addresses.length === 0) {
+                                    console.warn(`[WARN] Blocked remote image "${cleanSrc}": DNS lookup returned no addresses.`);
+                                    isBlocked = true;
+                                } else {
+                                    for (const addr of addresses) {
+                                        if (isPrivateOrRestrictedHost(addr.address)) {
+                                            console.warn(`[WARN] Blocked remote image "${cleanSrc}": host "${hostname}" resolved to restricted IP "${addr.address}".`);
+                                            isBlocked = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            } catch (dnsErr) {
+                                console.warn(`[WARN] DNS resolution failed for "${hostname}": ${dnsErr.message}`);
+                                isBlocked = true;
+                            }
+                        }
+
+                        if (!isBlocked) {
+                            const res = await fetch(cleanSrc, {
+                                signal: AbortSignal.timeout(5000),
+                                redirect: 'error'
+                            });
+
+                            if (res.ok) {
+                                // Content-Type validation
+                                const rawCt = (res.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
+                                const allowedMimes = [
+                                    'image/png', 'image/jpeg', 'image/webp', 'image/gif',
+                                    'image/svg+xml', 'image/avif', 'image/x-icon', 'image/vnd.microsoft.icon'
+                                ];
+                                if (rawCt && !allowedMimes.includes(rawCt)) {
+                                    throw new Error(`Invalid or disallowed image Content-Type "${rawCt}"`);
+                                }
+
+                                // Stream reading with size limit (DoS / Memory Bomb prevention)
+                                const maxBytes = this.maxImageSize;
+                                const clStr = res.headers.get('content-length');
+                                if (clStr) {
+                                    const cl = parseInt(clStr, 10);
+                                    if (!isNaN(cl) && cl > maxBytes) {
+                                        throw new Error(`Content-Length ${cl} exceeds maximum limit of ${maxBytes} bytes`);
+                                    }
+                                }
+
+                                if (res.body && typeof res.body.getReader === 'function') {
+                                    const reader = res.body.getReader();
+                                    const chunks = [];
+                                    let totalBytes = 0;
+                                    try {
+                                        while (true) {
+                                            const { done, value } = await reader.read();
+                                            if (done) break;
+                                            if (value) {
+                                                totalBytes += value.length;
+                                                if (totalBytes > maxBytes) {
+                                                    await reader.cancel('Max image size exceeded');
+                                                    throw new Error(`Image size exceeded maximum allowed limit of ${maxBytes} bytes`);
+                                                }
+                                                chunks.push(value);
+                                            }
+                                        }
+                                    } catch (streamErr) {
+                                        try { await reader.cancel(); } catch (_) {}
+                                        throw streamErr;
+                                    }
+                                    buffer = Buffer.concat(chunks);
+                                } else {
+                                    const arrayBuf = await res.arrayBuffer();
+                                    if (arrayBuf.byteLength > maxBytes) {
+                                        throw new Error(`Image size ${arrayBuf.byteLength} exceeds maximum limit of ${maxBytes} bytes`);
+                                    }
+                                    buffer = Buffer.from(arrayBuf);
+                                }
+
+                                // Validate magic bytes
+                                if (!isValidImageMagicBytes(buffer)) {
+                                    throw new Error(`Downloaded buffer for "${cleanSrc}" failed magic bytes validation`);
+                                }
+                            }
                         }
                     }
                 } catch (e) {
@@ -290,6 +503,10 @@ export class ImageRegistry {
             } else if (fs.existsSync(localPath)) {
                 try {
                     buffer = fs.readFileSync(localPath);
+                    if (!isValidImageMagicBytes(buffer)) {
+                        console.warn(`[WARN] Local file "${localPath}" failed magic bytes validation. Replacing with fallback.`);
+                        buffer = null;
+                    }
                 } catch (e) {
                     console.warn(`[WARN] Failed to read local image "${localPath}": ${e.message}`);
                 }

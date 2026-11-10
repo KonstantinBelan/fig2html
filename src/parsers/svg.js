@@ -151,11 +151,42 @@ export function getSvgDimensions(svgElement, win) {
 }
 
 /**
+ * Sanitizes SVG XML to prevent XXE, recursive entity expansion, script execution,
+ * and unauthorized external resource loading.
+ * @param {string} svgXml
+ * @returns {string}
+ */
+export function sanitizeSvg(svgXml) {
+    if (!svgXml || typeof svgXml !== 'string') return '';
+    let clean = svgXml;
+
+    // 1. Remove DOCTYPE declarations (prevents DTD entity attacks / XXE)
+    clean = clean.replace(/<!DOCTYPE[\s\S]*?(?:\[[\s\S]*?\])?\s*>/gi, '');
+
+    // 2. Remove standalone ENTITY definitions
+    clean = clean.replace(/<!ENTITY[\s\S]*?>/gi, '');
+
+    // 3. Remove <script> tags and inline script handlers
+    clean = clean.replace(/<script[\s\S]*?<\/script>/gi, '');
+    clean = clean.replace(/<script[^>]*\/>/gi, '');
+    clean = clean.replace(/\son[a-z]+\s*=\s*["'][^"']*["']/gi, '');
+
+    // 4. Remove <foreignObject> tags (often used for HTML/script embedding in SVG)
+    clean = clean.replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '');
+    clean = clean.replace(/<foreignObject[^>]*\/>/gi, '');
+
+    // 5. Sanitize external URL references in <use> and <image> (xlink:href / href pointing to http/https/file)
+    clean = clean.replace(/\b(href|xlink:href)\s*=\s*["'](?:https?:|\/\/|file:)[^"']*["']/gi, '$1=""');
+
+    return clean;
+}
+
+/**
  * Renders SVG XML into a high-DPI PNG buffer using Resvg
  */
 export function renderSvgToPng(svgXml, targetWidth = 64) {
     try {
-        let clean = svgXml.trim();
+        let clean = sanitizeSvg(svgXml).trim();
         if (!clean.includes('xmlns=')) {
             clean = clean.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
         }

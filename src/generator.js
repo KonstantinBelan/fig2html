@@ -131,14 +131,22 @@ async function generateFigFile(options = {}) {
 
     // 4. Initialize image registry & convert HTML to nodes
     progress(48, 'Converting HTML and CSS into Figma node hierarchy...', 'CONVERT');
-    const imageRegistry = new ImageRegistry({
+    const imageRegistry = options.imageRegistry || new ImageRegistry({
         baseDir: baseDir,
-        allowRemote: options.allowRemoteImages !== false
+        allowRemote: options.allowRemoteImages !== false,
+        allowExternalPaths: options.allowExternalPaths === true,
+        allowPrivateHosts: options.allowPrivateHosts === true,
+        allowedDomains: options.allowedDomains || null,
+        maxImageSize: options.maxImageSize || 15 * 1024 * 1024
     });
 
     const conversion = await convertHtmlToNodes(htmlContent, targetCanvas.guid, {
         baseDir: baseDir,
         allowRemoteImages: options.allowRemoteImages !== false,
+        allowExternalPaths: options.allowExternalPaths === true,
+        allowPrivateHosts: options.allowPrivateHosts === true,
+        allowedDomains: options.allowedDomains || null,
+        maxImageSize: options.maxImageSize || 15 * 1024 * 1024,
         imageRegistry: imageRegistry,
         blobOffset: templateTree.blobs ? templateTree.blobs.length : 0,
         verbose: options.verbose

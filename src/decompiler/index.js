@@ -11,6 +11,7 @@ import { optimizeAllImages, optimizeBuffer } from './image-optimizer.js';
 import { applySmartLayout, synthesizeLayoutTree, detectGrid } from './synthesizer.js';
 import { detectAndExtractContainers } from './container-detector.js';
 import { BoundingBox } from './geometry.js';
+import { isPathInsideBaseDir } from '../parsers/images.js';
 import {
     detectPages,
     isSinglePageArtboard,
@@ -305,7 +306,11 @@ export async function convertFigToHtml(figInput, options = {}) {
             }
             for (const file of filesToWrite) {
                 const filePath = path.join(outAssetsDir, file.fileName);
-                fs.writeFileSync(filePath, file.buffer);
+                if (isPathInsideBaseDir(filePath, outAssetsDir)) {
+                    fs.writeFileSync(filePath, file.buffer);
+                } else {
+                    console.warn(`[WARN] Blocked writing image file "${file.fileName}": path traverses outside "${outAssetsDir}".`);
+                }
             }
             log(`Extracted ${filesToWrite.length} image files to ${outAssetsDir}`);
         }
@@ -577,7 +582,11 @@ export async function convertFigToHtml(figInput, options = {}) {
             }
             for (const file of filesToWrite) {
                 const filePath = path.join(outAssetsDir, file.fileName);
-                fs.writeFileSync(filePath, file.buffer);
+                if (isPathInsideBaseDir(filePath, outAssetsDir)) {
+                    fs.writeFileSync(filePath, file.buffer);
+                } else {
+                    console.warn(`[WARN] Blocked writing image file "${file.fileName}": path traverses outside "${outAssetsDir}".`);
+                }
             }
             log(`Extracted ${filesToWrite.length} image files to ${outAssetsDir}`);
         }
@@ -838,7 +847,11 @@ export async function convertFigToHtml(figInput, options = {}) {
         }
         for (const file of filesToWrite) {
             const filePath = path.join(outAssetsDir, file.fileName);
-            fs.writeFileSync(filePath, file.buffer);
+            if (isPathInsideBaseDir(filePath, outAssetsDir)) {
+                fs.writeFileSync(filePath, file.buffer);
+            } else {
+                console.warn(`[WARN] Blocked writing image file "${file.fileName}": path traverses outside "${outAssetsDir}".`);
+            }
         }
         log(`Extracted ${filesToWrite.length} image files to ${outAssetsDir}`);
     }

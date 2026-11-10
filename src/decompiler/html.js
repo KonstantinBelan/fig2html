@@ -715,12 +715,13 @@ export function renderNodeToHtml(node, parentNode, imageRegistry, stylesheetMana
 
     // 1. INPUT ELEMENT DETECTION
     if (nodeName.startsWith('Input[') && nodeName.endsWith(']')) {
-        const inputType = nodeName.slice('Input['.length, -1).toLowerCase();
+        const rawType = nodeName.slice('Input['.length, -1).toLowerCase().trim();
+        const inputType = /^[a-z0-9_-]+$/i.test(rawType) ? rawType : 'text';
         const placeholderNode = (node.children || []).find(c => c.name === 'Placeholder' || c.type === 'TEXT');
         const placeholderText = placeholderNode ? (placeholderNode.textData?.characters || placeholderNode.name || '') : '';
         const phAttr = placeholderText ? ` placeholder="${escapeHtml(placeholderText)}"` : '';
 
-        return `${indent}<input type="${inputType}"${classAttr}${phAttr}${styleAttr} />\n`;
+        return `${indent}<input type="${escapeHtml(inputType)}"${classAttr}${phAttr}${styleAttr} />\n`;
     }
 
     // 2. CHECKBOX / RADIO DETECTION
