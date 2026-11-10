@@ -77,6 +77,7 @@ export default async function ({ it, itAsync }) {
             assert.ok(card, 'Card node should exist');
             assert.ok(card.maxSize?.value, 'maxSize must be encoded on the node');
             assert.strictEqual(card.maxSize.value.x, 448, 'max-w-md corresponds to 448px (28rem)');
+            assert.strictEqual(card.maxSize.value.y, Infinity, 'maxSize.y must be Infinity when max-height is unconstrained to prevent height collapse in Figma');
             assert.ok(card.minSize?.value, 'minSize must be encoded on the node');
             assert.strictEqual(card.minSize.value.x, 200, 'min-w-[200px] corresponds to 200px');
         } finally {

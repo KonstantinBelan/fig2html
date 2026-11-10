@@ -954,8 +954,8 @@ export function computeNodeStyles(node, parentNode, imageRegistry, options = {})
         const maxH = node.maxSize?.value?.y ?? node.maxSize?.y ?? node.maxHeight;
         if (minW && minW > 0) styles['min-width'] = fmtW(minW);
         if (minH && minH > 0) styles['min-height'] = fmtH(minH);
-        if (maxW && maxW > 0) styles['max-width'] = fmtW(maxW);
-        if (maxH && maxH > 0) styles['max-height'] = fmtH(maxH);
+        if (maxW && maxW > 0 && Number.isFinite(maxW)) styles['max-width'] = fmtW(maxW);
+        if (maxH && maxH > 0 && Number.isFinite(maxH)) styles['max-height'] = fmtH(maxH);
 
         if (parentIsGrid) {
             styles['width'] = '100%';

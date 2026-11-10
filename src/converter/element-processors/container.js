@@ -193,7 +193,7 @@ export async function processContainerElement(element, parentGuid, orderPosition
         frameNode.minSize = { value: { x: minW || 0, y: minH || 0 } };
     }
     if (maxW > 0 || maxH > 0) {
-        frameNode.maxSize = { value: { x: maxW || 0, y: maxH || 0 } };
+        frameNode.maxSize = { value: { x: maxW > 0 ? maxW : Infinity, y: maxH > 0 ? maxH : Infinity } };
     }
 
     // 3. Setup Auto Layout
