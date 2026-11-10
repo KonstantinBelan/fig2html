@@ -250,6 +250,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
         hasExplicitWidth,
         isWidthPercent,
         hasExplicitHeight,
+        isHeightPercent,
         flexGrow,
         isInlineEl,
         rawWidthStr
@@ -266,7 +267,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
     if (isMarginAuto && parentContext.isColumn) {
         frameNode.stackChildAlignSelf = 'CENTER';
     } else if (parentContext.isColumn) {
-        const shouldStretchW = (alignSelf === 'stretch' || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start')) && !isInline && !isContentWidth;
+        const shouldStretchW = (alignSelf === 'stretch' || isWidthPercent || (!hasExplicitWidth && alignSelf !== 'center' && alignSelf !== 'flex-start')) && !isInline && !isContentWidth;
         if (shouldStretchW) {
             frameNode.stackChildAlignSelf = 'STRETCH';
             if (!isColumn) {
@@ -282,7 +283,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
             frameNode.stackChildAlignSelf = 'MIN';
         }
 
-        if (flexGrow > 0) {
+        if (flexGrow > 0 || isHeightPercent) {
             frameNode.stackChildPrimaryGrow = 1.0;
             if (isColumn) {
                 frameNode.stackPrimarySizing = 'FIXED';
@@ -291,7 +292,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
             }
         }
     } else {
-        const shouldStretchH = alignSelf === 'stretch' || (!hasExplicitHeight && (!alignSelf || alignSelf === 'auto') && parentContext.alignItems === 'stretch');
+        const shouldStretchH = alignSelf === 'stretch' || isHeightPercent || (!hasExplicitHeight && (!alignSelf || alignSelf === 'auto') && parentContext.alignItems === 'stretch');
         if (shouldStretchH) {
             frameNode.stackChildAlignSelf = 'STRETCH';
             if (isColumn) {
@@ -307,7 +308,7 @@ export function applyChildSizing(frameNode, styles, parentContext, isColumn) {
             frameNode.stackChildAlignSelf = 'MIN';
         }
 
-        if (flexGrow > 0) {
+        if (flexGrow > 0 || isWidthPercent) {
             frameNode.stackChildPrimaryGrow = 1.0;
             if (!isColumn) {
                 frameNode.stackPrimarySizing = 'FIXED';

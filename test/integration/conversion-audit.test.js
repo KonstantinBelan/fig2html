@@ -161,4 +161,39 @@ export default async function ({ it, itAsync }) {
         assert.ok(vue.includes('<script setup>'), 'Must contain <script setup>');
         assert.ok(vue.includes('<style scoped>'), 'Must contain <style scoped>');
     });
+
+    await itAsync('sets stackChildPrimaryGrow = 1.0 (Fill container) on flex children with w-full and preserves max-width', async () => {
+        const html = `<!DOCTYPE html><html><body class="flex items-center justify-center p-8"><div class="max-w-md w-full p-4 bg-slate-800">Card</div></body></html>`;
+        const outFig = path.resolve(__dirname, '../temp_wfull.fig');
+
+        try {
+            await generateFigFile({ htmlContent: html, outputPath: outFig });
+            const { nodeChanges } = readFigFile(outFig);
+            const card = nodeChanges.find(n => n.type === 'FRAME' && n.name.includes('max-w-md'));
+
+            assert.ok(card, 'Card frame should exist in generated .fig');
+            assert.strictEqual(card.stackChildPrimaryGrow, 1, 'Child with w-full in flex row must have stackChildPrimaryGrow = 1 (Fill container)');
+            assert.ok(card.maxSize && card.maxSize.value, 'Card must retain maxSize constraint');
+            assert.strictEqual(card.maxSize.value.x, 448, 'Max width must be 448px');
+        } finally {
+            if (fs.existsSync(outFig)) fs.unlinkSync(outFig);
+        }
+    });
+
+    await itAsync('preserves textAutoResize: WIDTH_AND_HEIGHT (Hug contents) on single-line text without explicit width', async () => {
+        const html = `<!DOCTYPE html><html><body><div class="flex flex-col"><p class="text-xs">Short single line text</p></div></body></html>`;
+        const outFig = path.resolve(__dirname, '../temp_texthug.fig');
+
+        try {
+            await generateFigFile({ htmlContent: html, outputPath: outFig });
+            const { nodeChanges } = readFigFile(outFig);
+            const textNode = nodeChanges.find(n => n.type === 'TEXT' && (n.name.includes('Short single line text') || n.name.includes('text-xs')));
+
+            assert.ok(textNode, 'Text node should exist');
+            assert.strictEqual(textNode.textAutoResize, 'WIDTH_AND_HEIGHT', 'Single line text without explicit width must hug contents (WIDTH_AND_HEIGHT)');
+            assert.strictEqual(textNode.stackChildAlignSelf, undefined, 'Single line text should not force STRETCH on width');
+        } finally {
+            if (fs.existsSync(outFig)) fs.unlinkSync(outFig);
+        }
+    });
 }

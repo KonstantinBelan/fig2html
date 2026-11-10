@@ -311,7 +311,6 @@ export async function resolveElementStyles(element, win, context, parentContext 
         const maxW = parseCssLength(rawMaxWidthStr, 16, isAbsolute ? containerW : flowW, 1440);
         if (maxW > 0 && width > maxW) {
             width = Math.round(maxW);
-            isWidthPercent = false;
         }
     }
     if (rawMinWidthStr && rawMinWidthStr !== 'auto') {

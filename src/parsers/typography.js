@@ -377,7 +377,8 @@ export function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, i
         };
     }
 
-    if (isParagraph && explicitWidth > 100) {
+    const singleLineWidth = Math.ceil(text.length * charWidth);
+    if (isParagraph && explicitWidth > 100 && singleLineWidth > explicitWidth) {
         const charsPerLine = Math.max(1, Math.floor(explicitWidth / charWidth));
         const linesCount = Math.max(1, Math.ceil(text.length / charsPerLine));
         return {
@@ -387,7 +388,6 @@ export function estimateTextDimensions(text, fontSize = 16, explicitWidth = 0, i
         };
     }
 
-    const singleLineWidth = Math.ceil(text.length * charWidth);
     return {
         width: explicitWidth > 0 ? explicitWidth : Math.max(10, singleLineWidth),
         height: lineHeight,
